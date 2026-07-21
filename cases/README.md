@@ -1,7 +1,7 @@
 # cases/ — auto-solve test cases
 
 Each subfolder is one end-to-end run of the mdp-solver skill on a new
-problem: IR + restatement (Phase A), generated domain + baselines + trained
+problem: IR + restatement (Phase A), generated domain + benchmarks + trained
 policy (Phase B), and a README with the leaderboard. The purpose of this
 directory is to grow the solver's capability envelope — every case should
 stress something the pipeline hasn't handled before, and a case that forces

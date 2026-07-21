@@ -1,7 +1,7 @@
 """Evaluate a trained PPO model on a dynamic pricing scenario.
 
 Runs episodes with seeds 0..n_seeds-1 and reports mean revenue, variance, and
-semi-variances — the same output format as dynamic_pricing_dp_eval.py for
+semi-variances — the same output format as dynamic_pricing_benchmark_dp_eval.py for
 direct comparison against the DP optimum and the fluid heuristics.
 
 Seeds are injected via env_method("reset", seed=...) so that VecNormalize's

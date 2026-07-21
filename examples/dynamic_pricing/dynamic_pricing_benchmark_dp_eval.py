@@ -1,14 +1,14 @@
 """Evaluate the DP optimal policy on the dynamic pricing scenario.
 
 Loads the precomputed DP price table (t, n, price) produced by
-dynamic_pricing_dp.py and plays it through the gym wrapper: at each step the
-price is looked up from (period, inventory). Runs episodes with seeds
+dynamic_pricing_benchmark_dp.py and plays it through the gym wrapper: at each
+step the price is looked up from (period, inventory). Runs episodes with seeds
 0..n_seeds-1 and reports mean revenue, variance, and semi-variances — the
 same output format as dynamic_pricing_ppo_eval.py for direct comparison.
 
 Example usage:
-    python dynamic_pricing_dp_eval.py --dp-solutions results/simple/dp/simple.txt
-    python dynamic_pricing_dp_eval.py --dp-solutions results/simple/dp/simple.txt -s simple --n-seeds 8192
+    python dynamic_pricing_benchmark_dp_eval.py --solutions results/simple/benchmark/dp/simple.txt
+    python dynamic_pricing_benchmark_dp_eval.py --solutions results/simple/benchmark/dp/simple.txt -s simple --n-seeds 8192
 """
 
 import argparse
@@ -27,8 +27,8 @@ from dynamic_pricing_scenarios import DynamicPricingScenario, SCENARIOS
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Evaluate the DP policy on the dynamic pricing scenario.")
-    p.add_argument("--dp-solutions", type=str, required=True,
-                   help="Path to the precomputed DP solutions file (from dynamic_pricing_dp.py)")
+    p.add_argument("--solutions", type=str, required=True,
+                   help="Path to the precomputed DP solutions file (from dynamic_pricing_benchmark_dp.py)")
     p.add_argument("-s", "--scenario_name", type=str, default="simple",
                    choices=list(SCENARIOS.keys()))
     p.add_argument("-o", "--observation_mode", type=str, default="vec",
@@ -36,7 +36,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--n-seeds", type=int, default=65536,
                    help="Number of episode seeds per scenario (seeds 0..n-1)")
     p.add_argument("--outfile", type=str, default=None,
-                   help="TSV output (defaults to results/<scenario>/dp/dp_eval_<scenario>.tsv)")
+                   help="TSV output (defaults to results/<scenario>/benchmark/benchmark_dp_eval_<scenario>.tsv)")
     return p
 
 
@@ -98,10 +98,11 @@ def evaluate_scenario(
 def main() -> None:
     args = parse_args()
 
-    dp_path = Path(args.dp_solutions)
+    dp_path = Path(args.solutions)
     outfile = (
         Path(args.outfile) if args.outfile
-        else Path(__file__).resolve().parent / "results" / args.scenario_name / "dp" / f"dp_eval_{args.scenario_name}.tsv"
+        else Path(__file__).resolve().parent / "results" / args.scenario_name / "benchmark"
+             / f"benchmark_dp_eval_{args.scenario_name}.tsv"
     )
 
     scenario = SCENARIOS[args.scenario_name]
@@ -111,7 +112,7 @@ def main() -> None:
     price_table = np.zeros((scenario.horizon, scenario.n0 + 1))
     price_table[sol["t"].to_numpy(), sol["n"].to_numpy()] = sol["price"].to_numpy()
 
-    print(f"dp_solutions  {dp_path}  ({len(sol)} rows)")
+    print(f"solutions     {dp_path}  ({len(sol)} rows)")
     print(f"output        {outfile}")
     print(f"n_seeds       {args.n_seeds}")
 

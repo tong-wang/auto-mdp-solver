@@ -21,9 +21,9 @@ the IR interpreter against this implementation (bit-exact on both instances).
 | `dynamic_pricing_scenarios.py` | `DynamicPricingScenario`, `SCENARIOS` (`simple`: a=100, `ample_stock`: a=20) |
 | `dynamic_pricing_mdp.py` | `DynamicPricingState`, `init_state`, `advance` (pure, reward-agnostic; early termination at inventory 0) |
 | `dynamic_pricing_gym.py` | `DynamicPricingEnv`: action modes `price` (Box [0,8], clip) / `intensity` (Box [0, a/e], reparametrized via `p = log(a/lambda)/alpha`); obs modes `vec` = [inventory, time_to_go] / `vec_d` (+ last units_sold); reward `revenue` |
-| `dynamic_pricing_dp.py` | Exact DP (backward induction over (t, n), price grid) → solutions file + optimal value |
-| `dynamic_pricing_dp_eval.py` | Seed-loop eval of the DP policy (TSV) |
-| `dynamic_pricing_lp.py` | Fluid heuristics: `fixed` (GvR fixed-price `p_FP = max(1/alpha, log(a*H/n0)/alpha)`), `myopic` (`1/alpha`), `random` |
+| `dynamic_pricing_benchmark_dp.py` | Exact DP benchmark (backward induction over (t, n), price grid) → solutions file + optimal value |
+| `dynamic_pricing_benchmark_dp_eval.py` | Seed-loop eval of the DP benchmark (TSV) |
+| `dynamic_pricing_benchmark_fluid.py` | Fluid benchmarks (from the source paper): `fixed` (GvR fixed-price `p_FP = max(1/alpha, log(a*H/n0)/alpha)`), `myopic` (`1/alpha`), plus a `random` sanity floor |
 | `dynamic_pricing_ppo_train.py` | SB3 PPO training (VecNormalize obs norm on, per IR `rl` block) |
 | `dynamic_pricing_ppo_eval.py` | Seed-loop eval of a trained model (VecNormalize injection, spec §9.5) |
 | `dynamic_pricing_ppo_tune.py` | Thin wrapper over the repo-level `mdp_tuning` harness (`--metric revenue_mean`) |
@@ -34,10 +34,10 @@ the IR interpreter against this implementation (bit-exact on both instances).
 ```bash
 cd dynamic_pricing
 
-# baselines
-python dynamic_pricing_dp.py -s simple                      # exact DP -> results/simple/dp/simple.txt
-python dynamic_pricing_dp_eval.py --dp-solutions results/simple/dp/simple.txt -s simple --n-seeds 8192
-python dynamic_pricing_lp.py -s simple --policy fixed --n-seeds 8192
+# benchmarks
+python dynamic_pricing_benchmark_dp.py -s simple            # exact DP -> results/simple/benchmark/dp/simple.txt
+python dynamic_pricing_benchmark_dp_eval.py --solutions results/simple/benchmark/dp/simple.txt -s simple --n-seeds 8192
+python dynamic_pricing_benchmark_fluid.py -s simple --policy fixed --n-seeds 8192
 
 # train + eval (pin BLAS threads; policy is tiny)
 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python dynamic_pricing_ppo_train.py -s simple -a price

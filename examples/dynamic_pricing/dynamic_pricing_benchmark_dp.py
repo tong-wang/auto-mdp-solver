@@ -11,13 +11,13 @@ optimized on a fine grid per state:
 This is the optimal policy for the discretized MDP (the same MDP the RL agent
 faces), so it upper-bounds any learned policy up to the price-grid resolution.
 
-Writes the policy table (t, n, price) to the spec's DP-solutions location
-``results/{scenario_name}/dp/{scenario_name}.txt`` and prints the optimal
-expected revenue V[0][n0].
+Writes the policy table (t, n, price) to the spec's benchmark-solutions
+location ``results/{scenario_name}/benchmark/dp/{scenario_name}.txt`` and
+prints the optimal expected revenue V[0][n0].
 
 Example usage:
-    python dynamic_pricing_dp.py -s simple
-    python dynamic_pricing_dp.py -s ample_stock --price-grid-step 0.001
+    python dynamic_pricing_benchmark_dp.py -s simple
+    python dynamic_pricing_benchmark_dp.py -s ample_stock --price-grid-step 0.001
 """
 
 import argparse
@@ -41,7 +41,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--price-high", type=float, default=8.0,
                    help="Upper end of the price grid (default 8.0, the gym action bound)")
     p.add_argument("--outfile", type=str, default=None,
-                   help="Solutions file (defaults to results/<scenario>/dp/<scenario>.txt)")
+                   help="Solutions file (defaults to results/<scenario>/benchmark/dp/<scenario>.txt)")
     return p
 
 
@@ -103,7 +103,7 @@ def main() -> None:
 
     outfile = (
         Path(args.outfile) if args.outfile
-        else Path(__file__).resolve().parent / "results" / args.scenario_name / "dp" / f"{args.scenario_name}.txt"
+        else Path(__file__).resolve().parent / "results" / args.scenario_name / "benchmark" / "dp" / f"{args.scenario_name}.txt"
     )
 
     V, policy = solve_dp(scenario, args.price_grid_step, args.price_high)

@@ -12,7 +12,7 @@ RL policy from a verbal description of a dynamic decision-making problem**:
    surfaced and signed off, then frozen with a fingerprint.
 2. **Phase B — build (gated stages).** From the frozen IR: a spec-conformant
    simulator domain (`_uncertainty` / `_scenarios` / `_mdp` / `_gym` layers),
-   a bit-exact differential check against the IR interpreter, baselines
+   a bit-exact differential check against the IR interpreter, benchmarks
    (random / myopic / exact DP where tractable), PPO training and Optuna
    tuning, and a `{domain}_policy.py` deployment wrapper — with an executable
    gate between every stage.
@@ -64,10 +64,10 @@ differential bit-exact MATCH.
 ## Example domains
 
 - `examples/inv_single` — single-echelon inventory control with stochastic
-  lead times (two-step advance, episode-support demand, exact-DP baseline).
+  lead times (two-step advance, episode-support demand, exact-DP benchmark).
 - `examples/dynamic_pricing` — finite-horizon revenue management (Gallego &
   van Ryzin 1994): continuous price control, decision-conditioned demand
-  generator, exact-DP baseline; PPO reaches within 0.6% of DP.
+  generator, exact-DP benchmark; PPO reaches within 0.6% of DP.
 
 ## License
 

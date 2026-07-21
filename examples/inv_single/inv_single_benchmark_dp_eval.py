@@ -1,13 +1,14 @@
 """DP benchmark evaluation for single-echelon inventory.
 
 Evaluates the FiniteHorizonDP policy through InvSingleEnv (same gym
-used by RL) for a fair comparison. Writes TensorBoard logs to
-  results/<scenario>/benchmark/DP_YYYYMMDD_HHMMSS/
+used by RL) for a fair comparison. Writes TensorBoard logs alongside the
+cached DP tables in
+  results/<scenario>/benchmark/dp/
 using the same key names and pseudo-timestep x-axis as SB3 PPO runs.
 
 Usage:
-    python inv_single_dp_test.py
-    python inv_single_dp_test.py --scenario simple --n-episodes 1000
+    python inv_single_benchmark_dp_eval.py
+    python inv_single_benchmark_dp_eval.py --scenario simple --n-episodes 1000
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from collections import deque
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
-from inv_single_dp_solve import FiniteHorizonDP
+from inv_single_benchmark_dp import FiniteHorizonDP
 from inv_single_gym import InvSingleEnv
 from inv_single_scenarios import SCENARIOS
 

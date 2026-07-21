@@ -8,9 +8,9 @@ the shared seed count.
 ```bash
 python -m mdp_gates \
   --candidate dynamic_pricing/results/simple/PPO_.../ppo_eval_simple.tsv \
-  --baseline  dynamic_pricing/results/simple/dp/lp_eval_simple_random.tsv \
-  --baseline  dynamic_pricing/results/simple/dp/lp_eval_simple_myopic.tsv \
-  --reference dynamic_pricing/results/simple/dp/dp_eval_simple.tsv \
+  --baseline  dynamic_pricing/results/simple/benchmark/benchmark_random_eval_simple.tsv \
+  --baseline  dynamic_pricing/results/simple/benchmark/benchmark_myopic_eval_simple.tsv \
+  --reference dynamic_pricing/results/simple/benchmark/benchmark_dp_eval_simple.tsv \
   --n-seeds 8192
 ```
 

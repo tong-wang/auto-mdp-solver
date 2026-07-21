@@ -13,6 +13,6 @@ Both schemas are also `mdp_ir/interpreter_test.py` fixtures.
 
 Shape coverage note: these two cover continuous single-entity control,
 two-step advance, episode-support demand, decision-conditioned generators,
-and exact-DP baselines. Not yet covered by a shipped example: multi-entity,
+and exact-DP benchmarks. Not yet covered by a shipped example: multi-entity,
 discrete + action masking, deterministic dynamics + sampled instances,
 competitive/censored information modes.

@@ -10,8 +10,8 @@ Single-echelon inventory management simulator with PPO training via Stable Basel
 | `inv_single_gym.py` | Gymnasium wrapper for SB3 training |
 | `inv_single_scenarios.py` | Pre-defined scenario registry |
 | `inv_single_train_ppo.py` | PPO training + evaluation script |
-| `inv_single_dp_solve.py` | Finite-horizon DP solver (backward induction) |
-| `inv_single_dp_test.py` | DP benchmark evaluation + TensorBoard logging |
+| `inv_single_benchmark_dp.py` | Finite-horizon DP benchmark solver (backward induction) |
+| `inv_single_benchmark_dp_eval.py` | DP benchmark evaluation + TensorBoard logging |
 
 ## Concepts
 
@@ -72,7 +72,7 @@ results/
         train_log_*.log
         monitor.csv
     benchmark/
-      DP/
+      dp/
         V.csv
         pi.csv
         meta.json
@@ -102,13 +102,13 @@ python inv_single_train_ppo.py --scenario simple --total-timesteps 500000 --no-n
 
 ## Benchmark (DP)
 
-`inv_single_dp_solve.py` computes the optimal finite-horizon policy by backward induction. The state is inventory (LT=0) or inventory position (LT>0). Results are cached to `results/<scenario>/benchmark/DP/` and reloaded on subsequent runs — recomputation only triggers if grid parameters change. Pass `--no-cache` to force a full re-solve.
+`inv_single_benchmark_dp.py` computes the optimal finite-horizon policy by backward induction. The state is inventory (LT=0) or inventory position (LT>0). Results are cached to `results/<scenario>/benchmark/dp/` and reloaded on subsequent runs — recomputation only triggers if grid parameters change. Pass `--no-cache` to force a full re-solve.
 
 ```bash
 cd inv_single
-python inv_single_dp_test.py                          # defaults (simple, 1000 episodes)
-python inv_single_dp_test.py --scenario simple-k --n-episodes 500
-python inv_single_dp_test.py --scenario simple-lt --no-cache
+python inv_single_benchmark_dp_eval.py                          # defaults (simple, 1000 episodes)
+python inv_single_benchmark_dp_eval.py --scenario simple-k --n-episodes 500
+python inv_single_benchmark_dp_eval.py --scenario simple-lt --no-cache
 ```
 
 ### DP notes
@@ -126,5 +126,5 @@ Both PPO and DP write `rollout/ep_rew_mean` using the same pseudo-timestep scale
 
 ```bash
 tensorboard --logdir inv_single/results/simple/
-# RL runs appear under RL/, DP benchmark under benchmark/DP/
+# RL runs appear under RL/, DP benchmark under benchmark/dp/
 ```

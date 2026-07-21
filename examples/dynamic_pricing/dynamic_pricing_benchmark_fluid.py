@@ -1,4 +1,7 @@
-"""Fluid (deterministic) heuristics for the dynamic pricing problem.
+"""Fluid (deterministic) benchmarks for the dynamic pricing problem.
+
+Provenance: the fluid relaxation and the fixed-price heuristic are from the
+source paper (Gallego & van Ryzin 1994); `random` is an added sanity floor.
 
 Solves the paper's deterministic fluid relaxation in closed form and evaluates
 the resulting static policies through the gym, giving the mandatory
@@ -11,11 +14,12 @@ non-DP yardsticks:
 - ``myopic`` — always p* = 1/alpha (ignores the stock constraint).
 - ``random`` — uniform price in [0, price-high] each step (sanity floor).
 
-Output format matches dynamic_pricing_ppo_eval.py / dynamic_pricing_dp_eval.py.
+Output format matches dynamic_pricing_ppo_eval.py /
+dynamic_pricing_benchmark_dp_eval.py.
 
 Example usage:
-    python dynamic_pricing_lp.py -s simple --policy fixed
-    python dynamic_pricing_lp.py -s simple --policy random --n-seeds 8192
+    python dynamic_pricing_benchmark_fluid.py -s simple --policy fixed
+    python dynamic_pricing_benchmark_fluid.py -s simple --policy random --n-seeds 8192
 """
 
 import argparse
@@ -44,7 +48,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--n-seeds", type=int, default=65536,
                    help="Number of episode seeds (seeds 0..n-1)")
     p.add_argument("--outfile", type=str, default=None,
-                   help="TSV output (defaults to results/<scenario>/dp/lp_eval_<scenario>_<policy>.tsv)")
+                   help="TSV output (defaults to results/<scenario>/benchmark/benchmark_<policy>_eval_<scenario>.tsv)")
     return p
 
 
@@ -131,8 +135,8 @@ def main() -> None:
 
     outfile = (
         Path(args.outfile) if args.outfile
-        else Path(__file__).resolve().parent / "results" / args.scenario_name / "dp"
-             / f"lp_eval_{args.scenario_name}_{args.policy}.tsv"
+        else Path(__file__).resolve().parent / "results" / args.scenario_name / "benchmark"
+             / f"benchmark_{args.policy}_eval_{args.scenario_name}.tsv"
     )
     label = f"policy={args.policy}" + (f" price={price:.4f}" if price is not None else "")
     print(f"{label}  n_seeds={args.n_seeds}  output={outfile}")

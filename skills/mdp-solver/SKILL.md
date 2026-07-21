@@ -278,16 +278,22 @@ and `python -m mdp_conformance {domain}` still passes 11/11.
 
 ### Stage 3 — baselines (mandatory)
 
-Build and run baselines **for the Stage-0 target scenario(s) only**, not the
-whole frozen grid. Minimum: **random** and a **myopic/greedy heuristic**
-(`{domain}_lp.py`).
-Add exact **DP** (`{domain}_dp.py` + `{domain}_dp_eval.py`) when the state
-is fully observed and small enough to enumerate — deriving the recurrence
-is your job; verify its value against a closed-form or limiting case when
-one exists. All evals share the spec-§9 seed loop, TSV columns
+Build and run **benchmarks** (any non-RL solution — from the source
+paper/document or synthesized on the fly) **for the Stage-0 target
+scenario(s) only**, not the whole frozen grid. Each is
+`{domain}_benchmark_{method}.py` with an eval
+`{domain}_benchmark_{method}_eval.py`, where `{method}` is a short method tag
+(`lp`, `dp`, `myopic`, `greedy`, `fluid`, or a domain-custom heuristic) — not
+a hard-coded `_lp`/`_dp`. Minimum: **random** and a **myopic/greedy
+heuristic**. Add exact **DP** (`{domain}_benchmark_dp.py` +
+`{domain}_benchmark_dp_eval.py`) when the state is fully observed and small
+enough to enumerate — deriving the recurrence is your job; verify its value
+against a closed-form or limiting case when one exists. All evals share the
+spec-§9 seed loop, TSV columns
 (`<axes>... <metric>_mean <metric>_var semivar_d semivar_u`), and one seed
-count (default 8192). DP solutions go to
-`results/{scenario}/dp/{scenario}.txt`.
+count (default 8192). A benchmark that precomputes a solution table writes it
+to `results/{scenario}/benchmark/{method}/{scenario}.txt`; eval TSVs go to
+`results/{scenario}/benchmark/benchmark_{name}_eval_{scenario}.tsv`.
 
 **GATE:** baselines run to completion and their ordering is sane
 (DP ≥ heuristics ≥ random); they now bound the reward scale.

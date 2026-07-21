@@ -1,7 +1,7 @@
 """Finite-horizon DP benchmark for single-echelon inventory.
 
 Solves by backward induction and caches V / pi tables to
-  results/<scenario_name>/benchmark/DP/
+  results/<scenario_name>/benchmark/dp/
 so repeated runs load from disk rather than recomputing.
 Pass no_cache=True to force a full re-solve and overwrite the cache.
 
@@ -72,7 +72,7 @@ class FiniteHorizonDP:
             / results_dir
             / scenario.scenario_name
             / "benchmark"
-            / "DP"
+            / "dp"
         )
 
         if not no_cache and self._cache_valid():

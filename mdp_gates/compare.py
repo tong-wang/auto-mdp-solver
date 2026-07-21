@@ -1,7 +1,7 @@
 """Stage-4 eval gate: does the candidate beat each baseline by a real margin?
 
 Reads the spec-§9 eval TSVs (shared by ``{domain}_ppo_eval.py`` /
-``{domain}_dp_eval.py`` / heuristic evals) and compares a candidate against
+``{domain}_benchmark_{method}_eval.py``) and compares a candidate against
 each baseline on a ``*_mean`` metric column, using the matching ``*_var``
 column and the seed count to form a standard error:
 
@@ -21,8 +21,8 @@ variances across rows before comparison; per-cell gating is out of scope.
 CLI:
 
     python -m mdp_gates --candidate ppo_eval_simple.tsv \
-        --baseline lp_eval_simple_random.tsv --baseline lp_eval_simple_myopic.tsv \
-        --reference dp_eval_simple.tsv --n-seeds 8192 [--metric revenue_mean] [--z 2.0]
+        --baseline benchmark_random_eval_simple.tsv --baseline benchmark_myopic_eval_simple.tsv \
+        --reference benchmark_dp_eval_simple.tsv --n-seeds 8192 [--metric revenue_mean] [--z 2.0]
 
 Exit status: 0 if every baseline comparison passes, else 1.
 """

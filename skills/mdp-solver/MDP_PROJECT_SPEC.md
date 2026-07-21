@@ -24,8 +24,8 @@ Each domain lives in its own subfolder `{domain}/`. Every file is prefixed with 
 | `{domain}_ppo_tune.py` | Optional thin wrapper over the repo-level `mdp_tuning` harness, pre-filling domain defaults (e.g. `--metric`) |
 | `{domain}_dreamerv3_train.py` | RLlib DreamerV3 training |
 | `{domain}_ppo_eval.py` | Evaluate a trained RL model over the full parameter grid |
-| `{domain}_dp_eval.py` | Evaluate the DP / heuristic baseline over the full parameter grid |
-| `{domain}_lp.py` | LP / heuristic baseline solver |
+| `{domain}_benchmark_{method}.py` | Non-RL benchmark solver — `{method}` names the method (`lp`, `dp`, `myopic`, `greedy`, `fluid`, or a domain-custom heuristic). One per method; a solver may expose several related policies via `--policy` (§9.7) |
+| `{domain}_benchmark_{method}_eval.py` | Evaluate a benchmark over the full parameter grid, same TSV format as the RL eval |
 | `{domain}_policy.py` | Deployable policy wrapper over the trained artifact (§12) |
 
 ### 1.1 Dependency chain
@@ -192,7 +192,7 @@ class Normal{Source}({Source}Generator):
 - **`sample(ctx)` owns the full seed construction** — `advance()` calls `scenario.demand.sample(state)` and never builds an rng itself. The `ctx` argument is any `SamplingContext` (in practice the `{Domain}State`).
 - **`_STREAM_ID`** is the per-source stream id in the seed key (§6.3): `1 = demand`, `2 = leadtime`, etc. All leaf classes of one source share the same id.
 - **`id`** (constructor arg) is the entity index (e.g. retailer index) and leads the seed key so two retailers with identical parameters still draw independent values.
-- **`mean()`** returns the expected value for deterministic planners (LP/DP baselines).
+- **`mean()`** returns the expected value for deterministic planners (e.g. LP/DP benchmarks).
 - **`max()`** returns a practical upper bound (e.g. mean + 4σ); used by the gym wrapper to set action/observation space bounds without isinstance checks. Leadtime generators additionally expose **`min()`**.
 - **`is_discrete`** (class attribute) records whether samples are integer-valued, so consumers can pick integer vs. float spaces without isinstance checks.
 - The generator instance is stored as a field on `{Domain}Scenario` (e.g. `scenario.demand`, `scenario.rt_leadtimes[i]`).
@@ -751,10 +751,24 @@ results/
       monitor.monitor.csv            # SB3 Monitor CSV
       {ALGO}_1/                      # TensorBoard event files
       ppo_eval_{eval_scenario}.tsv   # eval output (eval scenario encoded in filename)
-    dp/
-      {scenario_name}.txt            # precomputed DP/heuristic solutions for this scenario
-      dp_eval_{scenario_name}.tsv    # DP eval output
+    benchmark/
+      {method}/                      # one dir per benchmark method (dp, lp, ...)
+        {scenario_name}.txt          # precomputed solution table for this scenario, if any
+      benchmark_{name}_eval_{scenario_name}.tsv  # benchmark eval output ({name} = method or policy variant)
+  tuning/                            # `mdp_tuning` studies — domain-level, NOT scenario-nested
+    optuna.db                        # sqlite store; holds every study for this domain
+    {study_name}/                    # e.g. dynamic_pricing_simple_ppo (domain + scenario + algo)
+      trial_{NNNN}/                  # passed to the train script as --outdir
+        train.log  eval.log  eval.tsv
+        {scenario_name}/{run_name}/  # the tree above, re-applied by the train script
 ```
+
+**Why `tuning/` is not under `{scenario_name}/`**: the harness hands each
+`trial_{NNNN}/` to the domain's train script as `--outdir`, and that script
+re-applies its own `{scenario_name}/{run_name}/` nesting — so the scenario
+already appears inside every trial. Nesting the study under a scenario as well
+would repeat that segment, and `optuna.db` is per-domain (studies for
+different scenarios live side by side in it), so it needs a domain-level home.
 
 **Run name encoding**: encode experiment design axes and all non-default hyperparameters in the run name, with a timestamp prefix for uniqueness. Use a `build_run_name(args)` helper:
 
@@ -823,7 +837,7 @@ Expose `--features_dim`, `--channels`, `--kernel_size` as CLI arguments so the `
 
 ## 9. Evaluation Scripts
 
-Two parallel evaluation scripts are expected for each domain: one for the trained RL model (`{domain}_ppo_eval.py`) and one for the DP/heuristic baseline (`{domain}_dp_eval.py`). They share the same output format for direct comparison.
+Parallel evaluation scripts are expected for each domain: one for the trained RL model (`{domain}_ppo_eval.py`) and one per non-RL benchmark (`{domain}_benchmark_{method}_eval.py`). They share the same output format for direct comparison. **Benchmark** is the umbrella term for any non-RL solution used to bound or compare policy quality — whether it comes from the original paper/document or is synthesized on the fly. In a gate (§13) a benchmark plays a role — `--baseline` (must-beat) or `--reference` (reported) — but that role is a per-comparison choice, not part of the artifact's identity.
 
 ### 9.1 Common structure
 
@@ -833,8 +847,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     # for PPO eval:
     p.add_argument("--model-path",   type=str, required=True)
     p.add_argument("--vecnorm-path", type=str, default=None)
-    # for DP eval:
-    p.add_argument("--dp-solutions", type=str, required=True)
+    # for a benchmark eval that replays a precomputed solution table:
+    p.add_argument("--solutions", type=str, required=True)
     # shared:
     p.add_argument("-o", "--observation_mode", type=str, default="vec")
     p.add_argument("-a", "--action_mode",      type=str, default="box")
@@ -937,9 +951,13 @@ else:
 
 **Outfile defaults**:
 - PPO eval: `model_path.parent / f"ppo_eval_{args.scenario_name}.tsv"` — co-located with the model
-- DP eval: `{domain_dir}/results/{args.scenario_name}/dp/dp_eval_{scenario_name}.tsv` — under the scenario's DP folder
+- Benchmark eval: `{domain_dir}/results/{args.scenario_name}/benchmark/benchmark_{name}_eval_{scenario_name}.tsv`, where `{name}` is the method (`dp`) or the specific policy variant (`myopic`, `random`, …) — under the scenario's `benchmark/` folder
 
-**DP solutions file**: precomputed DP/heuristic solutions live at `results/{scenario_name}/dp/{scenario_name}.txt`. These are artifacts analogous to a trained model: the DP solutions file covers one scenario family and is referenced by `--dp-solutions` at eval time. A model trained on `simple` can still reference the parent scenario's solutions file if `simple`'s parameters are a subset of that grid.
+**Benchmark solutions file**: a precomputed solution table (e.g. a DP policy table) lives at `results/{scenario_name}/benchmark/{method}/{scenario_name}.txt`. These are artifacts analogous to a trained model: the table covers one scenario family and is referenced by `--solutions` at eval time. A model trained on `simple` can still reference the parent scenario's solutions file if `simple`'s parameters are a subset of that grid.
+
+### 9.7 Multiple policies per benchmark solver
+
+A benchmark solver may expose several closely-related policies through a `--policy` argument (e.g. a fluid-relaxation file offering `fixed`, `myopic`, and `random`), rather than one file per policy. Name the file after the method family it embodies (`{domain}_benchmark_fluid.py`), and encode the selected policy in the eval TSV name (`benchmark_myopic_eval_{scenario}.tsv`) so each benchmark run writes a distinct, gate-referenceable file.
 
 ---
 
@@ -1017,9 +1035,9 @@ and the shared seed count:
 ```bash
 python -m mdp_gates \
   --candidate results/simple/PPO_.../ppo_eval_simple.tsv \
-  --baseline  results/simple/dp/lp_eval_simple_random.tsv \
-  --baseline  results/simple/dp/lp_eval_simple_myopic.tsv \
-  --reference results/simple/dp/dp_eval_simple.tsv \
+  --baseline  results/simple/benchmark/benchmark_random_eval_simple.tsv \
+  --baseline  results/simple/benchmark/benchmark_myopic_eval_simple.tsv \
+  --reference results/simple/benchmark/benchmark_dp_eval_simple.tsv \
   --n-seeds 8192
 ```
 
