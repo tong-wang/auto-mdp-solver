@@ -10,12 +10,26 @@ readme = "README.md"
 license = "MIT"
 authors = [{ name = "Tong Wang" }]
 requires-python = ">=3.12"
+# Core = what the shipped harness packages (mdp_ir, mdp_conformance, mdp_gates,
+# mdp_tuning) actually import. Deliberately torch-free: formalizing an IR,
+# checking conformance, or running an eval gate must not pull a ~2 GB stack.
 dependencies = [
     "numpy>=2.1,<3",
     "pydantic>=2,<3",
     "gymnasium>=1.1,<1.2",
-    "sb3_contrib>=2.6,<3",
     "optuna>=4.6,<5",
+]
+
+# Domain runtime = what the *generated* domain scripts import (spec §8/§9):
+# training, eval, benchmarks, and the deployable policy wrapper. Install with
+#   pip install "auto-mdp-solver[domain]"
+# `stable-baselines3[extra]` supplies torch + tensorboard; `sb3_contrib`
+# supplies MaskablePPO, required by spec §7.1 for action-masked domains.
+[project.optional-dependencies]
+domain = [
+    "stable-baselines3[extra]>=2.6,<3",
+    "sb3_contrib>=2.6,<3",
+    "pandas>=2.2,<3",
 ]
 
 [project.urls]

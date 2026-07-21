@@ -41,8 +41,12 @@ the two kinds of work.
 - New test cases go under `cases/<case_name>/` and follow the skill end to
   end (Phase A interview → gates → leaderboard). Trained artifacts
   (`results/`) are gitignored; the case README's commands must reproduce them.
-- Run everything with this repo's venv (`.venv/bin/python`) or any venv with
-  `pip install -e .` of this repo.
+- Run everything through one resolved interpreter: `$MDP_SOLVER_PYTHON`, else
+  `.venv/bin/python` here, else any venv with this repo installed. Use
+  `pip install -e ".[domain]"` — the bare install is deliberately torch-free
+  (harness only), so the `[domain]` extra is what the example/generated
+  domain scripts need (SB3 + torch + tensorboard + pandas). This repo ships
+  no `.venv`; create one if absent.
 - Never use `param`, `params`, or `param_*` as identifiers (spec rule).
 
 ## Regression suite

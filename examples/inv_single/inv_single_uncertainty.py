@@ -9,10 +9,10 @@ Dependency order: inv_single_uncertainty  ←  inv_single_scenarios  ←  inv_si
 
 from __future__ import annotations
 
+import math
 from typing import Protocol
 
 import numpy as np
-from scipy import stats
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +156,8 @@ class NormalDemand(DemandGenerator):
         return self.mu + 4.0 * self.sigma
 
     def phi(self, d: float) -> float:
-        return float(stats.norm.pdf(d, loc=self.mu, scale=self.sigma))
+        z = (d - self.mu) / self.sigma
+        return math.exp(-0.5 * z * z) / (self.sigma * math.sqrt(2.0 * math.pi))
 
     def __repr__(self) -> str:
         return f"NormalDemand(mu={self.mu}, sigma={self.sigma})"
@@ -185,7 +186,11 @@ class PoissonDemand(DemandGenerator):
         return self.rate + 4.0 * self.rate ** 0.5
 
     def phi(self, d: float) -> float:
-        return float(stats.poisson.pmf(int(d), self.rate))
+        k = int(d)
+        if k < 0:
+            return 0.0
+        # log-form: the direct rate**k / k! overflows for large k
+        return math.exp(k * math.log(self.rate) - self.rate - math.lgamma(k + 1))
 
     def __repr__(self) -> str:
         return f"PoissonDemand(rate={self.rate})"
