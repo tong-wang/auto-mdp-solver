@@ -9,3 +9,4 @@ tensorboard_*/
 results/
 .venv/
 *.egg-info/
+scratch/

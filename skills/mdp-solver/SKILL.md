@@ -92,12 +92,44 @@ and stop — extending `mdp_ir/` is a separate task the user must approve.
 
 Phase A is a guided interview, not a form dump. At every moment the human
 must know **where we are, what is settled, and what is still open**, and be
-able to stop and ask instead of answering. Four interaction rules govern
+able to stop and ask instead of answering. Five interaction rules govern
 this — they override the mechanical step list below whenever they conflict.
 
-**1. Post a status board with every question round.** A short *structured*
-snapshot (not prose the human has to mine), carried inside the question text
-per rule 4 — never only as free text before the tool call:
+**1. Brief in the message, choose in the menu.** Every question round is two
+parts of *one* turn: a **briefing message** in plain markdown, then the
+`AskUserQuestion` call. The menu is a ballot, not a document — it is a narrow
+column and long text there is unreadable. All exposition lives in the
+briefing; the menu carries only the choices' names.
+
+The briefing message (markdown, headings/bullets/tables — not a wall of
+prose) carries, in this order:
+
+- the **status board** (rule 2);
+- **what is ambiguous here**, in two or three sentences: what the model needs
+  to know and what the choice changes downstream;
+- **the candidates**, one short subsection each, using the *same name* the
+  menu option will use as its label: what it means in the problem's own
+  terms, then its pros and its cons — the trade-off, not a lecture;
+- **your recommendation and why**, unless the candidates are genuinely
+  equivalent;
+- one line noting they can answer "Other" to ask a question instead of
+  picking (rule 4).
+
+The `AskUserQuestion` call is then deliberately tiny. Hard limits:
+
+| field | limit |
+|---|---|
+| `question` | ≤ 2 short sentences — restate the choice, point at the briefing above |
+| `header` | ≤ 12 chars |
+| option `label` | ≤ 5 words, **verbatim** the name used in the briefing so menu ↔ briefing map 1:1 |
+| option `description` | one line, ≤ ~15 words — the consequence in a nutshell, not a paragraph |
+| option `preview` | only for genuinely *visual* side-by-side content (a scenario grid, a composition table, a code sketch). Never prose — prose belongs in the briefing |
+
+A description that wraps to three lines in a narrow column, or a `question`
+carrying the status board, is the failure mode this rule exists to prevent.
+
+**2. Post a status board at the top of every briefing.** A short *structured*
+snapshot (not prose the human has to mine):
 
 - **Step:** which Phase-A step we are in (objective & mode stance → drafting
   → classifying randomness → designing the scenario set → resolving
@@ -111,48 +143,68 @@ per rule 4 — never only as free text before the tool call:
 Re-post the board as items move Open → Settled. Keep it tight; it orients,
 it is not the restatement.
 
-**2. Ask one question at a time, each self-contained.** Default to a single
-question per AskUserQuestion round so the human can pause and push back
-between them. Batch only when questions are mutually independent *and*
-trivial confirmations unlikely to spark discussion — and even then keep it
-to a few. For each question:
+**3. Write for the problem owner, not for an RL engineer.** The human knows
+their problem; assume they do not know the solution techniques. In the
+briefing, describe each option in the problem's own vocabulary first
+("unmet demand is simply lost" / "unmet demand waits and is served next
+period"), and only then, if it helps, name the modelling consequence —
+defining the term on first use ("this adds a *state variable*: a number the
+policy sees each period"). In labels and descriptions, no unexplained
+jargon at all: no `Confirmable`, `ScenarioSampler`, MMFE, frame-stack,
+observation space, or IR field paths unless the human introduced the term.
+If a choice cannot be stated without a technical term, define the term in
+the briefing and use the plain phrasing in the menu.
 
-- Put the context *inside the question text*: two or three sentences on what
-  is ambiguous here, why it matters, and what the choice changes downstream.
-  Never make the human hunt an earlier wall of text for the relevant
-  paragraph.
-- Write each option `description` as its **consequence**, not a bare label:
-  the state variable, cost term, or dynamics it implies. E.g. "Lost sales —
-  unmet demand disappears; per-unit shortage penalty, no backlog state" vs
-  "Backlog — unmet demand carries to next period as a new state variable and
-  is served first." Brief labels with no implication are the failure mode.
+**4. Ask one question at a time, and make pausing a first-class move.**
+Default to a single question per round so the human can push back between
+them. Batch only when questions are mutually independent *and* trivial
+confirmations unlikely to spark discussion — and even then keep it to a few.
+Every briefing ends with a standing note that answering "Other" (always
+present) pauses the interview to ask a question or challenge the framing
+instead of picking an option — the human cannot be expected to know this.
+When they do, stop the sequence, resolve it, then re-post the board and
+continue. A one-at-a-time cadence is what makes this possible — do not trap
+the human in a batch they must answer before they can speak.
 
-**3. Make pausing a first-class move.** End *every* question's text with a
-standing note that answering "Other" (always present in the menu) pauses the
-interview to ask a question or challenge the framing instead of picking an
-option — the human cannot be expected to know this. When they do, stop the
-sequence, resolve it, then re-post the board and continue. A one-at-a-time
-cadence is what makes this possible — do not trap the human in a batch they
-must answer before they can speak.
+**5. Anything large ends the turn.** The restatement, a full scenario set, a
+long table — print it in a plain message with **no tool call after it**, and
+save it to a co-located file; ask the confirmation in the *next* round,
+naming that file. Never ask the human to confirm something they have not
+been shown.
 
-**4. The question is the only reliable display.** Assistant text emitted
-between tool calls — including "printing" a proposal right before an
-AskUserQuestion call — may never be rendered to the human, and thinking never
-is. Never say "the above" or "as shown earlier" in a question. Every round
-must be self-carrying:
+Assistant text is normally rendered, but if the human reports they cannot see
+what they are being asked to confirm, treat that briefing as lost: re-send it
+as a turn-ending message under this rule, then re-ask in the next turn.
 
-- the compact status board and the decision context go **inside the
-  `question` text**;
-- each candidate's concrete content (a scenario grid, a composition table, a
-  code sketch) goes in that option's **`preview`**, so the choices are
-  visually comparable in the menu itself;
-- anything too large for a question (the restatement, a full scenario set)
-  is printed in a plain message that **ends the turn** — no tool call after
-  it — and also saved to a co-located file; the confirmation is then asked
-  in the *next* round, naming that file.
+**Shape of one good round.** Briefing message:
 
-If the human reports they cannot see what they are being asked to confirm,
-this rule was violated: re-present the content under it before re-asking.
+> **Step 3 of 6 — how unmet demand behaves**
+> **Settled:** decision = order quantity each week · horizon = 52 weeks ·
+> objective = minimize total cost
+> **Open:** unmet demand → shortage cost → lead time → scenario grid
+>
+> When a week's demand exceeds what you have on hand, the model has to say
+> what happens to the excess. This changes what the policy has to keep track
+> of, and it changes what "cost" means, so it is worth getting right.
+>
+> **Lost sales** — the customer goes elsewhere; the excess demand disappears.
+> *Pro:* simpler, and matches walk-in retail. *Con:* if your customers
+> actually wait, it understates the pain of running out.
+>
+> **Backlog** — the customer waits and is served first next week.
+> *Pro:* right for contracted/B2B supply. *Con:* the model must carry the
+> outstanding amount from week to week, which makes the problem a little
+> harder to learn.
+>
+> I'd suggest **Lost sales** unless your buyers reliably wait — you described
+> walk-in customers earlier.
+>
+> If you'd rather ask something than answer, pick "Other".
+
+Then the call: header `Unmet demand`; question "When demand exceeds stock,
+does it vanish or wait? (see the two options above)"; labels `Lost sales` /
+`Backlog`; descriptions "Excess demand disappears; pay a shortage penalty" /
+"Excess demand waits, served first next week". Nothing longer.
 
 **Respect dependencies across rounds.** If an answer could eliminate or
 reshape a later question's options, ask the gating question first and build
@@ -190,11 +242,12 @@ continuous decision?" gates the bounds/masking question.)
    into concrete `instances` and/or a `ScenarioSampler`, then ask the human to
    confirm the translation. If it does not, **propose a reasonable grid + mode
    composition, with your reasoning,** and ask. Either way the concrete set
-   being confirmed must be visible *in the confirmation round itself* (rule 4):
-   each candidate composition as an option whose `preview` shows the actual
-   axes × values × modes and instance count — or, if too large, printed in a
-   turn-ending message and saved to `{name}/{name}.scenarios.md`
-   before asking. Two coupled decisions, both
+   being confirmed must be visible before the human answers: lay the
+   candidates out in the briefing (rule 1), and — since a grid is genuinely
+   visual — give each candidate composition a `preview` showing the actual
+   axes × values × modes and instance count; if too large for that, print it
+   in a turn-ending message saved to `{name}/{name}.scenarios.md` and ask in
+   the next round (rule 5). Two coupled decisions, both
    following the step-1 stance: (a) which numerical axes vary and over what
    values/ranges, crossed with which scenario modes; (b) the **train/eval
    strategy** this implies — one generalist trained on a `ScenarioSampler`
@@ -228,7 +281,7 @@ continuous decision?" gates the bounds/masking question.)
    train/eval strategy), horizon, and each key assumption with its `source`.
    Then ask for one explicit confirmation that this is correct and the `mdp`
    block may freeze. Never ask the user to confirm anything not shown in that
-   same message — and per rule 4, the presentation message must **end its
+   same message — and per rule 5, the presentation message must **end its
    turn** (no tool call after it); ask for the sign-off in the next round,
    naming the restatement file. If they change something, apply it,
    re-validate, and re-present — the sign-off is always on the current
