@@ -3,17 +3,24 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mdp-solver"
+name = "auto-mdp-solver"
 version = "0.1.0"
-description = "MDP solver pipeline: IR schema + interpreter, conformance harness, eval gates, and Optuna tuning driver for spec-conformant RL domains."
+description = "MDP solver pipeline: IR schema + interpreter, conformance harness, eval gates, and Optuna tuning driver for building trained RL policies from formalized decision problems."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Tong Wang" }]
 requires-python = ">=3.12"
 dependencies = [
-    "numpy==2.2.5",
-    "pydantic>=2",
-    "gymnasium==1.1.1",
-    "sb3_contrib==2.6.0",
-    "optuna==4.9.0",
+    "numpy>=2.1,<3",
+    "pydantic>=2,<3",
+    "gymnasium>=1.1,<1.2",
+    "sb3_contrib>=2.6,<3",
+    "optuna>=4.6,<5",
 ]
+
+[project.urls]
+Repository = "https://github.com/tong-wang/auto-mdp-solver"
+Issues = "https://github.com/tong-wang/auto-mdp-solver/issues"
 
 [tool.setuptools]
 packages = ["mdp_ir", "mdp_conformance", "mdp_gates", "mdp_tuning"]

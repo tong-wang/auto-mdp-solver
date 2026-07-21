@@ -222,8 +222,8 @@ def main() -> None:
     study_name = args.study_name or f"{scripts.prefix}_{scenario}_{args.algo}"
     storage = args.storage or f"sqlite:///{tuning_root / 'optuna.db'}"
     if isinstance(storage, str) and storage.startswith("journal://"):
-        # NFS-safe multi-node storage (cluster worker fleets, e.g. the
-        # BAYES11 atlas campaign): sqlite corrupts under concurrent writers
+        # NFS-safe multi-node storage (cluster worker fleets): sqlite
+        # corrupts under concurrent writers
         # on NFS; optuna's journal backend is append-only with advisory file
         # locks built for shared filesystems. URL form: journal:///abs/path.
         from optuna.storages import JournalStorage

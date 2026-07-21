@@ -14,15 +14,20 @@ description: >
 # MDP solver pipeline
 
 This skill *is* the two-phase pipeline and is self-contained — run it end to
-end from here. The skill's home is the **mdp_solver repo**
-(`~/projects/mdp_solver`): `MDP_PROJECT_SPEC.md` there is the canonical
-convention reference — consult it while writing each file; do not code from
-memory of it. (`MDP_AGENT_PLAN.md` is background design rationale — not
-needed to run the pipeline.) The pipeline runs in whatever workspace holds
-the domain (mdp_solver's `cases/` for solver test cases, a research repo like
-rl_test for its own domains); use that workspace's venv, which must have the
-solver package installed (`pip install -e ~/projects/mdp_solver`) so that
-`python -m mdp_ir` / `mdp_conformance` / `mdp_gates` / `mdp_tuning` resolve.
+end from here. `MDP_PROJECT_SPEC.md`, co-located with this file, is the
+canonical convention reference — consult it while writing each file; do not
+code from memory of it. `MDP_IR_SAMPLE.md` (same directory) is the annotated
+IR reference. The pipeline runs in whatever workspace holds the domain; use
+that workspace's venv.
+
+**Toolchain check (once, before anything).** Every gate requires the
+`auto-mdp-solver` Python package (import names `mdp_ir`, `mdp_conformance`,
+`mdp_gates`, `mdp_tuning`). Verify with `python -c "import mdp_ir"`; if it
+fails, install it into the workspace venv (create `.venv` first if the
+workspace has none): `pip install auto-mdp-solver` — or, when working from a
+checkout of the auto-mdp-solver repo itself, `pip install -e <repo-root>`.
+`python -m mdp_ir` / `mdp_conformance` / `mdp_gates` / `mdp_tuning` must all
+resolve before Phase B begins.
 
 **Retry budget: 3 repair attempts per gate, 1 per failing training design
 axis.** When a budget is exhausted, stop and surface the failure — do not
@@ -190,14 +195,15 @@ continuous decision?" gates the bounds/masking question.)
 
 ## Phase B — build (gated stages)
 
-Pick few-shot exemplars by problem shape. Shipped with the solver repo under
-`examples/` (see `examples/MANIFEST.md`): `inv_single` two-step advance +
-episode-support demand; `dynamic_pricing` continuous price control +
-decision-conditioned generator + exact-DP baseline. Further shape exemplars
-live in the rl_test research repo (`~/projects/rl_test`) and in the current
-workspace's own domains — prefer whichever matches the problem shape:
-`fnv`/`cnv` single-entity continuous; `owmr` multi-entity; `2048` discrete +
-masking; `sudoku` deterministic dynamics + scenario-sampled instances.
+Pick few-shot exemplars by problem shape. Two ship with this plugin under
+`examples/` at the plugin root (two directories above this file's real
+location; see `examples/MANIFEST.md` there): `inv_single` two-step advance +
+episode-support demand + exact-DP baseline; `dynamic_pricing` continuous
+price control + decision-conditioned generator + exact-DP baseline. If the
+current workspace contains other spec-conformant domains, prefer whichever
+matches the problem shape (multi-entity, discrete + action masking,
+deterministic dynamics + scenario-sampled instances, …); otherwise
+generalize from the shipped two plus the spec's patterns.
 
 ### Stage 0 — run plan (confirm before building)
 

@@ -1,6 +1,11 @@
 # MDP Project Specification
 
-Canonical patterns derived from the `owmr/` codebase. All new MDP domains should follow these conventions.
+Canonical patterns for MDP simulation domains; originally derived from a
+multi-entity reference implementation (`owmr`, a one-warehouse multi-retailer
+domain, cited throughout as an illustration — its patterns are described
+inline wherever referenced). Shipped conformant examples: `examples/inv_single`
+and `examples/dynamic_pricing`. All new MDP domains should follow these
+conventions.
 
 ---
 

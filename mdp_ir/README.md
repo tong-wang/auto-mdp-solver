@@ -6,7 +6,7 @@ machine-checkable JSON description of a dynamic decision problem that the user
 confirms *before* any domain code is generated; it then drives templated
 Phase-B codegen.
 
-`MDP_IR_SAMPLE.md` (repo root) is the annotated reference instance and explains
+`MDP_IR_SAMPLE.md` (in `skills/mdp-solver/`) is the annotated reference instance and explains
 every field; this package is its executable form.
 
 ## Validate
