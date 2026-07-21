@@ -76,7 +76,7 @@ def main() -> None:
     demands = {r["demand"] for r in simulate(inv, episode_seed=2, decisions={"order": 0.0}).rows}
     check(len(demands) <= 5, "inv_single: per-episode demand support has <= 5 values")
 
-    # -- conservation (IR-derived property checks, plan §7.1) -------------------
+    # -- conservation (IR-derived property checks) ------------------------------
     t = simulate(inv, episode_seed=9, decisions={"order": 30.0})
     inv0 = 0.0
     pipe0 = 0.0

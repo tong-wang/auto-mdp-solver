@@ -1,7 +1,7 @@
 # MDP-IR — Sample Instance (v0.4)
 
-A worked example of the Phase-A intermediate representation (§3 of
-`MDP_AGENT_PLAN.md`). It is instantiated for the **existing** `inv_single`
+A worked example of the Phase-A intermediate representation (see `SKILL.md`
+Phase A). It is instantiated for the **existing** `inv_single`
 domain so every field can be checked against real code in `inv_single/`. This
 is what the agent would produce from a text description *before writing any
 code*, and what the user confirms at the Phase-A gate.
@@ -267,7 +267,7 @@ change the fingerprint and needs no re-confirmation.
 
 ## 2. Round-trip confirmation artifacts (what the user actually reviews)
 
-The raw IR is for the machine. Per plan §3, before freezing the `mdp` block
+The raw IR is for the machine. Per `SKILL.md` Phase A, before freezing the `mdp` block
 the agent renders two human-readable views and asks the user to confirm.
 
 ### 2a. Plain-English restatement
@@ -302,8 +302,8 @@ episode total = 5698.00   reward total = -5698.00   periods = 30
 The same interpreter is reused in Stage 1 as the **differential-test oracle**
 (`mdp_ir/differential.py`): a domain's `_mdp` code must reproduce interpreter
 trajectories field-for-field on shared `(instance, episode_seed, decisions)` —
-the direct attack on plan challenge #1 ("formalization correctness has no
-oracle"). This is not hypothetical: the runner already diffs this IR against
+the direct attack on the core risk that "formalization correctness has no
+oracle". This is not hypothetical: the runner already diffs this IR against
 the handwritten `inv_single/` domain and matches **bit-exactly** (all state,
 info, and cost fields) across base and `lost_sales` instances under random
 policies:

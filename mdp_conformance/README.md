@@ -4,7 +4,8 @@ A domain-parametrized checker for the conventions in `MDP_PROJECT_SPEC.md`. It
 loads any `{domain}/` directory by the spec's file-naming convention and runs a
 suite of static and behavioral invariant checks against it.
 
-It is the reusable backbone for the MDP-agent pipeline (`MDP_AGENT_PLAN.md`): the
+It is the reusable backbone for the MDP solver pipeline
+(`skills/mdp-solver/SKILL.md`): the
 same per-check report is a **gate** for a generated domain and a **reward signal**
 for a trained generator.
 

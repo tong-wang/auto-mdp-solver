@@ -1,6 +1,6 @@
 """Restricted interpreter that executes an MDP-IR directly — no generated code.
 
-Two roles (plan §3, sample §2b):
+Two roles (SKILL.md Phase A; ``MDP_IR_SAMPLE.md`` §2b):
 
   * **Phase A**: produce the human-readable sample trajectories the user
     confirms at the round-trip gate, before any domain code exists.

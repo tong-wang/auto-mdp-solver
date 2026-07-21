@@ -304,6 +304,15 @@ Write in dependency order: `{domain}_exceptions.py` (optional) →
 MATCH (bit-exact). Also re-run `python -m mdp_ir.interpreter_test` to prove
 no regression to the shipped examples.
 
+**Why bit-exact, and not just "tests pass":** formalization has no oracle —
+dynamics can be modeled plausibly but wrongly, and a generated domain that
+is self-consistent will pass every unit test while encoding the wrong
+problem. The IR interpreter is the only independent implementation of those
+dynamics, so replaying identical `(instance, episode_seed)` through both and
+demanding an exact trajectory match is what actually catches a
+mis-formalization. This is the reason the differential gate exists; treat a
+MATCH failure as a modeling error to diagnose, never as a tolerance to relax.
+
 ### Stage 2 — gym wrapper
 
 `{domain}_gym.py` from the IR's `gym` block: every observation mode (never

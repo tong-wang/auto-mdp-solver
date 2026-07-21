@@ -1,7 +1,7 @@
 # mdp_gates
 
-Executable Stage-4 gate for the MDP agent pipeline (`MDP_AGENT_PLAN.md`,
-spec §13): compares a candidate's spec-§9 eval TSV against baseline TSVs on
+Executable Stage-4 gate for the MDP solver pipeline (`skills/mdp-solver/SKILL.md`
+Stage 4, spec §13): compares a candidate's spec-§9 eval TSV against baseline TSVs on
 a `*_mean` metric, with standard errors from the matching `*_var` column and
 the shared seed count.
 

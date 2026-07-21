@@ -1,12 +1,13 @@
 """Differential runner: IR interpreter vs a real ``_mdp`` implementation.
 
-The Stage-1 codegen gate (plan §4): replay identical ``(instance,
+The Stage-1 codegen gate (SKILL.md Stage 1): replay identical ``(instance,
 episode_seed, decisions)`` through both the restricted IR interpreter
 (``mdp_ir/interpreter.py``) and a domain's ``init_state`` / ``advance``
 functions, and require the trajectories to match field-for-field. A generated
 simulator that passes the conformance harness but models the *wrong problem*
-fails here — this is the executable oracle for formalization correctness
-(plan challenge #1).
+fails here — this is the executable oracle for formalization correctness:
+formalization has no oracle of its own, so a self-consistent but wrongly
+modeled domain passes every unit test and is caught only here.
 
 A **domain adapter** hides the domain's API shape: it is a callable
 ``(episode_seed, decisions_per_period) -> rows`` returning per-period dicts

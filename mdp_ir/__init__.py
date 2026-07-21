@@ -1,6 +1,7 @@
 """MDP intermediate representation (IR).
 
-The Phase-A artifact of the MDP agent (see ``MDP_AGENT_PLAN.md`` §3): a
+The Phase-A artifact of the MDP solver pipeline (see the ``mdp-solver``
+skill's ``SKILL.md``, Phase A): a
 machine-checkable pydantic model of a dynamic decision problem that the user
 confirms before any code is generated. ``MDP_IR_SAMPLE.md`` is the annotated
 reference instance.

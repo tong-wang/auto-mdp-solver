@@ -1,7 +1,7 @@
 """Pydantic schema for the MDP intermediate representation (IR), v0.4.
 
 The IR is split into three layers that mirror the codebase's own layering
-(spec §1.1) and the Phase-B pipeline (plan §4), with dependencies pointing
+(spec §1.1) and the Phase-B pipeline (SKILL.md Phase B), with dependencies pointing
 strictly downward (gym → mdp, rl → gym/mdp; mdp references nothing above it):
 
   * ``mdp``  — the *problem*: state, decisions, uncertainty, dynamics,
@@ -221,7 +221,7 @@ class Domain(_Base):
 
 
 class Horizon(_Base):
-    # v1 scope is finite-horizon only (plan §1); an infinite/average-reward
+    # v1 scope is finite-horizon only (SKILL.md scope check); an infinite/average-reward
     # variant would add a `kind` discriminator here.
     # T: a literal length, or the *name of a scenario constant* — the horizon
     # is a scenario dimension like any other numerical attribute and may vary

@@ -20,7 +20,6 @@ the two kinds of work.
 | `skills/mdp-solver/SKILL.md` | the pipeline skill (source of truth; a user-level `~/.claude/skills/mdp-solver` symlink may point here) |
 | `skills/mdp-solver/MDP_PROJECT_SPEC.md` | **canonical** per-domain architecture/naming/RNG/script conventions |
 | `skills/mdp-solver/MDP_IR_SAMPLE.md` | annotated MDP-IR reference |
-| `MDP_AGENT_PLAN.md` | design rationale / packaging notes (background only) |
 | `.claude-plugin/` | plugin + marketplace manifests (repo root = the plugin) |
 | `mdp_ir/` | IR schema (pydantic), interpreter, differential runner |
 | `mdp_conformance/` | spec-conformance harness (`python -m mdp_conformance <domain-dir>`) |

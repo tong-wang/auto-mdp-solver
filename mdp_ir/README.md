@@ -1,7 +1,8 @@
 # mdp_ir
 
 Pydantic schema for the **MDP intermediate representation** (v0.4) — the
-Phase-A artifact of the MDP agent (`MDP_AGENT_PLAN.md` §3). An IR is a
+Phase-A artifact of the MDP solver pipeline (`skills/mdp-solver/SKILL.md`
+Phase A; annotated reference in `MDP_IR_SAMPLE.md`). An IR is a
 machine-checkable JSON description of a dynamic decision problem that the user
 confirms *before* any domain code is generated; it then drives templated
 Phase-B codegen.
