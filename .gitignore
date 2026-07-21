@@ -1,0 +1,11 @@
+*.pyc
+__pycache__/
+*.zip
+*.log
+*.pkl
+.DS_Store
+*.xlsx
+tensorboard_*/
+results/
+.venv/
+*.egg-info/

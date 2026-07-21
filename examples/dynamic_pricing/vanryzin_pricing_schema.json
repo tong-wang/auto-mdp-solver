@@ -1,0 +1,215 @@
+{
+  "ir_version": "0.4",
+  "domain": {
+    "name": "vanryzin_pricing",
+    "class_prefix": "VanRyzinPricing",
+    "one_line": "Dynamic pricing of a fixed initial stock over a finite horizon to maximize expected revenue; price-sensitive stochastic (Poisson) demand, no reorder, no backlog.",
+    "problem_class": "revenue_management"
+  },
+
+  "mdp": {
+    "horizon": {
+      "T": 50,
+      "period_indexing": "0-based"
+    },
+    "entity_structure": {
+      "kind": "single",
+      "entity_id_in_seed": false
+    },
+    "state_variables": [
+      {
+        "name": "period",
+        "role": "time_index",
+        "type": "int",
+        "bounds": [0, 50],
+        "observability": "observable",
+        "desc": "current period t (discretized clock over the finite selling horizon); horizon ends when period == T"
+      },
+      {
+        "name": "inventory",
+        "role": "core",
+        "type": "int",
+        "bounds": [0, 25],
+        "observability": "observable",
+        "desc": "remaining stock n (starts at n0); monotonically non-increasing (no reorder); read by next transition to cap sales"
+      }
+    ],
+    "info_fields": [
+      { "name": "arrivals", "type": "int", "desc": "raw demand arrivals this period ~ Poisson(lambda(price)*dt), before inventory cap" },
+      { "name": "units_sold", "type": "int", "desc": "items actually sold = min(arrivals, inventory)" },
+      { "name": "lost_demand", "type": "int", "desc": "arrivals that found no stock = arrivals - units_sold (lost, no backlog)" },
+      { "name": "intensity", "type": "float", "desc": "realized demand intensity lambda(price) = a*exp(-alpha*price) implied by the chosen price" },
+      {
+        "name": "revenue",
+        "type": "decomposition",
+        "components": ["sales", "salvage", "total"]
+      }
+    ],
+    "decisions": [
+      {
+        "name": "price",
+        "type": {
+          "value": "continuous",
+          "suggested": "continuous",
+          "source": "derived",
+          "rationale": "the paper's control is a continuous rate; the §4 discrete-price case is a separate variant"
+        },
+        "dim": 1,
+        "bounds": {
+          "value": [0.0, 8.0],
+          "suggested": [0.0, 8.0],
+          "source": "derived",
+          "rationale": "with a=100, alpha=1 the optimal price p*~1 and run-out prices stay well under ~6; 8 caps the action scale (at p=8 intensity ~= 0.03, effectively the null/shut-off price)"
+        },
+        "feasibility": ["non_negative"],
+        "desc": "canonical decision consumed by the _mdp layer: the price charged this period. Agent-facing encodings (price vs intensity) are the gym.action_modes menu."
+      }
+    ],
+    "uncertainty_sources": [
+      {
+        "name": "demand",
+        "generator": "PoissonArrivals",
+        "stream_id": 1,
+        "is_discrete": true,
+        "latent": false,
+        "distribution": {
+          "family": "poisson",
+          "settings": { "rate": "a * exp(-alpha * price) * dt" },
+          "note": "regular exponential demand family lambda(p)=a*e^{-alpha p}; per-period mean arrivals = lambda(price)*dt where dt = horizon_length/T"
+        },
+        "stages": [
+          { "name": "sample", "realization": "period" }
+        ]
+      }
+    ],
+    "dynamics": {
+      "event_sequence": ["P", "D"],
+      "observation_point": "pre-price",
+      "transitions": [
+        {
+          "event": "P",
+          "updates": ["intensity = a * exp(-alpha * price)"]
+        },
+        {
+          "event": "D",
+          "updates": [
+            "arrivals ~ demand.sample",
+            "units_sold = min(arrivals, inventory)",
+            "inventory -= units_sold",
+            "lost_demand = arrivals - units_sold"
+          ]
+        },
+        { "event": "END_OF_PERIOD", "updates": ["period += 1"] }
+      ]
+    },
+    "objective": {
+      "sense": "maximize",
+      "per_step_components": [
+        { "name": "sales", "expr": "price * units_sold" },
+        {
+          "name": "salvage",
+          "expr": "q * inventory if period == T else 0",
+          "desc": "terminal component, evaluated at END_OF_PERIOD (period already incremented)"
+        }
+      ]
+    },
+    "scenario": {
+      "constants": [
+        { "name": "a", "value": 100.0, "axis": "demand", "desc": "demand scale: lambda(p) = a*exp(-alpha*p); a=100 is the 'demand high relative to stock' case (Fig 1 bottom)" },
+        { "name": "alpha", "value": 1.0, "axis": "demand", "desc": "price sensitivity of the exponential demand family" },
+        { "name": "dt", "value": 0.02, "axis": "", "desc": "period length = horizon_length/T (unit horizon, T=50); discretization granularity, not a scenario axis" },
+        { "name": "q", "value": 0.0, "axis": "salvage", "desc": "salvage value per unsold unit at the horizon (WLOG 0 per the paper: positive salvage re-centers price to p-q)" },
+        { "name": "n0", "value": 25, "axis": "sizing", "desc": "initial stock" },
+        { "name": "allow_backlog", "value": false, "axis": "", "desc": "structural: demand arriving with zero stock is lost" },
+        { "name": "allow_reorder", "value": false, "axis": "", "desc": "structural: no replenishment; inventory is non-increasing" }
+      ],
+      "instances": {
+        "ample_stock": { "a": 20.0 }
+      }
+    },
+    "initial_state": {
+      "inventory": "n0"
+    }
+  },
+
+  "gym": {
+    "observation_modes": [
+      {
+        "name": "vec",
+        "default": true,
+        "features": [
+          { "ref": "inventory" },
+          { "derived": "time_to_go", "expr": "T - period" }
+        ]
+      },
+      {
+        "name": "vec_d",
+        "features": [
+          { "ref": "inventory" },
+          { "derived": "time_to_go", "expr": "T - period" },
+          { "ref": "info.units_sold" }
+        ]
+      }
+    ],
+    "action_modes": [
+      {
+        "name": "price",
+        "default": true,
+        "encodes": "price",
+        "type": "continuous",
+        "bounds": [0.0, 8.0],
+        "transform": "",
+        "feasibility_strategy": "clip",
+        "desc": "identity: the agent sets the price directly. Interpretable, but the action scale (upper bound) is a guess and demand is nonlinear in it."
+      },
+      {
+        "name": "intensity",
+        "default": false,
+        "encodes": "price",
+        "type": "continuous",
+        "bounds": [0.0, 36.8],
+        "transform": "price = log(a / intensity) / alpha",
+        "feasibility_strategy": "reparametrize",
+        "desc": "the paper's native control: agent sets target intensity lambda; transform is p(lambda), the inverse of lambda(p), intensity->0 giving the null (shut-off) price. Naturally bounded box [0, lambda*], lambda* = a/e ~= 36.8 (Prop 1: optimal lambda <= lambda*); revenue is linear in sales — typically easier for PPO."
+      }
+    ],
+    "reward_modes": [
+      {
+        "name": "revenue",
+        "default": true,
+        "expr": "total",
+        "desc": "per-step revenue.total = sales + salvage (sense=maximize, no sign flip)"
+      }
+    ],
+    "termination": {
+      "horizon_end": "terminated",
+      "early_terminated_when": "inventory == 0"
+    }
+  },
+
+  "rl": {
+    "requires_memory": {
+      "value": false,
+      "suggested": false,
+      "source": "human_confirmed",
+      "rationale": "fully observed (inventory + time-to-go are the sufficient statistic); no latent source"
+    },
+    "algo": "ppo",
+    "frame_stack": 1,
+    "obs_normalization": {
+      "enabled": true,
+      "rationale": "inventory (0–25) and time_to_go (0–50) are stationary, modestly heterogeneous scales; spec §8.3 says normalize"
+    }
+  },
+
+  "assumptions_log": [
+    "MODELING CALL (continuous -> discrete): the paper is a continuous-time intensity-control problem; discretized into T=50 equal periods of length dt = horizon_length/T = 0.02. Per-period demand ~ Poisson(lambda(price)*dt). Larger T approaches the continuous point process (mostly 0/1 sales per period); T is a granularity choice.",
+    "ACTION ENCODING (price vs intensity): two gym.action_modes (default 'price' = identity/clip; 'intensity' = the paper's native control, a bounded box [0, lambda*] reparametrized to price via p(lambda)). Both drive the same canonical 'price' decision in the _mdp layer; the choice is a gym-layer selection, not a re-formalization.",
+    "Demand seed key is derived from realization=period ([stream:1, period, episode_seed, seed_salt]); the primitive is transformed by the CURRENT price via lambda(price), so realized sales are independent of PAST actions (decision-path independence) — current-action dependence is a thinning/time-change of the Poisson primitive.",
+    "SCENARIO AXES are the axis-tagged constants: demand (a, alpha; this instance a=100 'demand high relative to stock', the 'ample_stock' instance sets a=20), sizing (n0=25, unit horizon), salvage (q=0 WLOG per the paper).",
+    "No backlogging: demand arriving with zero stock is lost (out-of-stock = null price shutting demand off).",
+    "EARLY TERMINATION: inventory==0 is absorbing (no reorder), so the episode terminates early; the salvage component is q*inventory = 0 there under any q, so early termination never drops salvage value.",
+    "All purchase/production costs are sunk; objective is expected revenue only (sense=maximize).",
+    "Out-of-scope §5 extensions omitted from this IR: compound-Poisson demand, time-varying seasonality g(s), holding costs & discounting, initial-stock-as-decision, overbooking/cancellations."
+  ]
+}
