@@ -1,13 +1,16 @@
 # MDP Agent — Design Plan
 
 > **Status: background design rationale — not the runbook.** The executable
-> two-phase pipeline now lives in the `mdp-solver` skill
-> (`.claude/skills/mdp-solver/SKILL.md`), which is self-contained and
-> authoritative for *how to run it*. This document is retained for the design
-> rationale behind the architecture and as the blueprint for later packaging
-> the skill into a standalone agent (see §6, §8). Where this doc and the skill
-> differ on operational detail, the skill wins; `MDP_PROJECT_SPEC.md` remains
-> canonical for domain conventions.
+> two-phase pipeline lives in the `mdp-solver` skill
+> (`skills/mdp-solver/SKILL.md`), which is self-contained and authoritative
+> for *how to run it*; the code docstrings' "plan §N" / "plan challenge #N"
+> citations refer to the sections of this document. It is retained as the
+> project's design record: the architecture rationale and the ranked
+> challenges behind each gate. The §6/§8 packaging track has since been
+> partially realized as the `auto-mdp-solver` Claude Code plugin. Where this
+> doc and the skill differ on operational detail, the skill wins;
+> `skills/mdp-solver/MDP_PROJECT_SPEC.md` remains canonical for domain
+> conventions.
 
 A general-purpose agent that takes a **verbal/text description of a dynamic
 decision-making problem** and produces a **trained, deployable RL policy** (a
