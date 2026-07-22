@@ -127,7 +127,7 @@
     "uncertainty_sources": [
       {
         "name": "demand",
-        "generator": "EpisodeDemand",
+        "generator": "FixedDistributionDemand",
         "stream_id": 0,
         "is_discrete": true,
         "latent": false,

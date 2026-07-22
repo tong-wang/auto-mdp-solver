@@ -147,11 +147,11 @@ def _numeric_seed_key(
 ) -> list[int]:
     """Numeric form of ``UncertaintyStage.seed_key`` (same slot order):
     ``[entity_id?, key_exprs..., sub_stream?, stream_id, period?,
-    episode_seed, seed_salt]`` — matching the reference generators (e.g.
-    inv_single ``EpisodeDemand`` keys ``[sub, stream, period, episode_seed,
-    seed_salt]``), so interpreter draws are bit-identical to conforming
-    domain code. ``key_vals`` are the evaluated ``key_exprs`` of a keyed
-    stage; keyed stages carry no period slot (the draw is a fixed
+    episode_seed, seed_salt]`` — matching the reference generators (e.g. a v1
+    two-stage episode-support generator keys ``[sub, stream, period,
+    episode_seed, seed_salt]``), so interpreter draws are bit-identical to
+    conforming domain code. ``key_vals`` are the evaluated ``key_exprs`` of a
+    keyed stage; keyed stages carry no period slot (the draw is a fixed
     per-episode latent table indexed by the key values)."""
     key: list[int] = []
     if entity_id is not None:
@@ -389,8 +389,9 @@ class IrInterpreter:
 
     def _episode_support(self, source: UncertaintySource, ns: dict,
                          episode_seed: int, cache: dict) -> tuple:
-        """Draw-once (episode stage) support for episode_categorical, using
-        the inv_single EpisodeDemand recipe."""
+        """Draw-once (episode stage) support for the ``episode_categorical``
+        family (v1 only): a per-episode integer support drawn without
+        replacement, then random weights normalized to a distribution."""
         stage = next(
             st for st in source.stages if st.realization is Realization.episode
         )
