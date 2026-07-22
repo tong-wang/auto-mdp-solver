@@ -179,16 +179,20 @@ def tsv_column_means(tsv: Path) -> tuple[list[str], dict[str, float]]:
 
 def resolve_metric(requested: str, cols: list[str],
                    means: dict[str, float]) -> str:
-    """Pick the objective column: explicit name, else spec-canonical, else
-    the first *_mean column in header order."""
+    """Pick the objective column: an explicit name, else the first ``*_mean``
+    column in header order.
+
+    The auto rule is domain-agnostic — no metric name is privileged. It relies
+    on the spec-§9.3 convention that a domain's **primary objective column
+    comes first** in the eval TSV (``profit_mean`` for a pricing domain,
+    ``cost_total_mean`` for a cost domain, …). Pass ``--metric`` when a TSV
+    carries several ``*_mean`` columns and the first is not the objective."""
     if requested != "auto":
         if requested in means:
             return requested
         raise ValueError(
             f"metric {requested!r} not in eval TSV; numeric columns: "
             f"{sorted(means)}")
-    if "profit_mean" in means:
-        return "profit_mean"
     for col in cols:
         if col.endswith("_mean") and col in means:
             return col

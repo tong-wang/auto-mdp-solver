@@ -50,8 +50,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--seed", default=42, type=int,
                    help="fixed training seed + TPE sampler seed")
     p.add_argument("--metric", default="auto", type=str,
-                   help="objective column in the eval TSV (default: profit_mean "
-                        "if present, else the first *_mean column)")
+                   help="objective column in the eval TSV (default: the first "
+                        "*_mean column in header order — the domain's primary "
+                        "objective per spec §9.3)")
     p.add_argument("--minimize", action="store_true",
                    help="minimize the metric instead of maximizing")
     p.add_argument("--train-arg", action="append", default=[], metavar="KEY=VALUE",

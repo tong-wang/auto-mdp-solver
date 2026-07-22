@@ -25,8 +25,9 @@ knobs, which values). This harness removes that judgment in three ways:
 
 Each trial shells out to the domain's own `{prefix}_{algo}_train.py` →
 locates the saved model → `{prefix}_{algo}_eval.py` → reads the eval TSV.
-The objective is a TSV column: `--metric NAME`, or auto (`profit_mean` if
-present per spec §9.3, else the first `*_mean` column).
+The objective is a TSV column: `--metric NAME`, or auto — the first `*_mean`
+column in header order, which spec §9.3 fixes as the domain's primary
+objective. Add `--minimize` when that objective is lower-is-better.
 
 ## Usage
 

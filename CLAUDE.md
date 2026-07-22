@@ -55,13 +55,14 @@ From the repo root (see `examples/MANIFEST.md` for the authoritative list):
 ```bash
 python -m mdp_ir.interpreter_test
 python -m mdp_gates.compare_test
+python -m mdp_tuning.resolve_metric_test
 python -m mdp_conformance examples/inv_single examples/dynamic_pricing
 python -m mdp_ir examples/inv_single/inv_single_schema.json
 python -m mdp_ir.differential examples/inv_single/inv_single_schema.json --episodes 40
 python -m mdp_ir.differential examples/dynamic_pricing/vanryzin_pricing_schema.json --episodes 40
 ```
 
-Run these after any change to `mdp_ir/`, `mdp_gates/`, `mdp_conformance/`, or an example.
+Run these after any change to `mdp_ir/`, `mdp_gates/`, `mdp_tuning/`, `mdp_conformance/`, or an example.
 Domains in downstream research repos also depend on these packages —
 breaking changes to the IR schema, seed-key construction, or adapter
 discovery need a coordinated check there before release.

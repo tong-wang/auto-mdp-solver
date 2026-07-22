@@ -1177,34 +1177,47 @@ def parse_args() -> argparse.Namespace:
 
 ### 9.2 Seed loop
 
-For each `(scenario_param_combo)`, run exactly `n_seeds` episodes using episode seeds `0, 1, ..., n_seeds-1`:
+For each `(scenario_param_combo)`, run exactly `n_seeds` episodes using episode seeds `0, 1, ..., n_seeds-1`, accumulating the domain's per-episode objective (the episode return, or whatever the domain reports as its outcome):
 
 ```python
-profits = np.zeros(n_seeds)
-regrets = np.zeros(n_seeds)
+returns = np.zeros(n_seeds)          # the domain's per-episode objective
 
 for ep_seed in range(n_seeds):
     if ep_seed % 10000 == 0:
         print(f"  seed {ep_seed}/{n_seeds}", flush=True)
     obs, _ = env.reset(seed=ep_seed)
     ...
-    profits[ep_seed] = info_last.get("profit", 0.0)
-    regrets[ep_seed] = info_last.get("profit", 0.0) - info_last.get("profit_max", 0.0)
+    returns[ep_seed] = info_last["<objective>"]   # e.g. profit (maximize) / cost (minimize)
 ```
 
 Default `n_seeds=65536` provides tight confidence intervals without tuning.
 
 ### 9.3 Output columns (TSV)
 
+Columns are the varied scenario parameters followed by per-metric
+`{name}_mean` / `{name}_var` pairs. **The domain's primary objective column
+comes first among the `*_mean` columns** — that ordering is the contract both
+`mdp_tuning` and `mdp_gates` rely on to auto-pick the metric when `--metric`
+is not given (neither privileges any particular name). The objective's
+**sense** (maximize vs minimize) is the domain's, and callers pass it through
+(`mdp_gates --sense`, `mdp_tuning --minimize`).
+
+Example — a pricing domain (`dynamic_pricing`), whose primary objective is
+`profit` (maximize):
+
 ```
 stdev  T  lamb  profit_mean  regret_mean  profit_var  semivar_d  semivar_u
 ```
 
 Where:
-- `profit_mean` / `regret_mean`: sample mean over `n_seeds` episodes
+- `profit_mean` / `regret_mean`: sample mean over `n_seeds` episodes (`profit`
+  first — it is the objective)
 - `profit_var`: sample variance (`ddof=1`)
 - `semivar_d`: downside semi-variance — `sum(max(mu - x, 0)^2) / (n-1)` for x in profits
 - `semivar_u`: upside semi-variance — `sum(max(x - mu, 0)^2) / (n-1)`
+
+A cost-minimizing domain would instead lead with `cost_total_mean` /
+`cost_total_var` and be gated with `--sense minimize`.
 
 ### 9.4 Incremental output
 
