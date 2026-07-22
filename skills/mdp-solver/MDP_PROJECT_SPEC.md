@@ -1368,6 +1368,14 @@ python -m mdp_gates \
 - The gate **passes** (exit 0) when the candidate beats every `--baseline` by
   `z >= 2` standard errors; `--reference` files (e.g. the DP optimum) are
   reported as a gap / % of reference but never gate.
+- **`--sense` must match the domain's objective sense.** The default is
+  `maximize` (higher `*_mean` is better, e.g. `revenue_mean`); pass
+  `--sense minimize` when the gated metric is lower-is-better (a raw
+  `cost_total_mean`, `regret_mean`, loss, …). Getting this wrong silently
+  inverts the verdict — a minimize domain gated with the default passes only
+  when the candidate is *worse*. Prefer gating on a higher-is-better return
+  column when the eval TSV reports one; otherwise set `--sense minimize`
+  explicitly. (This mirrors `mdp_tuning`'s `--minimize`.)
 - All TSVs must come from the same seed protocol (seeds `0..n-1`, §9.2).
   Shared seeds make the unpaired SE conservative, so a PASS is trustworthy.
 - **Post-tuning rule**: a tuning study's winner was *selected* on its tuning

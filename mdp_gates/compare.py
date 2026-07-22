@@ -5,12 +5,19 @@ Reads the spec-§9 eval TSVs (shared by ``{domain}_ppo_eval.py`` /
 each baseline on a ``*_mean`` metric column, using the matching ``*_var``
 column and the seed count to form a standard error:
 
-    z = (cand_mean - base_mean) / sqrt((cand_var + base_var) / n_seeds)
+    advantage = (cand_mean - base_mean) * sense_sign      # sense_sign = +1 max, -1 min
+    z         = advantage / sqrt((cand_var + base_var) / n_seeds)
 
-The gate passes when z >= z_min for every baseline. All evals must have been
-run with the same seed protocol (seeds 0..n-1); the unpaired SE above ignores
-the positive correlation induced by shared seeds, which *overstates* the
-error, so a PASS is conservative.
+``--sense`` sets whether the metric is maximized (default; higher is better,
+e.g. ``revenue_mean``) or minimized (lower is better, e.g. ``cost_total_mean``
+or ``regret_mean``). It MUST match the domain's objective sense — a cost- or
+regret-reporting domain gated with the maximize default gets a silently
+inverted verdict. The gate passes when z >= z_min for every baseline, so a
+positive ``z`` always means "candidate is better under this sense".
+
+All evals must have been run with the same seed protocol (seeds 0..n-1); the
+unpaired SE above ignores the positive correlation induced by shared seeds,
+which *overstates* the error, so a PASS is conservative.
 
 ``--reference`` files (e.g. the DP optimum) are reported — gap and % of
 reference — but never gate.
@@ -59,6 +66,7 @@ class GateReport:
     candidate: EvalStats
     n_seeds: int
     z_min: float
+    sense: str = "maximize"
     comparisons: list[Comparison] = field(default_factory=list)
     references: list[EvalStats] = field(default_factory=list)
 
@@ -69,16 +77,17 @@ class GateReport:
     def render(self) -> str:
         c = self.candidate
         se_c = math.sqrt(c.var / self.n_seeds)
+        better = "higher" if self.sense == "maximize" else "lower"
         lines = [
             f"candidate  {c.label}: {c.metric} = {c.mean:.4f} ± {se_c:.4f} "
-            f"(SE, n={self.n_seeds})"
+            f"(SE, n={self.n_seeds}; sense={self.sense}, {better} is better)"
         ]
         for cmp in self.comparisons:
             b = cmp.baseline
             verdict = "PASS" if cmp.passed else "FAIL"
             lines.append(
                 f"  [{verdict}] vs {b.label}: {b.mean:.4f}  "
-                f"diff = {cmp.diff:+.4f}  z = {cmp.z:.2f} (need >= {self.z_min:g})"
+                f"cand-base = {cmp.diff:+.4f}  z = {cmp.z:.2f} (need >= {self.z_min:g})"
             )
         for ref in self.references:
             gap = c.mean - ref.mean
@@ -128,14 +137,19 @@ def compare_evals(
     n_seeds: int,
     metric: str | None = None,
     z_min: float = 2.0,
+    sense: str = "maximize",
 ) -> GateReport:
+    if sense not in ("maximize", "minimize"):
+        raise ValueError(f"sense must be 'maximize' or 'minimize', got {sense!r}")
+    sense_sign = 1.0 if sense == "maximize" else -1.0
     cand = _read_eval_tsv(candidate, metric)
-    report = GateReport(candidate=cand, n_seeds=n_seeds, z_min=z_min)
+    report = GateReport(candidate=cand, n_seeds=n_seeds, z_min=z_min, sense=sense)
     for path in baselines:
         base = _read_eval_tsv(path, metric or cand.metric)
-        diff = cand.mean - base.mean
+        diff = cand.mean - base.mean            # raw mean difference (cand - base)
+        advantage = sense_sign * diff           # >0 ⇔ candidate better under sense
         se = math.sqrt((cand.var + base.var) / n_seeds)
-        z = diff / se if se > 0 else math.copysign(math.inf, diff)
+        z = advantage / se if se > 0 else math.copysign(math.inf, advantage)
         report.comparisons.append(
             Comparison(baseline=base, diff=diff, se=se, z=z, passed=z >= z_min)
         )
@@ -162,6 +176,10 @@ def main(argv: list[str]) -> int:
                     help="metric column (default: first *_mean column)")
     ap.add_argument("--z", type=float, default=2.0,
                     help="required z-score margin per baseline (default 2.0)")
+    ap.add_argument("--sense", choices=("maximize", "minimize"), default="maximize",
+                    help="objective sense of the metric: maximize (higher is better, "
+                         "default) or minimize (lower is better, e.g. a cost/regret "
+                         "column). Must match the domain's objective sense.")
     args = ap.parse_args(argv)
 
     if not args.baseline and not args.reference:
@@ -174,6 +192,7 @@ def main(argv: list[str]) -> int:
         n_seeds=args.n_seeds,
         metric=args.metric,
         z_min=args.z,
+        sense=args.sense,
     )
     print(report.render())
     return 0 if report.ok else 1

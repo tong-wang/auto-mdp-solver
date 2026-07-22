@@ -16,7 +16,12 @@ python -m mdp_gates \
 
 - **PASS (exit 0)** when the candidate beats every `--baseline` by
   `z >= --z` (default 2.0) standard errors, where
-  `z = (cand - base) / sqrt((var_cand + var_base) / n_seeds)`.
+  `z = sense_sign * (cand - base) / sqrt((var_cand + var_base) / n_seeds)`.
+- **`--sense {maximize,minimize}`** (default `maximize`) sets whether higher or
+  lower `*_mean` is better. It **must** match the domain's objective sense: a
+  cost- or regret-reporting domain gated with the default gets a silently
+  inverted verdict (passes only when the candidate is worse). Mirrors
+  `mdp_tuning`'s `--minimize`.
 - `--reference` files (e.g. the DP optimum) are reported — gap and % of
   reference — but never gate.
 - All TSVs must use the same seed protocol (seeds `0..n-1`, spec §9.2).
