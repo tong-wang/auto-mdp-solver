@@ -230,16 +230,33 @@ continuous decision?" gates the bounds/masking question.)
    *grid*; categorical-valued (bool flags, string enums) → **scenario-mode**
    attributes, whose allowed enum values you enumerate here. This split is a
    fact about the model — authoritative and frozen — not a design choice.
-3. **Classify every randomness source** (spec §4.3): realized per transition
-   → `uncertainty_sources`; realized once per episode with no per-transition
-   sibling → problem-instance selection → `ScenarioSampler`, *not* a
-   generator. State this classification to the user explicitly — it is the
-   most common formalization error.
+3. **Classify every randomness source** (spec §4.3, §5.5) — three bins, and
+   only the first two are asked about here:
+   - realized per transition, or evolving *within* the episode (a regime
+     that can flip mid-episode is intrinsic, however mixture-like it looks)
+     → `uncertainty_sources`;
+   - realized once per episode **as part of the problem's story** — nature
+     draws it (a hidden market size, a demand-regime pick, a random problem
+     instance) → a **world latent** → `ScenarioSampler` / `MixtureSampler`,
+     *not* a generator. Ask the deployment test in the problem's own words:
+     "in the real system, would this be drawn afresh each episode by the
+     environment?" Then the follow-up that shapes observations and
+     baselines: does the decision-maker *see* the realized value (observed)
+     or must the policy cope without it (hidden)? Record which. A draw
+     hiding *inside* a per-period source (its distribution's parameters
+     fixed at episode start) is still a world latent — extract it.
+   - a distribution that exists only to train one policy across many
+     complete problem variants is **neither** — that is the training-target
+     question, asked in step 4, never during randomness classification.
+
+   State this classification to the user explicitly — it is the most common
+   formalization error.
 4. **Design the scenario set (human-decided) — never silently pick one.** The
    attribute *classification* (step 2) is fixed; the concrete *values and
    compositions* are the human's call. If the source (a paper, a brief)
    already carries an experiment design, **extract and translate it faithfully**
-   into concrete `instances` and/or a `ScenarioSampler`, then ask the human to
+   into concrete `instances`, a world `ScenarioSampler`, and/or a
+   `{Domain}ScenarioGrid`, then ask the human to
    confirm the translation. If it does not, **propose a reasonable grid + mode
    composition, with your reasoning,** and ask. Either way the concrete set
    being confirmed must be visible before the human answers: lay the
@@ -249,12 +266,19 @@ continuous decision?" gates the bounds/masking question.)
    in a turn-ending message saved to `{name}/{name}.scenarios.md` and ask in
    the next round (rule 5). Two coupled decisions, both
    following the step-1 stance: (a) which numerical axes vary and over what
-   values/ranges, crossed with which scenario modes; (b) the **train/eval
-   strategy** this implies — one generalist trained on a `ScenarioSampler`
-   over the grid then evaluated per instance, vs. a specialist trained and
-   evaluated per instance; and whether scenario modes land on one leaderboard
-   or as separate branches. Emit whatever the strategy needs (a fixed list, a
-   sampler, or both) into the IR.
+   values/ranges, crossed with which scenario modes; (b) the
+   **training-target question** this implies, asked in plain words: "do you
+   want one policy tuned to this exact setting (a *specialist*), or one
+   policy that works across a range of settings (a *generalist*) — and over
+   what range?" A generalist's range is a `{Domain}ScenarioGrid` over the
+   step-2 axes (spec §5.5–§5.6): training samples it via
+   `grid.as_sampler()`, evaluation enumerates it — one leaderboard row per
+   cell, all cells on the same eval seeds. Do not confuse this grid with
+   step 3's world latents: the grid is the experimenter's choice and lives
+   in the design layer; changing its weights changes only the training
+   recipe. Also settle whether scenario modes land on one leaderboard or as
+   separate branches. Emit whatever the strategy needs (fixed instances, a
+   world sampler, a grid, or a combination) into the IR.
 5. Validate: `python -m mdp_ir {name}/{name}_schema.json` must print OK.
 6. Resolve every `Confirmable` (decision type/bounds, `requires_memory`,
    borderline placements) via AskUserQuestion — one at a time, under the
@@ -310,16 +334,19 @@ one pass. Before writing code, confirm a **run plan** with the human (via
 AskUserQuestion, under the Phase-A interaction rules) — and treat it as a live
 choice, not a Phase-A relic to rubber-stamp:
 
-- **Target scenario(s).** Choose which `SCENARIOS` entry this pass actually
-  builds baselines / trains / evaluates against — a single fixed scenario, or
-  one `ScenarioSampler` (and, if Phase A produced separate mode *branches*,
-  which branch). Default to one target; never silently kick off the entire
-  grid. The Stage 1–2 code supports every registered scenario regardless — this
-  choice scopes only the expensive Stage 3–4 runs.
+- **Target.** Choose what this pass actually builds baselines / trains /
+  evaluates against — one `SCENARIOS` entry (a fixed scenario or a world
+  sampler), or one `GRIDS` entry (a generalist target; and, if Phase A
+  produced separate mode *branches*, which branch). Default to one target;
+  never silently kick off every registered target. The Stage 1–2 code
+  supports every registered scenario and grid regardless — this choice
+  scopes only the expensive Stage 3–4 runs.
 - **Train/eval strategy.** Re-confirm *or switch* the strategy the Phase-A
-  scenario set implied: a generalist trained on a `ScenarioSampler` then
-  evaluated per instance, vs. a specialist trained and evaluated on the single
-  target. The strategy is not static — the human may change it here; honor it.
+  scenario set implied: a **generalist** — trained on `grid.as_sampler()`,
+  evaluated by enumerating the grid (one leaderboard row per cell, one
+  shared eval-seed block, spec §5.6, §9.6) — vs. a **specialist** trained
+  and evaluated on the single target. The strategy is not static — the
+  human may change it here; honor it.
 
 Carry the confirmed run plan as the contract for Stages 3–5: the selected
 scenario name(s) drive the baseline, training, and eval commands, and the
@@ -332,10 +359,13 @@ Write in dependency order: `{domain}_exceptions.py` (optional) →
 `{domain}_uncertainty.py` (omit if dynamics deterministic) →
 `{domain}_scenarios.py` → `{domain}_mdp.py`.
 
-- Seed keys are **stream-before-period**: `[entity_id?, sub_stream?,
-  stream_id, period?, episode_seed, seed_salt]` — matching the interpreter
-  (`mdp_ir/interpreter.py:_numeric_seed_key`), *not* the prose snippet in
-  spec §6.3. Bit-exactness with the interpreter depends on this.
+- Seed keys follow the **§6.3 v2 seed tree**: declare `SEED_SCHEME = "v2"`
+  and set `seed_scheme: "v2"` in the IR; build every key through the
+  domain's `intrinsic_key()` / `meta_key()` helpers (never a raw
+  `SeedSequence`). The interpreter implements both schemes and the
+  differential gate is bit-exact under v2 (`examples/inv_single` is the
+  reference); `"v1"` exists only for pre-redesign domains with recorded
+  results.
 - A generator whose distribution depends on the current decision takes it
   as an extra `sample(ctx, <decision>)` argument; the seed key must still
   contain only `(period, episode_seed, seed_salt)` slots so realized
@@ -407,8 +437,9 @@ to `results/{scenario}/benchmark/{method}/{scenario}.txt`; eval TSVs go to
 
 ### Stage 4 — train + eval (+ tune)
 
-- Train on the **Stage-0 target and strategy** (the selected fixed scenario for
-  a specialist, or the `ScenarioSampler` for a generalist) — not the whole grid.
+- Train on the **Stage-0 target and strategy** (the selected fixed scenario or
+  world sampler for a specialist, or `grid.as_sampler()` for a generalist) —
+  eval enumerates the grid's cells only when the strategy is generalist.
 - `{domain}_ppo_train.py` per spec §8 (`_build_arg_parser`/`parse_args`/
   `main`; expose `--learning_rate` under that dest so `mdp_tuning` can
   reach it; VecNormalize per the IR's `obs_normalization` decision;

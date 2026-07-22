@@ -115,7 +115,8 @@ change the fingerprint and needs no re-confirmation.
     ],
 
     // --- UNCERTAINTY: stages; `realization` DERIVES the seed key (§5.3) — never hand-written.
-    //     stream_id >= 1 (0 is reserved for scenario sampling).
+    //     v1 scheme: stream_id >= 1 (0 reserved for scenario sampling);
+    //     v2 scheme: stream_id is the per-instance source id, may be 0 (§6).
     "uncertainty_sources": [
       {
         "name": "demand", "generator": "EpisodeDemand", "stream_id": 1,
@@ -128,7 +129,8 @@ change the fingerprint and needs no re-confirmation.
                         "support_high": "demand_support_high" }
         },
         "stages": [
-          // episode: drawn once → seed_key() = [stream:1.0, episode_seed, seed_salt]
+          // episode (v1 only; v2 models this as a scenario sampler, §6):
+          //   drawn once → seed_key() = [stream:1.0, episode_seed, seed_salt]
           { "name": "support", "realization": "episode", "sub_stream": 0 },
           // period: each step  → seed_key() = [stream:1.1, period, episode_seed, seed_salt]
           { "name": "sample",  "realization": "period",  "sub_stream": 1 }
@@ -469,3 +471,57 @@ Note the pattern: `Confirmable` lives in the **mdp block** (plus
 `requires_memory`, whose *derivation* reads mdp facts) — the no-oracle layer.
 Gym/rl choices have an empirical oracle (train and measure), so they are plain
 fields: experiment axes, not judgment calls.
+
+---
+
+## 6. Scenario-redesign additions (seed scheme v2)
+
+Added 2026-07-22 (`scenario_redesign.md`; spec §5, §6.3). All fields are
+additive — every pre-existing IR validates unchanged as `seed_scheme: "v1"`
+with bit-identical draws.
+
+- **`seed_scheme`** (root, default `"v1"`): `"v2"` selects the seed-tree
+  grammar — intrinsic keys `[(draw,) period, source_id, 1, episode_seed,
+  seed_salt]`, meta keys `[substream_id, 0, episode_seed, seed_salt]` — and
+  **forbids episode-realization stages** (treatment A): world latents must be
+  `scenario.samplers`. Under v2, `stream_id` is the per-instance source id
+  (may be 0) and must be distinct across sources.
+- **`mdp.scenario.samplers`** — world latents (spec §5.2). Each sampler
+  realizes existing scenario constants at episode start; draws execute in
+  order from one rng seeded by the sampler's meta key. `hidden: true` flips
+  the `requires_memory` derivation and bars the constants from observation
+  exprs; `instances` scopes applicability (`""` names the base; empty list =
+  all). From the migrated `inv_single` IR:
+
+  ```jsonc
+  "samplers": [
+    { "name": "paper_demand", "substream_id": 0, "hidden": true,
+      "instances": [""],
+      "draws": [
+        { "name": "demand_vals", "distribution": {
+            "family": "choice_without_replacement",
+            "settings": { "low": "demand_support_low",
+                          "high": "demand_support_high",
+                          "size": "demand_support_size" } } },
+        { "name": "demand_probs", "distribution": {
+            "family": "normalized_uniform_weights",
+            "settings": { "size": "demand_support_size" } } } ] }
+  ]
+  ```
+
+  The sampled constants (`demand_vals` / `demand_probs`) exist in
+  `scenario.constants` with placeholder values, so every expr and validator
+  sees one namespace; the per-period source then consumes them as a plain
+  `categorical`.
+- **`mdp.scenario.mixtures`** — world mixtures (spec §5.3): weighted
+  components naming instances (`""` = base), drawn once per episode on the
+  mixture's own substream; a mixture name is usable anywhere an instance
+  name is (`--instance`, gates). Weights are a modeling commitment.
+- **`grids`** (root, design layer — spec §5.5/§5.6): generality targets for
+  generalist training, `{ name, base_instance, axes: {constant: [values]} }`;
+  `ScenarioGrid.cells()` yields `(cell_id, overrides)` row-major with
+  axis-derived ids. Grids never appear inside the `scenario` node.
+- **Differential**: `--seed-salt` defaults to 1 (v2 domains assert
+  `seed_salt >= 1`); sampler-bearing instances diff bit-exactly — the
+  adapter builds the domain's sampler on the IR sampler's substream
+  (`examples/inv_single/inv_single_ir_adapter.py` is the reference).
