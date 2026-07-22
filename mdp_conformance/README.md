@@ -26,11 +26,25 @@ informational and do not fail the gate.
 
 Static (source/AST, no execution):
 - `static.file_layout` — required `_mdp`/`_scenarios`/`_gym`; optional
-  `_uncertainty`/`_exceptions`.
-- `static.layering` — acyclic `uncertainty ← scenarios ← mdp ← gym` (§1.1).
+  `_uncertainty`/`_exceptions`/`_grids`.
+- `static.layering` — acyclic `uncertainty ← scenarios ← mdp ← gym` (§1.1);
+  `_grids` imported by drivers only (never by the model layers).
 - `static.no_param` — the `param`/`params`/`param_*` ban (§2).
 - `static.mdp_no_reward` — reward is not computed in the MDP layer (§6.4).
 - `static.state_slots` — `{Domain}State` is `@dataclass(slots=True)`.
+
+Scenario architecture (spec §5, §6.3) — **scheme-aware**: a domain declares
+`SEED_SCHEME = "v1" | "v2"`; undeclared is treated as v1 (frozen legacy keys,
+WARN nudge) so pre-redesign domains keep passing until they migrate:
+- `scheme.declared` — `SEED_SCHEME` present, valid, unmixed across modules.
+- `scenario.samplers` — every sampler entry in `SCENARIOS` is a pure function:
+  same seed twice ⇒ equal concrete scenarios (both schemes).
+- `scheme.v2_ids` (v2 only) — `seed_salt >= 1` everywhere; meta drawers carry
+  distinct `substream_id`; generator instances carry distinct `source_id`.
+- `scheme.v2_keys` (v2 only) — every `SeedSequence` call in the world layers
+  goes through `intrinsic_key()` / `meta_key()` (template-drift guard).
+- `grids.*` — no grid object inside `SCENARIOS`; `GRIDS` entries are
+  enumerable, non-callable, uniquely-celled, and `as_sampler()` is pure.
 
 Behavioral (constructs the gym and runs the simulator):
 - `behavior.scenarios_valid` — every `SCENARIOS` entry constructs; `scenario_name`

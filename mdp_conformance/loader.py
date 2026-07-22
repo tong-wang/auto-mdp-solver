@@ -28,6 +28,7 @@ ROLE_SUFFIXES = {
     "exceptions":  "_exceptions.py",
     "uncertainty": "_uncertainty.py",
     "scenarios":   "_scenarios.py",
+    "grids":       "_grids.py",
     "gym":         "_gym.py",
 }
 
@@ -149,7 +150,7 @@ def load_domain(directory: str | Path) -> DomainHandle:
     modules["scenarios"] = scenarios_module
     mdp_module = importlib.import_module(mdp_module_name)
     modules["mdp"] = mdp_module
-    for role in ("uncertainty", "exceptions"):
+    for role in ("uncertainty", "exceptions", "grids"):
         if role in files:
             modules[role] = importlib.import_module(f"{prefix}{ROLE_SUFFIXES[role][:-3]}")
 

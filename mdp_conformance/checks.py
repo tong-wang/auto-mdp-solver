@@ -51,7 +51,21 @@ def _eq(a, b) -> bool:
                 return True
         except (TypeError, ValueError):
             pass
-    return bool(a == b)
+    try:
+        if bool(a == b):
+            return True
+    except Exception:
+        pass
+    # plain objects (e.g. generator instances held by a scenario) usually lack
+    # __eq__; compare them structurally so sampler-purity checks can compare
+    # two independently constructed scenarios field by field
+    if type(a) is type(b):
+        if getattr(a, "__dict__", None):
+            return _eq(vars(a), vars(b))
+        slots = getattr(type(a), "__slots__", None)
+        if slots:
+            return all(_eq(getattr(a, s, None), getattr(b, s, None)) for s in slots)
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -173,10 +187,12 @@ def _imported_modules(tree: ast.Module) -> set[str]:
 
 
 def check_layering(h: DomainHandle) -> CheckResult:
+    # grids sit beside the chain (spec §1.1): only drivers may import them
     forbidden = {
-        "uncertainty": ("_scenarios", "_mdp", "_gym"),
-        "scenarios":   ("_mdp", "_gym"),
-        "mdp":         ("_gym",),
+        "uncertainty": ("_scenarios", "_mdp", "_gym", "_grids"),
+        "scenarios":   ("_mdp", "_gym", "_grids"),
+        "mdp":         ("_gym", "_grids"),
+        "gym":         ("_grids",),
     }
     violations = []
     for role, suffixes in forbidden.items():
@@ -187,7 +203,8 @@ def check_layering(h: DomainHandle) -> CheckResult:
                 violations.append(f"{role} imports {mod}")
     if violations:
         return CheckResult("static.layering", "FAIL", "; ".join(violations))
-    return CheckResult("static.layering", "PASS", "acyclic uncertainty←scenarios←mdp←gym")
+    return CheckResult("static.layering", "PASS",
+                       "acyclic uncertainty←scenarios←mdp←gym; grids driver-only")
 
 
 def check_no_param(h: DomainHandle) -> CheckResult:
@@ -413,13 +430,215 @@ def check_rng_generators(h: DomainHandle) -> CheckResult:
     return CheckResult("rng.generators", "PASS", detail)
 
 
+# ---------------------------------------------------------------------------
+# Scenario-architecture checks (spec §5, §6.3; scenario_redesign.md §8)
+#
+# Scheme-aware: a domain declares SEED_SCHEME = "v1" | "v2" in its scenarios
+# (or uncertainty) module. Undeclared domains are treated as v1 — frozen
+# legacy keys, strict template checks skipped — so pre-redesign domains keep
+# passing until they migrate. v2 opts into the strict checks.
+# ---------------------------------------------------------------------------
+
+def _declared_scheme(h: DomainHandle) -> str | None:
+    """The domain's declared SEED_SCHEME, or None. Raises on mixed declarations."""
+    found = {
+        role: getattr(m, "SEED_SCHEME")
+        for role, m in h.modules.items()
+        if hasattr(m, "SEED_SCHEME")
+    }
+    values = set(found.values())
+    if len(values) > 1:
+        raise ValueError(f"mixed SEED_SCHEME declarations: {found}")
+    return values.pop() if values else None
+
+
+def check_seed_scheme(h: DomainHandle) -> CheckResult:
+    try:
+        scheme = _declared_scheme(h)
+    except ValueError as e:
+        return CheckResult("scheme.declared", "FAIL", str(e))
+    if scheme is None:
+        return CheckResult("scheme.declared", "WARN",
+                           "no SEED_SCHEME declared — treated as v1 (frozen legacy "
+                           "keys); new domains must declare SEED_SCHEME = 'v2' "
+                           "(spec §6.3)")
+    if scheme not in ("v1", "v2"):
+        return CheckResult("scheme.declared", "FAIL",
+                           f"SEED_SCHEME must be 'v1' or 'v2', got {scheme!r}")
+    return CheckResult("scheme.declared", "PASS", f"SEED_SCHEME = {scheme!r}")
+
+
+def check_sampler_registry(h: DomainHandle) -> CheckResult:
+    """Registry smoke + purity (spec §5.2): every sampler entry in SCENARIOS is
+    a pure function — same seed twice -> equal concrete scenarios."""
+    samplers = [(k, v) for k, v in h.SCENARIOS.items() if callable(v)]
+    if not samplers:
+        return CheckResult("scenario.samplers", "SKIP", "no sampler entries in SCENARIOS")
+    problems = []
+    for key, sampler in samplers:
+        for seed in (0, 1, 42):
+            try:
+                a, b = sampler(seed), sampler(seed)
+            except Exception as e:
+                problems.append(f"{key}(seed={seed}) raised {type(e).__name__}: {e}")
+                break
+            if callable(a):
+                problems.append(f"{key}(seed={seed}) did not resolve to a concrete scenario")
+                break
+            if not _eq(a, b):
+                problems.append(f"{key}(seed={seed}) impure: two calls differ")
+                break
+    if problems:
+        return CheckResult("scenario.samplers", "FAIL", "; ".join(problems[:5]))
+    return CheckResult("scenario.samplers", "PASS",
+                       f"{len(samplers)} sampler(s) pure and concrete over seeds (0, 1, 42)")
+
+
+def check_meta_v2(h: DomainHandle) -> CheckResult:
+    """v2 template (spec §6.3): meta drawers carry distinct substream_id;
+    every seed_salt >= 1; generator instances carry distinct source_id."""
+    if _declared_scheme(h) != "v2":
+        return CheckResult("scheme.v2_ids", "SKIP", "v1/undeclared domain (frozen keys)")
+    problems = []
+    substreams: dict[str, int] = {}
+    for key, value in h.SCENARIOS.items():
+        salt = getattr(value, "seed_salt", None)
+        if salt is not None and salt < 1:
+            problems.append(f"{key}: seed_salt={salt} < 1")
+        if callable(value):
+            sub = getattr(value, "substream_id", None)
+            if sub is None:
+                problems.append(f"{key}: meta drawer without substream_id")
+            else:
+                substreams[key] = sub
+    dupes = {}
+    for key, sub in substreams.items():
+        dupes.setdefault(sub, []).append(key)
+    for sub, keys in dupes.items():
+        if len(keys) > 1:
+            problems.append(f"substream_id={sub} shared by {keys}")
+    for key, value in h.SCENARIOS.items():
+        try:
+            sc = _concrete(value)
+        except Exception:
+            continue  # construction failures are check_scenarios_valid's job
+        gens = _discover_generators(sc)
+        ids = {}
+        for label, gen in gens:
+            sid = getattr(gen, "source_id", None)
+            if sid is None:
+                problems.append(f"{key}: generator {label} without source_id")
+            else:
+                ids.setdefault(sid, []).append(label)
+        for sid, labels in ids.items():
+            if len(labels) > 1:
+                problems.append(f"{key}: source_id={sid} shared by {labels}")
+    if problems:
+        return CheckResult("scheme.v2_ids", "FAIL", "; ".join(problems[:6]))
+    return CheckResult("scheme.v2_ids", "PASS",
+                       "salts >= 1; substream/source ids present and distinct")
+
+
+def check_seed_key_helpers(h: DomainHandle) -> CheckResult:
+    """v2 drift guard (spec §4.2, §5.2): every SeedSequence(...) in the world
+    layers is either inside intrinsic_key()/meta_key() or takes a key built by
+    one of them — raw inline keys cannot silently diverge from the template."""
+    if _declared_scheme(h) != "v2":
+        return CheckResult("scheme.v2_keys", "SKIP", "v1/undeclared domain (frozen keys)")
+    helper_names = {"intrinsic_key", "meta_key"}
+
+    def call_name(func) -> str:
+        return getattr(func, "attr", None) or getattr(func, "id", "") or ""
+
+    strays = []
+    for role in ("uncertainty", "scenarios", "grids"):
+        tree = h.trees.get(role)
+        if tree is None:
+            continue
+
+        def visit(node, fn_stack):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                fn_stack = fn_stack + [node.name]
+            if isinstance(node, ast.Call) and call_name(node.func) == "SeedSequence":
+                inside_helper = any(n in helper_names for n in fn_stack)
+                arg_ok = (
+                    len(node.args) == 1
+                    and isinstance(node.args[0], ast.Call)
+                    and call_name(node.args[0].func) in helper_names
+                )
+                if not (inside_helper or arg_ok):
+                    strays.append(f"{role}:{node.lineno}")
+            for child in ast.iter_child_nodes(node):
+                visit(child, fn_stack)
+
+        visit(tree, [])
+    if strays:
+        return CheckResult("scheme.v2_keys", "FAIL",
+                           f"raw SeedSequence outside intrinsic_key()/meta_key(): {strays}")
+    return CheckResult("scheme.v2_keys", "PASS",
+                       "all SeedSequence calls go through the key helpers")
+
+
+def check_grids(h: DomainHandle) -> list[CheckResult]:
+    """Design layer (spec §5.6): grids stay out of SCENARIOS; GRIDS entries are
+    enumerable, non-callable, uniquely-celled, and derive pure samplers."""
+    results = []
+    grid_like = [k for k, v in h.SCENARIOS.items()
+                 if not callable(v) and hasattr(v, "cells")]
+    if grid_like:
+        results.append(CheckResult("grids.not_in_scenarios", "FAIL",
+                                   f"grid object(s) in SCENARIOS: {grid_like}"))
+    if "grids" not in h.modules:
+        results.append(CheckResult("grids.registry", "SKIP", "no {domain}_grids.py"))
+        return results
+    GRIDS = getattr(h.modules["grids"], "GRIDS", None)
+    if not isinstance(GRIDS, dict) or not GRIDS:
+        results.append(CheckResult("grids.registry", "FAIL", "GRIDS missing or empty"))
+        return results
+    problems = []
+    for key, grid in GRIDS.items():
+        if callable(grid):
+            problems.append(f"{key}: grid is callable (must never pass as a ScenarioSource)")
+            continue
+        try:
+            cells = list(grid)
+            ids = [cid for cid, _ in cells]
+        except Exception as e:
+            problems.append(f"{key}: not enumerable ({type(e).__name__}: {e})")
+            continue
+        if not cells:
+            problems.append(f"{key}: no cells")
+            continue
+        if len(ids) != len(set(ids)):
+            problems.append(f"{key}: duplicate cell ids")
+        try:
+            sampler = grid.as_sampler()
+            a, b = sampler(0), sampler(0)
+            if callable(a) or not _eq(a, b):
+                problems.append(f"{key}: as_sampler() not pure/concrete")
+        except Exception as e:
+            problems.append(f"{key}: as_sampler failed ({type(e).__name__}: {e})")
+    if problems:
+        results.append(CheckResult("grids.registry", "FAIL", "; ".join(problems[:5])))
+    else:
+        total = sum(len(list(g)) for g in GRIDS.values())
+        results.append(CheckResult("grids.registry", "PASS",
+                                   f"{len(GRIDS)} grid(s), {total} cells; samplers pure"))
+    return results
+
+
 REGISTRY = [
     check_file_layout,
     check_layering,
     check_no_param,
     check_mdp_no_reward,
     check_state_slots,
+    check_seed_scheme,
     check_scenarios_valid,
+    check_sampler_registry,
+    check_meta_v2,
+    check_seed_key_helpers,
+    check_grids,
     check_init_state,
     check_gym_contract,
     check_determinism,
