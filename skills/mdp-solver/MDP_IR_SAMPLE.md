@@ -199,7 +199,18 @@ change the fingerprint and needs no re-confirmation.
     },
 
     // literal or expr over constants; must cover every `core` state var (validated)
-    "initial_state": { "inventory": 0, "pipeline": "zeros(6)" }
+    "initial_state": { "inventory": 0, "pipeline": "zeros(6)" },
+
+    // OPTIONAL: domain-owned expression builtins. Expressions may call only
+    // the core builtins (min/max/exp/phi/topk/...); a domain needing more
+    // declares each extra function here and ships `def {name}` in
+    // `{module}.py` next to this IR (portable-domain contract). The
+    // interpreter resolves the module lazily on first call — nothing
+    // domain-specific is ever hard-coded in mdp_ir.
+    "expr_builtins": [
+      // { "name": "bayes_topk", "module": "mydomain_probit_map",
+      //   "desc": "Bayes-optimal top-k selection via probit MAP" }
+    ]
   },
 
   // ═══════════════ gym — interface menus (mutable design axes) ═══════════════
@@ -215,7 +226,8 @@ change the fingerprint and needs no re-confirmation.
         "features": [ {"derived": "inventory_position", "expr": "inventory + sum(pipeline)"} ] }
     ],
 
-    // encodings of the canonical decision(s) (cf. OWMR order&allocations);
+    // encodings of the canonical decision(s), possibly several at once
+    // (e.g. an order&allocations vector encoding);
     // strategy: clip (continuous), mask (discrete), reparametrize (needs transform)
     "action_modes": [
       { "name": "order", "default": true, "encodes": "order",
@@ -225,7 +237,7 @@ change the fingerprint and needs no re-confirmation.
     ],
 
     // how reward is assembled from the objective components in info —
-    // the mdp stays reward-agnostic; sense=minimize ⇒ negate (cf. CNV reward modes)
+    // the mdp stays reward-agnostic; sense=minimize ⇒ negate
     "reward_modes": [
       { "name": "neg_cost", "default": true, "expr": "-total",
         "desc": "negated per-step cost.total" }
@@ -409,8 +421,8 @@ Two distinct concepts, now in two different *layers*:
   source) — *fundamentally hidden from any agent*. A problem fact; drives
   `rl.requires_memory` and baseline tractability; may appear in **no** mode.
 - **Mode selection** (`gym.observation_modes`) — among the *observable*
-  quantities, which subset a given mode exposes. An interface choice (cf. OWMR
-  `vec`/`vec_d`/`vec_ip`, CNV `sales`/`event`/`timing`/`full`).
+  quantities, which subset a given mode exposes. An interface choice (cf.
+  `inv_single`'s `vec`/`vec_d`/`vec_ip` modes).
 
 Features reference a **state var**, an **info field** (`info.demand`), or a
 **derived expression** (`inventory_position`). Validation: refs resolve, exprs

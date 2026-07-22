@@ -136,7 +136,8 @@ def run_logged(cmd: list[str], log_path: Path, cwd: Path) -> None:
 
     Pins BLAS/torch to one thread unless the caller set it explicitly: on the
     small models these domains use, thread contention on tiny tensor ops
-    dominates the runtime (measured ~50x wall-clock slowdown on sudoku 9x9).
+    dominates the runtime (measured ~50x wall-clock slowdown on a small
+    CNN-policy domain).
     """
     env = dict(os.environ)
     env.setdefault("OMP_NUM_THREADS", "1")

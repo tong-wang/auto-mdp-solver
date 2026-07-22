@@ -1,6 +1,6 @@
 """Named scenario registry for the single-echelon inventory domain.
 
-Defines InvSingleScenario, the world-latent InvSingleEpisodeDemandSampler,
+Defines InvSingleScenario, the world-latent InvSingleScenarioSampler,
 the InvSingleMixtureSampler combinator, named instances, and the SCENARIOS
 registry. Registry values are ScenarioSources: either a concrete scenario or
 a sampler callable as `source(episode_seed) -> InvSingleScenario`.
@@ -149,7 +149,7 @@ class FamilyDemandBounds:
 
 
 @dataclass
-class InvSingleEpisodeDemandSampler:
+class InvSingleScenarioSampler:
     """World-latent sampler: draws a per-episode demand distribution.
 
     A support of `support_size` integer values is drawn uniformly (without
@@ -309,7 +309,7 @@ class InvSingleMixtureSampler:
 
 
 ScenarioSource = Union[
-    InvSingleScenario, InvSingleEpisodeDemandSampler, InvSingleMixtureSampler
+    InvSingleScenario, InvSingleScenarioSampler, InvSingleMixtureSampler
 ]
 
 
@@ -357,7 +357,7 @@ _paper_costs = dict(
 )
 _paper_slt = dict(values=[2, 3, 4, 5], probabilities=[1, 3, 3, 1])
 
-sampler_paper_stochastic = InvSingleEpisodeDemandSampler(
+sampler_paper_stochastic = InvSingleScenarioSampler(
     scenario_name="paper_stochastic",
     desc="paper baseline, stochastic lead time L~{2,3,4,5} (mean ≈ 3.5)",
     horizon=30,
@@ -367,7 +367,7 @@ sampler_paper_stochastic = InvSingleEpisodeDemandSampler(
     **_paper_costs,
 )
 
-sampler_paper_lost_sales = InvSingleEpisodeDemandSampler(
+sampler_paper_lost_sales = InvSingleScenarioSampler(
     scenario_name="paper_lost_sales",
     desc="lost-sales variant: unmet demand dropped, not backordered",
     horizon=30,

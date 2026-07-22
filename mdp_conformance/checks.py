@@ -14,8 +14,9 @@ Behavioral checks drive the domain through its gym wrapper so that single-step
 (``advance``) and two-step (``advance1``/``advance2``) domains are handled
 uniformly. The RNG check works at the generator level: a generator that yields a
 value from only ``(period, episode_seed, seed_salt)`` is decision-path
-independent *by construction*; one that needs more state (e.g. 2048's board) is
-classified state-conditioned and skipped rather than failed.
+independent *by construction*; one that needs more state (e.g. a board-game
+spawn conditioned on the current board) is classified state-conditioned and
+skipped rather than failed.
 """
 
 from __future__ import annotations

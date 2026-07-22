@@ -130,10 +130,9 @@ class Realization(str, Enum):
     event = "event"       # decision-triggered;     period-keyed, trigger-gated
     keyed = "keyed"       # keyed by expression values (stage.key_exprs), no `period`
                           # slot: a fixed per-episode latent table indexed by the
-                          # key values — extension 2026-07-13 (topk_id): outcomes
-                          # keyed by (evaluation atom, repetition) so the same
-                          # evaluation set realizes the same outcomes regardless
-                          # of scheduling (batch semantics / common random numbers)
+                          # key values, so the same keys realize the same outcomes
+                          # regardless of when they are drawn (batch semantics /
+                          # common random numbers)
 
 
 class Sense(str, Enum):
@@ -171,19 +170,16 @@ _COMMENT = re.compile(r"#.*")
 # an assignment `=` or draw `~`, excluding ==, !=, <=, >=, +=, -=, *=, /=
 _ASSIGN = re.compile(r"(?<![=!<>+\-*/])=(?!=)|~")
 
+# Core builtins usable in any IR expression. Domain-specific functions do NOT
+# belong here: a domain declares them in its IR under `mdp.expr_builtins`
+# (see ExprBuiltin) and ships the implementation module next to the IR
+# (portable-domain contract); the interpreter resolves them lazily.
 _BUILTINS = frozenset({
     "if", "else", "not", "and", "or", "in", "for",
     "min", "max", "sum", "abs", "len", "round", "int", "float",
     "exp", "log", "sqrt", "floor", "ceil", "zeros",
-    "phi", "topk", "range",    # extension 2026-07-10 (topk_id): std-normal CDF,
-                               # top-k largest values, comprehension index ranges
-    "bayes_topk",              # extension 2026-07-13 (topk_id): Bayes-optimal
-                               # top-k selection via probit MAP; implementation
-                               # lives with the domain (topk_id/topk_id_probit_map.py),
-                               # lazily resolved by the interpreter
-    "post_mu", "post_sd",      # extension 2026-07-13 (topk_id): Laplace posterior
-                               # moments for the counts_belief observation mode
-                               # (same lazy domain resolution)
+    "phi", "topk", "range",    # std-normal CDF, top-k largest values,
+                               # comprehension index ranges
     "T",                       # horizon length
     "True", "False", "None", "true", "false",
 })
@@ -269,8 +265,8 @@ class Decision(_Base):
     dim: int = Field(ge=1)
     # [lo, hi], applied to every dim (per-dim bounds are out of v1 scope).
     # An entry may be a number or the *name of a scenario constant* — like
-    # horizon.T, bounds are a scenario dimension and may vary per instance
-    # (extension 2026-07-10, topk_id). Resolve with `MdpBlock.decision_bounds`.
+    # horizon.T, bounds are a scenario dimension and may vary per instance.
+    # Resolve with `MdpBlock.decision_bounds`.
     bounds: Confirmable[list[float | str]]
     feasibility: list[Feasibility] = Field(default_factory=list)
     desc: str = ""
@@ -534,6 +530,32 @@ class Objective(_Base):
         return " + ".join(c.name for c in self.per_step_components)
 
 
+class ExprBuiltin(_Base):
+    """A domain-owned expression builtin, declared by the IR that needs it.
+
+    ``name`` becomes callable in this IR's expressions (validated alongside
+    the core ``_BUILTINS``); the implementation is ``def {name}`` in
+    ``{module}.py`` shipped next to the IR (portable-domain contract), which
+    the interpreter resolves lazily on first call. This keeps ``mdp_ir``
+    free of domain knowledge: no domain function names or module paths are
+    hard-coded in the schema or interpreter."""
+
+    name: str
+    module: str
+    desc: str = ""
+
+    @model_validator(mode="after")
+    def _check_names(self) -> "ExprBuiltin":
+        for tag, v in (("name", self.name), ("module", self.module)):
+            if not _IDENT.fullmatch(v):
+                raise ValueError(f"expr_builtins {tag} {v!r} is not an identifier")
+        if self.name in _BUILTINS:
+            raise ValueError(
+                f"expr_builtins name {self.name!r} shadows a core builtin"
+            )
+        return self
+
+
 class MdpBlock(_Base):
     """The problem. Frozen at the Phase-A gate; Stage-1 codegen input."""
 
@@ -546,6 +568,9 @@ class MdpBlock(_Base):
     dynamics: Dynamics
     objective: Objective
     scenario: Scenario
+    # domain-owned expression builtins (ExprBuiltin): extra callables this
+    # IR's expressions may use, implemented in modules next to the IR
+    expr_builtins: list[ExprBuiltin] = Field(default_factory=list)
     # per-variable value: literal, or expr over scenario constants/builtins
     # (e.g. "zeros(6)", "n0"); time_index vars default to the indexing origin
     initial_state: dict[str, float | int | str | list] = Field(default_factory=dict)
@@ -579,6 +604,11 @@ class MdpBlock(_Base):
             sv.name for sv in self.state_variables
             if sv.observability is Observability.latent
         }
+
+    @property
+    def builtin_names(self) -> set[str]:
+        """Names of the domain-owned builtins this IR declares."""
+        return {b.name for b in self.expr_builtins}
 
     def decision_bounds(
         self, name: str, instance: str | None = None
@@ -623,6 +653,7 @@ class MdpBlock(_Base):
             ("info", [f.name for f in self.info_fields]),
             ("decision", [d.name for d in self.decisions]),
             ("constant", [c.name for c in self.scenario.constants]),
+            ("expr_builtin", [b.name for b in self.expr_builtins]),
         ]
         for kind, names in groups:
             for n in names:
@@ -748,7 +779,7 @@ class MdpBlock(_Base):
 
     @model_validator(mode="after")
     def _check_expressions(self) -> "MdpBlock":
-        known = self.value_names
+        known = self.value_names | self.builtin_names
         events = set(self.dynamics.event_sequence) | {"END_OF_PERIOD"}
 
         # dynamics: locals defined by `x ~ ...` / `x = ...` extend the namespace
@@ -785,7 +816,7 @@ class MdpBlock(_Base):
             if isinstance(v, str):
                 _check_expr(
                     v,
-                    {c.name for c in self.scenario.constants},
+                    {c.name for c in self.scenario.constants} | self.builtin_names,
                     f"initial_state[{name!r}]",
                 )
         return self
@@ -815,16 +846,15 @@ class ObservationMode(_Base):
 
 
 class ActionMode(_Base):
-    """A gym-layer *encoding* of the canonical decision(s) (cf. OWMR action
-    modes). The ``_mdp`` layer consumes only the canonical decisions; each mode
-    maps the agent-facing action onto them via ``transform`` (empty = identity).
+    """A gym-layer *encoding* of the canonical decision(s). The ``_mdp`` layer
+    consumes only the canonical decisions; each mode maps the agent-facing
+    action onto them via ``transform`` (empty = identity).
 
     A problem whose period carries *several* simultaneous decisions (e.g. order
     quantity **and** allocation) sets ``encodes`` to the list of decision names;
     the agent action is then a vector whose k-th component drives
-    ``encodes[k]``, and ``bounds`` becomes one ``[lo, hi]`` pair per component
-    (extension 2026-07-21, adi_flex). The scalar forms remain valid and mean
-    exactly what they did before."""
+    ``encodes[k]``, and ``bounds`` becomes one ``[lo, hi]`` pair per component.
+    The scalar forms remain valid and mean exactly what they did before."""
 
     name: str
     default: bool = False
@@ -1099,7 +1129,7 @@ class MdpIR(_Base):
         # hidden world latents (spec §5.2): a realized sampled constant is not
         # automatically observable — bar hidden ones from observation exprs
         latent = self.mdp.latent_names | self.mdp.scenario.hidden_sampled_names
-        known = self.mdp.value_names - latent
+        known = (self.mdp.value_names - latent) | self.mdp.builtin_names
         for mode in self.gym.observation_modes:
             for feat in mode.features:
                 where = f"observation mode {mode.name!r}"
@@ -1145,7 +1175,7 @@ class MdpIR(_Base):
             if m.transform:
                 _check_expr(
                     m.transform,
-                    constants | decision_names | {m.name},
+                    constants | decision_names | {m.name} | self.mdp.builtin_names,
                     f"action mode {m.name!r}.transform",
                 )
             # the mdp layer consumes every declared decision each period, so an
@@ -1165,6 +1195,7 @@ class MdpIR(_Base):
             {c.name for c in self.mdp.objective.per_step_components}
             | {"total"}
             | self.mdp.value_names
+            | self.mdp.builtin_names
         )
         for m in self.gym.reward_modes:
             _check_expr(m.expr, known, f"reward mode {m.name!r}")
@@ -1174,7 +1205,11 @@ class MdpIR(_Base):
     def _termination_resolves(self) -> "MdpIR":
         expr = self.gym.termination.early_terminated_when
         if expr:
-            _check_expr(expr, self.mdp.value_names, "termination.early_terminated_when")
+            _check_expr(
+                expr,
+                self.mdp.value_names | self.mdp.builtin_names,
+                "termination.early_terminated_when",
+            )
         return self
 
     @model_validator(mode="after")

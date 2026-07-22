@@ -35,7 +35,7 @@ def make_adapter(
          if not s.instances or (instance or "") in s.instances),
         None,
     )
-    source = scen.InvSingleEpisodeDemandSampler(
+    source = scen.InvSingleScenarioSampler(
         scenario_name=f"ir_differential_{instance or 'base'}",
         horizon=ir.mdp.horizon_T(instance),
         leadtime=unc.DiscreteLeadtime(

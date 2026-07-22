@@ -90,7 +90,7 @@ class FixedDistributionDemand(DemandGenerator):
     """Per-period demand from a fixed, fully realized discrete distribution.
 
     The (vals, probs) pair typically comes from the world-latent draw in
-    InvSingleEpisodeDemandSampler; within a concrete scenario they are plain
+    InvSingleScenarioSampler; within a concrete scenario they are plain
     constants, so phi() is available (unlike the retired EpisodeDemand,
     whose marginal PMF required integrating over episode randomness).
     """

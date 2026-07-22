@@ -53,8 +53,8 @@ and the IR follows the code) — so trajectories are reproducible and realized
 uncertainty is decision-path independent by construction
 (`interpreter_test.py` asserts this, plus conservation and termination
 properties, on both examples). Supported distribution families:
-`episode_categorical`, `categorical`, `poisson`, `normal`, `lognormal`
-(extension 2026-07-15, retailer), `uniform`, `bernoulli`.
+`episode_categorical`, `categorical`, `poisson`, `normal`, `lognormal`,
+`uniform`, `bernoulli`.
 
 ## Diff against real code (the differential runner)
 
@@ -105,7 +105,10 @@ default action mode).
   objective/feature/reward exprs, transforms, guards, triggers, distribution
   settings, initial state) must resolve to a declared state var, info field,
   decision, scenario constant, source/stage, or builtin. Typos and phantom
-  names fail validation, not codegen.
+  names fail validation, not codegen. Beyond the core builtins, a domain may
+  declare extra functions under `mdp.expr_builtins` (`{name, module}`); the
+  implementation module ships next to the IR and the interpreter resolves it
+  lazily, so no domain-specific function ever lives in this package.
 - **Scenario constants are the single home for numbers** — distributions,
   objective exprs, dynamics, and `initial_state` reference them by name; the
   value namespace is collision-checked. `axis` tags mark scenario dimensions;

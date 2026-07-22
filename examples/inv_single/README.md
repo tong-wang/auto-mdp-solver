@@ -36,7 +36,7 @@ Demand is re-generated each step from a deterministic seed sequence combining th
 | `paper_stochastic` | sampled(5, 10–50) | Discrete{2–5} | 0.2 | 2.0 | 25 | yes |
 | `paper_lost_sales` | sampled(5, 10–50) | Discrete{2–5} | 0.2 | 2.0 | 25 | no |
 
-`sampled(5, 10–50)`: the `paper_*` entries are `InvSingleEpisodeDemandSampler`s (world-latent samplers, spec §5.2): at the start of each episode, 5 integer demand values are drawn uniformly from {10,…,50} with random weights; the returned concrete scenario holds that distribution as a `FixedDistributionDemand`.
+`sampled(5, 10–50)`: the `paper_*` entries are `InvSingleScenarioSampler`s (world-latent samplers, spec §5.2): at the start of each episode, 5 integer demand values are drawn uniformly from {10,…,50} with random weights; the returned concrete scenario holds that distribution as a `FixedDistributionDemand`.
 
 ## Observation modes
 

@@ -5,10 +5,10 @@
         [--train-arg KEY=VALUE ...] [--eval-arg KEY=VALUE ...]
 
 Examples:
-    python -m mdp_tuning sudoku -s 4x4_8 --metric solve_rate \
-        --train-arg observation_mode=onehot --train-arg reward_mode=fill_solve
-    python -m mdp_tuning sudoku --show-space        # what would be tuned
-    python -m mdp_tuning sudoku -s 4x4_8 --summary-only
+    python -m mdp_tuning examples/dynamic_pricing -s simple \
+        --metric revenue_mean --n-trials 25
+    python -m mdp_tuning examples/dynamic_pricing --show-space  # what would be tuned
+    python -m mdp_tuning examples/dynamic_pricing -s simple --summary-only
 
 Optuna TPE proposes each trial from the algorithm-level space (spaces.py)
 restricted to the knobs the domain's train script exposes. Each trial shells

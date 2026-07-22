@@ -13,7 +13,7 @@ for a trained generator.
 
 ```bash
 # from the repo root, using the project venv
-.venv/bin/python -m mdp_conformance inv_single cnv fnv owmr 2048
+.venv/bin/python -m mdp_conformance examples/inv_single examples/dynamic_pricing
 
 # no args: auto-discover every sibling domain (any dir with a *_mdp.py)
 .venv/bin/python -m mdp_conformance
@@ -57,14 +57,15 @@ Behavioral (constructs the gym and runs the simulator):
 - `rng.generators` — each generator's `sample()` is reproducible from
   `(period, episode_seed, seed_salt)`. Generators that yield a value from only
   those fields are **decision-path independent by construction**; generators that
-  need more state (e.g. 2048's board) are classified **state-conditioned** and
-  skipped, not failed.
+  need more state (e.g. a board-game spawn conditioned on the current board) are
+  classified **state-conditioned** and skipped, not failed.
 
 ## Design notes
 
 - **Behavior is driven through the gym** so single-step (`advance`) and two-step
   (`advance1`/`advance2`) domains are handled uniformly.
 - **Discovery is file-based**, not folder-based: the domain prefix is read from
-  the files (e.g. the `2048/` directory uses the `game2048_` prefix).
+  the files (e.g. the `dynamic_pricing/` example uses the `vanryzin_pricing_`
+  prefix for its IR and adapter).
 - Checks are written against the normalized `DomainHandle`, never a concrete
   domain, so the harness generalizes to freshly generated domains.

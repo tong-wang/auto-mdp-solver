@@ -7,7 +7,7 @@ per-domain code**.
 
 ## Why this is generic
 
-Grid searches like `retailer_ppo_tune.py` encode per-problem judgment (which
+Hand-written per-domain grid searches encode per-problem judgment (which
 knobs, which values). This harness removes that judgment in three ways:
 
 1. **Algorithm-level search space** (`spaces.py`): broad, RL-Baselines3-Zoo
@@ -32,16 +32,18 @@ present per spec §9.3, else the first `*_mean` column).
 
 ```bash
 # from the repo root, using the project venv
-python -m mdp_tuning sudoku -s 4x4_8 --metric solve_rate \
-    --train-arg observation_mode=onehot --train-arg reward_mode=fill_solve \
+python -m mdp_tuning examples/dynamic_pricing -s simple --metric revenue_mean \
     --n-trials 25 --total-timesteps 200000 --eval-seeds 500
 
-python -m mdp_tuning sudoku --show-space      # what would be tuned, no training
-python -m mdp_tuning sudoku -s 4x4_8 --summary-only   # best trials so far
+# what would be tuned, no training
+python -m mdp_tuning examples/dynamic_pricing --show-space
+# best trials so far
+python -m mdp_tuning examples/dynamic_pricing -s simple --summary-only
 ```
 
 Domains may ship a thin `{domain}_ppo_tune.py` wrapper that pre-fills
-domain-appropriate defaults (see `sudoku/sudoku_ppo_tune.py`).
+domain-appropriate defaults (see
+`examples/dynamic_pricing/dynamic_pricing_ppo_tune.py`).
 
 ## Requirements on the domain
 

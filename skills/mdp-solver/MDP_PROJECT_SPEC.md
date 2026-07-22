@@ -1,16 +1,14 @@
 # MDP Project Specification
 
-Canonical patterns for MDP simulation domains; originally derived from a
-multi-entity reference implementation (`owmr`, a one-warehouse multi-retailer
-domain, cited throughout as an illustration — its patterns are described
-inline wherever referenced). Shipped conformant examples: `examples/inv_single`
-and `examples/dynamic_pricing`. All new MDP domains should follow these
-conventions.
+Canonical patterns for MDP simulation domains. Shipped conformant examples:
+`examples/inv_single` and `examples/dynamic_pricing`; hypothetical domains
+(a one-warehouse multi-retailer system, a tile-merging board game, …) are
+described inline where a pattern needs an illustration richer than the
+examples provide. All new MDP domains should follow these conventions.
 
 > **Transition note (2026-07-22):** the scenario architecture (§5) and seed
 > scheme (§6.3) were redesigned — world/design layers, mixture samplers,
-> grids, seed tree v2. `examples/inv_single` predates this and migrates next
-> (validated prototypes: `scratch/inv_single_v2/`, `scratch/fnv_v2/`);
+> grids, seed tree v2. Both shipped examples follow the new design;
 > rationale and migration plan: `scenario_redesign.md` at the repo root.
 
 ---
@@ -46,7 +44,7 @@ The three domain-model files form a strict, acyclic layering — each imports on
 ```
 
 - **`{domain}_uncertainty.py`** is the base: it has no domain imports (only `numpy` and `typing`). It must **not** import `{Domain}State` — see the `SamplingContext` protocol in §4.1.
-- A domain with **deterministic dynamics** has no `{domain}_uncertainty.py` at all; the chain shortens to `{domain}_scenarios ← {domain}_mdp`. Initial conditions belong to the scenario, and per-episode variety comes from a `{Domain}ScenarioSampler` (§4.3, §5.2) — e.g. `sudoku`, where the puzzle *is* the scenario and placements are deterministic.
+- A domain with **deterministic dynamics** has no `{domain}_uncertainty.py` at all; the chain shortens to `{domain}_scenarios ← {domain}_mdp`. Initial conditions belong to the scenario, and per-episode variety comes from a `{Domain}ScenarioSampler` (§4.3, §5.2) — e.g. a Sudoku domain, where the puzzle *is* the scenario and placements are deterministic.
 - **`{domain}_scenarios.py`** imports the generator classes from `{domain}_uncertainty` and composes them into `{Domain}Scenario` instances.
 - **`{domain}_mdp.py`** imports `{Domain}Scenario` from `{domain}_scenarios` (for type annotations) and the generator classes from `{domain}_uncertainty` (only where it needs to construct them, e.g. its `__main__` smoke test).
 - **Gym wrappers** sit on top of all three: `{Domain}State` and transition functions from `{domain}_mdp`, `{Domain}Scenario` from `{domain}_scenarios`, generator classes from `{domain}_uncertainty` as needed.
@@ -61,22 +59,22 @@ The three domain-model files form a strict, acyclic layering — each imports on
 | Generator base class | `{Source}Generator` | `DemandGenerator`, `LeadtimeGenerator` |
 | Generator leaf class | `{Variant}{Source}` | `PoissonDemand`, `NormalDemand`, `DiscreteLeadtime` |
 | Sampling-context protocol | `SamplingContext` or `{Source}Context` | `SamplingContext`, `SpawnContext`, `DemandContext` |
-| Scenario config class | `{Domain}Scenario` | `OwmrScenario` |
-| Scenario sampler class (world latents, §5.2) | `{Domain}ScenarioSampler` | `RetailerScenarioSampler` |
+| Scenario config class | `{Domain}Scenario` | `InvSingleScenario` |
+| Scenario sampler class (world latents, §5.2) | `{Domain}ScenarioSampler` | `InvSingleScenarioSampler` |
 | Mixture sampler class (§5.3) | `{Domain}MixtureSampler` | `InvSingleMixtureSampler` |
-| Scenario grid class (design layer, §5.6) | `{Domain}ScenarioGrid` | `FnvScenarioGrid` |
+| Scenario grid class (design layer, §5.6) | `{Domain}ScenarioGrid` | `InvSingleScenarioGrid` |
 | Scenario source (term / type alias) | `ScenarioSource` | `{Domain}Scenario \| {Domain}ScenarioSampler` (any callable sampler counts) |
-| MDP state class | `{Domain}State` | `OwmrState` |
-| Gym env class | `{Domain}Env` | `OwmrEnv` |
+| MDP state class | `{Domain}State` | `InvSingleState` |
+| Gym env class | `{Domain}Env` | `InvSingleEnv` |
 | Scenario instances | `scenario_{name}` | `scenario_simple` |
 | Scenario sampler instances | `sampler_{name}` | `sampler_default` |
-| Grid instances | `grid_{name}` | `grid_ammfe` |
+| Grid instances | `grid_{name}` | `grid_costs` |
 | Scenario registry dict | `SCENARIOS` | `SCENARIOS = {"simple": scenario_simple, "random": sampler_default, ...}` |
-| Grid registry dict | `GRIDS` | `GRIDS = {"FNV-aMMFE": grid_ammfe, ...}` |
+| Grid registry dict | `GRIDS` | `GRIDS = {"cost-sweep": grid_costs, ...}` |
 | Scenario registry key | `scenario_name` | `scenario_name="simple"` |
 | Scenario description | `desc` | `desc="zero lead times everywhere"` |
 | Constructor argument for scenario | `scenario` | `def __init__(self, scenario, ...)` |
-| Attribute storing scenario on env | `self.scenario` | `self.scenario: OwmrScenario` |
+| Attribute storing scenario on env | `self.scenario` | `self.scenario: InvSingleScenario` |
 
 Which file each class lives in:
 
@@ -92,9 +90,10 @@ Which file each class lives in:
 ## 3. Exceptions (`{domain}_exceptions.py`)
 
 **This file is optional.** A domain with no domain-specific constraint failures
-may omit it and rely on plain `assert`s / built-in exceptions (as `inv_single`,
-`cnv`, and `fnv` do). Provide it when the MDP raises structured, catchable errors
-that a caller may want to distinguish (as `owmr` and `2048` do).
+may omit it and rely on plain `assert`s / built-in exceptions (as both shipped
+examples do). Provide it when the MDP raises structured, catchable errors that
+a caller may want to distinguish (e.g. an invalid-move error in a board game,
+or an infeasible-allocation error in a multi-entity logistics domain).
 
 ```python
 class {Domain}Error(Exception):
@@ -135,7 +134,7 @@ Generators need `period`, `episode_seed`, and `seed_salt` to build a reproducibl
 
 Resolve this with **structural typing**: declare the minimal interface as a `typing.Protocol` and annotate `sample()` against it. `{Domain}State` satisfies it structurally — no import required.
 
-Name it `SamplingContext` by default. A domain with a single dominant source of randomness may instead name it after that source — `{Source}Context` (e.g. `SpawnContext` in `2048`) — when that reads more naturally; the structural-typing mechanism is identical either way.
+Name it `SamplingContext` by default. A domain with a single dominant source of randomness may instead name it after that source — `{Source}Context` (e.g. `SpawnContext` in a tile-spawning board game) — when that reads more naturally; the structural-typing mechanism is identical either way.
 
 ```python
 from typing import Protocol
@@ -248,9 +247,9 @@ not obvious:
    through samplers.
 3. **Episode-start draws.** An episode-start draw is intrinsic only when it is
    the first step of the *same stochastic process* that continues per
-   transition (2048's initial tile spawn, drawn by the same `SpawnGenerator`
-   as every later spawn). A one-shot draw with no per-transition sibling
-   defaults to meta-level.
+   transition (a tile-merging board game's initial tile spawn, drawn by the
+   same `SpawnGenerator` as every later spawn). A one-shot draw with no
+   per-transition sibling defaults to meta-level.
 
 Two boundary lines that trip the unwary, stated explicitly:
 
@@ -267,7 +266,7 @@ Two boundary lines that trip the unwary, stated explicitly:
   agent-conditioned scenario selection breaks the MDP contract entirely.
 
 A domain where **all** randomness is meta-level has deterministic dynamics and
-no `{domain}_uncertainty.py` at all (e.g. `sudoku`: the puzzle is the
+no `{domain}_uncertainty.py` at all (e.g. a Sudoku domain: the puzzle is the
 scenario; placements are deterministic).
 
 ---
@@ -414,7 +413,7 @@ class {Domain}ScenarioSampler:
   assert uniqueness next to the registry.
 - This is **meta-level** randomness, **not** intrinsic MDP randomness. Do not
   model it as a `{Source}Generator` — see the boundary tests in §4.3.
-- A sampler may draw **entire problem instances** (a full sudoku board carved
+- A sampler may draw **entire problem instances** (a full Sudoku board carved
   from a random solved grid), not just scalar parameters. Unbounded,
   procedurally generated instance families stay samplers even though the
   draw is arguably the experimenter's — the grid alternative requires a
@@ -425,7 +424,7 @@ class {Domain}ScenarioSampler:
   `self.scenario(episode_seed)` in `reset()` to get the concrete scenario
   for that episode (§7).
 - **`scenario_name`**: set to the same key used in `SCENARIOS` (e.g.
-  `scenario_name="retailer-hidden-mu"`) so scripts can read it without an
+  `scenario_name="hidden-market-size"`) so scripts can read it without an
   isinstance check.
 - **Family-level attributes — the mirroring rule**: expose every attribute
   the gym or eval scripts need before a draw *under the same name as the
@@ -618,7 +617,7 @@ class {Domain}ScenarioGrid:
 - Instances are named `grid_{name}`, registered in `GRIDS`; a migrating
   domain that previously trained via an ad-hoc sampler may offer a
   legacy-exact draw mode on its derived sampler to preserve recorded
-  numbers (see `scenario_redesign.md` §11.1 for the FNV reference).
+  numbers (see `scenario_redesign.md` §11.1 for a worked migration).
 
 ---
 
@@ -801,8 +800,8 @@ A 0-indexed domain (periods P0, P1, …):
 
 - `state.period` is the **running counter**. On the state passed **in** it equals the period being processed; on the state returned **out** it has already advanced by one.
 - `info["action_period"]` = the **input** period = the period the decision acted on. It labels every diagnostic in that same `info` dict, so they never disagree. Equivalently it is `(returned state).period - 1`; for `init_state` that is `state.period - 1` (`-1` here; no decision yet).
-- 1-indexed domains (`cnv`, `fnv`) start at `state.period = 1`, so `init` gives `action_period = 0`.
-- Two-step domains (`owmr`, `inv_single`): `advance1` and `advance2` share the same `action_period = n`; only `advance2` advances `state.period` to `n+1`.
+- A 1-indexed domain starts at `state.period = 1`, so `init` gives `action_period = 0`.
+- Two-step domains (e.g. `inv_single`): `advance1` and `advance2` share the same `action_period = n`; only `advance2` advances `state.period` to `n+1`.
 
 **Do not put in `state`** anything that does not feed the next transition — per-step outcomes, per-step costs, profits, and benchmarks belong in `info` (or, for an episode-level benchmark, a public helper like `optimal_revenue(scenario, episode_seed)`). A field that would be `None`/`0` for most of the episode (a terminal-only benchmark) is a signal it belongs in `info`, not `state`.
 
@@ -905,7 +904,7 @@ When some actions are structurally invalid at certain states — not merely subo
 
    Masking is applied automatically during rollout collection; no extra flags needed.
 
-**Keep `valid_actions` cheap.** It is called every step during training. If checking validity requires re-running the transition function (as in 2048, where `_try_move` is called up to n times), ensure the underlying check is O(board size), not O(horizon).
+**Keep `valid_actions` cheap.** It is called every step during training. If checking validity requires re-running the transition function (e.g. a board game that must attempt each candidate move to test it), ensure the underlying check is O(board size), not O(horizon).
 
 ### 7.2 Handling Action Constraints (continuous action spaces)
 
@@ -932,11 +931,11 @@ Common transforms:
 | Bounded scalar `[lo, hi]` | `Box([-∞, ∞])` | sigmoid scaled to `[lo, hi]` |
 | Non-negative quantity | `Box([-∞, ∞])` | softplus or exp |
 
-**Simplex reparametrization in detail (OWMR example)**
+**Simplex reparametrization in detail (worked example)**
 
-OWMR ships inventory from a warehouse to N retailers. The allocation decisions must satisfy: `sum(shipments) <= wh_onhand` — i.e., they lie on a scaled simplex.
+Consider a one-warehouse multi-retailer domain: inventory ships from a warehouse to N retailers, and the allocation decisions must satisfy `sum(shipments) <= wh_onhand` — i.e., they lie on a scaled simplex.
 
-Action mode `"order&allocations"` in `owmr_gym.py`:
+An action mode `"order&allocations"` in its `{domain}_gym.py`:
 
 - **Raw action space**: `Box([0,1]^(N+1))` — unnormalized allocation weights, one per retailer plus warehouse self-retention. The policy outputs values in `[0, 1]`; their relative magnitudes matter, not their absolute values.
 - **Transform in `step()`**: L1-normalize the weights, then scale by available inventory:
@@ -1020,7 +1019,7 @@ if __name__ == "__main__":
 - Env constructed with `scenario=scenario` (keyword argument, never positional).
 - RLlib `env_config` dict must use `"scenario"` as the key (RLlib calls `Env(**config)`).
 - **Do not hard-code `gamma`** in PPO kwargs — expose it as a CLI argument instead.
-- **Pin BLAS/torch threads when launching training** (`OMP_NUM_THREADS=1 MKL_NUM_THREADS=1`): the policies in these domains are tiny, so torch's default all-cores threading adds sync overhead rather than speed, and on a shared machine it oversubscribes cores already used by other jobs (measured on sudoku 9x9: 9 min → 11 s for 2048 steps on a box concurrently running an 8-core workload; expect a smaller but still real gain on an idle box). The `mdp_tuning` harness sets this for its subprocesses automatically.
+- **Pin BLAS/torch threads when launching training** (`OMP_NUM_THREADS=1 MKL_NUM_THREADS=1`): the policies in these domains are tiny, so torch's default all-cores threading adds sync overhead rather than speed, and on a shared machine it oversubscribes cores already used by other jobs (measured on a small-board CNN domain: 9 min → 11 s for 2048 steps on a box concurrently running an 8-core workload; expect a smaller but still real gain on an idle box). The `mdp_tuning` harness sets this for its subprocesses automatically.
 
 ### 8.3 SB3 env-wrapper stack (VecNormalize)
 
@@ -1045,8 +1044,8 @@ env = VecNormalize(env, norm_obs=True, norm_reward=args.norm_reward, clip_obs=ar
 **When obs norm helps vs. when it hurts** — decide per domain, don't apply blindly:
 
 - **Helps** when obs dimensions span very different magnitudes (e.g. inventory ~1e3 alongside a price index ~1) *and* the obs distribution is roughly **stationary** across training. This is the common case and the main reason to enable it.
-- **Little benefit** when obs are already **homogeneous and bounded** on a common small scale (e.g. one-hot planes, or log2-scaled tiles in 2048) — there is no cross-feature imbalance to fix; a static encoding is enough.
-- **Risk** when the obs distribution is **non-stationary** — i.e. what the agent observes shifts as it improves (e.g. 2048's reachable tiles keep growing). The running `obs_rms` never stabilizes and the frozen eval stats match no single stage ("stats-mismatch under distribution shift"). Domains with this property may deliberately omit VecNormalize (see `inventory/inventory_train_PPO.py`).
+- **Little benefit** when obs are already **homogeneous and bounded** on a common small scale (e.g. one-hot planes, or log2-scaled tiles on a game board) — there is no cross-feature imbalance to fix; a static encoding is enough.
+- **Risk** when the obs distribution is **non-stationary** — i.e. what the agent observes shifts as it improves (e.g. a tile-merging game whose reachable tile values keep growing). The running `obs_rms` never stabilizes and the frozen eval stats match no single stage ("stats-mismatch under distribution shift"). Domains with this property may deliberately omit VecNormalize.
 
 Reward norm is training-only and largely redundant with PPO's `normalize_advantage`, so the decision above is really about **obs** norm.
 
@@ -1056,7 +1055,7 @@ Training outputs go to `results/{scenario_name}/{run_name}/` relative to the dom
 
 ```
 results/
-  {scenario_name}/                   # e.g. simple/, FNV-aMMFE/
+  {scenario_name}/                   # e.g. simple/, cost-sweep/
     {run_name}/                      # e.g. PPO_20260630_224416_default/
       {scenario_name}_{algo}.zip     # saved SB3 model
       vecnormalize.pkl               # VecNormalize running stats (if used)
@@ -1125,7 +1124,7 @@ def build_run_name(args: argparse.Namespace) -> str:
 Result: `PPO_20260630_224416_obssales_actdiscrete_rewprofit` (all defaults) or `PPO_20260630_224416_obstiming_actdiscrete_rewprofit_steps5000000`.
 
 **File naming rules**:
-- Model: `{scenario_name}_{algo}.zip` (e.g. `FNV-aMMFE_ppo.zip`)
+- Model: `{scenario_name}_{algo}.zip` (e.g. `simple_ppo.zip`)
 - Args log: `{scenario_name}_{algo}_args.txt`
 - Eval output: `ppo_eval_{eval_scenario}.tsv` — the eval scenario is encoded in the filename so that evaluating the same model on different scenarios produces non-overwriting files (see §9.6)
 
@@ -1139,14 +1138,14 @@ Pick the SB3 policy family from the **observation shape**, with a CLI override:
 
 The shape is a reliable proxy only because the gym conventions make it one: spatial observation modes deliberately emit channels-first 3D arrays (`(1, N, N)` for a raw board), while non-spatial features stay flat. A bare 2D obs is treated as non-spatial — genuinely spatial boards are already `(1, N, N)` by convention.
 
-**SB3's default NatureCNN must not be used** — its Atari-sized kernels (8×8 stride 4) crash on small boards. The default extractor is a small-board CNN (`SmallBoardCnn` in the train script, following the 2048 precedent of extractors living there):
+**SB3's default NatureCNN must not be used** — its Atari-sized kernels (8×8 stride 4) crash on small boards. The default extractor is a small-board CNN (`SmallBoardCnn`, defined in the train script — extractors live there):
 
 - stacked stride-1, same-padding convolutions, channels `(32, 64)`, kernel 3 clamped to `min(3, H, W)`;
 - **no pooling** — absolute position matters on game boards;
 - flatten → `Linear(features_dim=128)` + ReLU;
 - `--net_arch` keeps meaning the MLP / pi-vf head widths in both families.
 
-Expose `--features_dim`, `--channels`, `--kernel_size` as CLI arguments so the `mdp_tuning` harness can reach them (its PPO space tunes `features_dim`/`channels` whenever the script exposes them). Domains may add specialized extractors beyond the default (e.g. 2048's row/column kernels) behind a `--cnn_arch` choice.
+Expose `--features_dim`, `--channels`, `--kernel_size` as CLI arguments so the `mdp_tuning` harness can reach them (its PPO space tunes `features_dim`/`channels` whenever the script exposes them). Domains may add specialized extractors beyond the default (e.g. row/column kernels for a grid board) behind a `--cnn_arch` choice.
 
 ---
 

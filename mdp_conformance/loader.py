@@ -3,7 +3,8 @@
 A domain is discovered by the spec's file-naming convention (§1): a directory
 containing ``{prefix}_gym.py``, ``{prefix}_mdp.py`` and ``{prefix}_scenarios.py``.
 The prefix is read from the files, not the folder name, because it may differ
-(e.g. the ``2048/`` directory uses the ``game2048_`` prefix).
+(e.g. the ``dynamic_pricing/`` example uses the ``vanryzin_pricing_`` prefix
+for its IR and adapter).
 
 ``load_domain`` imports the domain's modules (adding its directory to
 ``sys.path`` so the domain's bare-name sibling imports resolve) and returns a
@@ -50,7 +51,7 @@ class CheckResult:
 class DomainHandle:
     """Normalized view of one domain under test."""
 
-    name: str                       # file prefix, e.g. "inv_single", "game2048"
+    name: str                       # file prefix, e.g. "inv_single"
     directory: Path
     files: dict[str, Path]          # role -> path (roles in ROLE_SUFFIXES + "mdp")
     modules: dict[str, ModuleType]  # role -> imported module
@@ -87,7 +88,8 @@ def discover_prefix(directory: Path) -> str:
 
 
 def _mdp_module_name_from_gym(gym_tree: ast.Module, prefix: str) -> str:
-    """Read which ``*_mdp`` module the gym imports (owmr has two candidates)."""
+    """Read which ``*_mdp`` module the gym imports (a domain may ship more
+    than one ``*_mdp`` candidate)."""
     for node in ast.walk(gym_tree):
         if isinstance(node, ast.ImportFrom) and node.module and node.module.endswith("_mdp"):
             return node.module

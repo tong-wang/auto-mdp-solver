@@ -57,31 +57,18 @@ _DRAW = re.compile(
     r"^\s*([A-Za-z_]\w*)\s*~\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*$"
 )
 
-# the function whitelist matching the schema's _BUILTINS (minus keywords)
+# the function whitelist matching the schema's _BUILTINS (minus keywords).
+# Core functions only — domain-owned builtins are declared per IR in
+# `mdp.expr_builtins` and injected in `IrInterpreter.__init__`.
 _FUNCS: dict[str, object] = {
     "min": min, "max": max, "sum": sum, "abs": abs, "len": len,
     "round": round, "int": int, "float": float,
     "exp": math.exp, "log": math.log, "sqrt": math.sqrt,
     "floor": math.floor, "ceil": math.ceil,
     "zeros": lambda n: [0] * int(n),
-    # extension 2026-07-10 (topk_id): must stay in lockstep with schema._BUILTINS
     "phi": lambda x: 0.5 * (1.0 + math.erf(x / math.sqrt(2.0))),
     "topk": lambda values, k: sorted(values, reverse=True)[: int(k)],
     "range": range,
-    # extension 2026-07-13 (topk_id): deterministic probit-MAP top-k selection.
-    # The implementation lives with the domain that motivated it
-    # (topk_id/topk_id_probit_map.py — one shared function, bit-exact by
-    # construction); resolved lazily so mdp_ir keeps no hard domain dependency
-    # and IRs that never call bayes_topk never trigger the import.
-    "bayes_topk": lambda *args: _domain_builtin(
-        "topk_id", "topk_id_probit_map", "bayes_topk"
-    )(*args),
-    "post_mu": lambda *args: _domain_builtin(
-        "topk_id", "topk_id_probit_map", "post_mu"
-    )(*args),
-    "post_sd": lambda *args: _domain_builtin(
-        "topk_id", "topk_id_probit_map", "post_sd"
-    )(*args),
 }
 
 
@@ -114,6 +101,20 @@ def _domain_builtin(domain: str, module: str, func: str):
         f"domain builtin {module}.{func}: {module}.py is neither importable "
         f"nor found next to any loaded IR ({[str(d) for d in DOMAIN_DIRS]})"
     )
+
+
+def _declared_funcs(ir: MdpIR) -> dict[str, object]:
+    """Callables for the IR's declared ``mdp.expr_builtins``: each lazily
+    resolves ``def {name}`` in ``{module}.py`` next to the IR on first call,
+    so IRs that never call one never trigger the import."""
+
+    def lazy(domain: str, module: str, func: str):
+        return lambda *args: _domain_builtin(domain, module, func)(*args)
+
+    return {
+        b.name: lazy(ir.domain.name, b.module, b.name)
+        for b in ir.mdp.expr_builtins
+    }
 
 # policy stream: keeps random fallback decisions out of the model streams
 _POLICY_STREAM = 9999
@@ -224,6 +225,7 @@ class IrInterpreter:
         self.instance = instance
         self.seed_salt = seed_salt
         self._scheme = ir.seed_scheme
+        self._funcs = {**_FUNCS, **_declared_funcs(ir)}
         # a mixture name is usable wherever an instance name is (spec §5.3);
         # its component is drawn per episode in _episode_setup()
         self._mixture = next(
@@ -257,7 +259,7 @@ class IrInterpreter:
 
     def _base_ns(self) -> dict:
         ns: dict = {"__builtins__": {}}
-        ns.update(_FUNCS)
+        ns.update(self._funcs)
         ns.update(self.constants)
         ns["T"] = self.T
         return ns
@@ -312,7 +314,7 @@ class IrInterpreter:
             inst = m.components[k][1] or None
             if inst:
                 consts.update(scenario.instances[inst])
-        ns: dict = {"__builtins__": {}, **_FUNCS, **consts}
+        ns: dict = {"__builtins__": {}, **self._funcs, **consts}
         for smp in scenario.samplers:
             if smp.instances and (inst or "") not in smp.instances:
                 continue
@@ -360,8 +362,7 @@ class IrInterpreter:
             return float(rng.normal(float(self._setting(settings["mean"], ns)),
                                     float(self._setting(settings["std"], ns))))
         if fam == "lognormal":
-            # extension 2026-07-15 (retailer): episode-level LogNormal market
-            # size; settings are the underlying normal's (mean, sigma)
+            # settings are the underlying normal's (mean, sigma)
             return float(rng.lognormal(float(self._setting(settings["mean"], ns)),
                                        float(self._setting(settings["sigma"], ns))))
         if fam == "uniform":

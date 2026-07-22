@@ -303,6 +303,49 @@ def main() -> None:
     except ValueError:
         check(True, "grid axis naming no constant fails validation")
 
+    # -- domain-owned expression builtins (mdp.expr_builtins) ----------------
+    # declared in the IR, implemented in a module next to it, lazily resolved
+    import json
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tdir = Path(td)
+        eb = inv.model_dump(mode="json")
+        eb["mdp"]["expr_builtins"] = [
+            {"name": "double_it", "module": "inv_single_test_builtins"}]
+        comp = eb["mdp"]["objective"]["per_step_components"][0]
+        comp_name = comp["name"]
+        comp["expr"] = f"double_it({comp['expr']})"
+        (tdir / "inv_single_schema.json").write_text(json.dumps(eb))
+        (tdir / "inv_single_test_builtins.py").write_text(
+            "def double_it(x):\n    return 2 * x\n")
+        eb_ir = load_ir(tdir / "inv_single_schema.json")
+        base_rows = simulate(inv, episode_seed=6, decisions={"order": 25.0}).rows
+        eb_rows = simulate(eb_ir, episode_seed=6, decisions={"order": 25.0}).rows
+        check(
+            all(abs(e[comp_name] - 2 * b[comp_name]) < 1e-9
+                for e, b in zip(eb_rows, base_rows)),
+            "expr_builtins: declared builtin resolved next to the IR and applied",
+        )
+
+    undecl = inv.model_dump(mode="json")
+    c0 = undecl["mdp"]["objective"]["per_step_components"][0]
+    c0["expr"] = f"triple_it({c0['expr']})"
+    try:
+        MdpIR.model_validate(undecl)
+        check(False, "undeclared function in an expression must fail validation")
+    except ValueError:
+        check(True, "undeclared function in an expression fails validation")
+
+    shadow = inv.model_dump(mode="json")
+    shadow["mdp"]["expr_builtins"] = [
+        {"name": "min", "module": "some_domain_extras"}]
+    try:
+        MdpIR.model_validate(shadow)
+        check(False, "expr_builtins shadowing a core builtin must fail")
+    except ValueError:
+        check(True, "expr_builtins shadowing a core builtin fails validation")
+
     print(f"\nall {_checks} checks passed")
 
 
