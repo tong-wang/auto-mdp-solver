@@ -33,6 +33,7 @@ change the fingerprint and needs no re-confirmation.
 ```jsonc
 {
   "ir_version": "0.4",
+  "seed_scheme": "v2",                   // spec §6.3 seed tree; canonical for new domains
 
   "domain": {
     "name": "inv_single",
@@ -115,35 +116,31 @@ change the fingerprint and needs no re-confirmation.
     ],
 
     // --- UNCERTAINTY: stages; `realization` DERIVES the seed key (§5.3) — never hand-written.
-    //     v1 scheme: stream_id >= 1 (0 reserved for scenario sampling);
-    //     v2 scheme: stream_id is the per-instance source id, may be 0 (§6).
+    //     v2 scheme: stream_id is the per-instance source id under branch 1, may be 0.
     "uncertainty_sources": [
       {
-        "name": "demand", "generator": "EpisodeDemand", "stream_id": 1,
+        // per-period demand from a fixed categorical whose support/weights the
+        // paper_demand SAMPLER realizes once per episode into demand_vals /
+        // demand_probs (scenario.samplers below). Under v2 that episode-level
+        // draw is a world-latent sampler (§6.3), never an intrinsic stage.
+        "name": "demand", "generator": "FixedDistributionDemand", "stream_id": 0,
         "is_discrete": true, "latent": false,
         "distribution": {
-          "family": "episode_categorical",
-          // string values are exprs / constant references — no inline numbers:
-          "settings": { "support_size": "demand_support_size",
-                        "support_low":  "demand_support_low",
-                        "support_high": "demand_support_high" }
+          "family": "categorical",
+          "settings": { "values": "demand_vals", "probabilities": "demand_probs" }
         },
-        "stages": [
-          // episode (v1 only; v2 models this as a scenario sampler, §6):
-          //   drawn once → seed_key() = [stream:1.0, episode_seed, seed_salt]
-          { "name": "support", "realization": "episode", "sub_stream": 0 },
-          // period: each step  → seed_key() = [stream:1.1, period, episode_seed, seed_salt]
-          { "name": "sample",  "realization": "period",  "sub_stream": 1 }
-        ]
+        // one per-period stage → seed_key() = [period, source:0, 1, episode_seed, seed_salt]
+        "stages": [ { "name": "sample", "realization": "period" } ]
       },
       {
-        "name": "leadtime", "generator": "DiscreteLeadtime", "stream_id": 2,
+        "name": "leadtime", "generator": "DiscreteLeadtime", "stream_id": 1,
         "is_discrete": true, "latent": false,
         "distribution": {
           "family": "categorical",
           "settings": { "values": "leadtime_values", "probabilities": "leadtime_probs" }
         },
         // event: decision-triggered; trigger REQUIRED (validated)
+        // → seed_key() = [period, source:1, 1, episode_seed, seed_salt]
         "stages": [ { "name": "draw", "realization": "event", "trigger": "O && order>0" } ]
       }
     ],
@@ -191,11 +188,40 @@ change the fingerprint and needs no re-confirmation.
         { "name": "demand_support_low",  "value": 10, "axis": "demand" },
         { "name": "demand_support_high", "value": 50, "axis": "demand" },
         { "name": "leadtime_values", "value": [2, 3, 4, 5], "axis": "leadtime" },
-        { "name": "leadtime_probs",  "value": [0.125, 0.375, 0.375, 0.125], "axis": "leadtime" }
+        { "name": "leadtime_probs",  "value": [0.125, 0.375, 0.375, 0.125], "axis": "leadtime" },
+        // placeholders; the paper_demand sampler overwrites these each episode
+        { "name": "demand_vals",  "value": [10, 20, 30, 40, 50],     "axis": "",
+          "desc": "realized per episode by the paper_demand sampler" },
+        { "name": "demand_probs", "value": [0.2, 0.2, 0.2, 0.2, 0.2], "axis": "",
+          "desc": "realized per episode by the paper_demand sampler" }
       ],
       "instances": {
         "lost_sales": { "allow_backlog": false }   // overrides validated against constant names
-      }
+      },
+      // world-latent samplers (spec §5.2): realized once per episode on the meta
+      // branch (§6.3, key [substream_id, 0, episode_seed, seed_salt]) BEFORE any
+      // period draw. `hidden` bars the drawn constants from observation modes and
+      // drives the rl.requires_memory derivation. Each sampler has a distinct
+      // substream_id; `instances` names which scenario instances it applies to
+      // ("" = the base instance).
+      "samplers": [
+        {
+          "name": "paper_demand", "substream_id": 0, "hidden": true,
+          "instances": [""],
+          "draws": [
+            { "name": "demand_vals", "distribution": {
+                "family": "choice_without_replacement",
+                "settings": { "low": "demand_support_low", "high": "demand_support_high",
+                              "size": "demand_support_size" } } },
+            { "name": "demand_probs", "distribution": {
+                "family": "normalized_uniform_weights",
+                "settings": { "size": "demand_support_size" } } }
+          ],
+          "desc": "paper per-episode demand distribution (hidden world latent)"
+        }
+        // a second sampler (substream_id 1, instances ["lost_sales"]) covers the
+        // lost_sales instance — same draws, its own meta substream.
+      ]
     },
 
     // literal or expr over constants; must cover every `core` state var (validated)
@@ -250,11 +276,13 @@ change the fingerprint and needs no re-confirmation.
 
   // ═══════════════ rl — training configuration (Stage-4 input) ═══════════════
   "rl": {
-    // Confirmable<bool>; `suggested` must equal the derived latent-correlation
-    // heuristic (validated); reviewed here → human_confirmed
+    // Confirmable<bool>; `suggested` must equal the derived heuristic (validated):
+    // a hidden world-latent sampler ⇒ suggested=true. Overridden to false here
+    // because the realized demand distribution is fixed within an episode, so no
+    // within-episode inference (memory) is needed — a worked human_override.
     "requires_memory": {
-      "value": false, "suggested": false, "source": "human_confirmed",
-      "rationale": "no latent source with temporally-correlated realization"
+      "value": false, "suggested": true, "source": "human_override",
+      "rationale": "paper_demand is hidden ⇒ derivation suggests memory; overridden: the demand distribution is constant within an episode, nothing to infer step-to-step"
     },
     "algo": "ppo",                       // ppo | maskable_ppo | recurrent_ppo
     "frame_stack": 1,                    // >1 iff requires_memory (validated)
@@ -429,23 +457,26 @@ Features reference a **state var**, an **info field** (`info.demand`), or a
 resolve, and no mode touches anything latent.
 
 ### 5.3 Uncertainty realization timing drives the seed key — derived, not written
-Each source is a list of **stages** with `realization` ∈ `{episode, period,
-event}`:
-- `episode` → drawn once; key omits `period` (e.g. `EpisodeDemand.support`, a
-  latent regime).
+Each source is a list of **stages** with `realization` ∈ `{period, event,
+keyed}` (plus `episode`, v1-only — see below):
 - `period` → drawn every period; key includes `period`.
 - `event` → decision-triggered (`trigger` required, e.g. leadtime at `O` when
   `order > 0`); period-keyed, event-gated.
+- `episode` → drawn once; key omits `period`. **v1 only**: under v2 an
+  episode-level latent is a **scenario sampler** (world layer, §6.3 / the
+  `paper_demand` sampler above), not an intrinsic stage — the schema rejects
+  episode-realization stages in v2.
 
 The key itself is **computed** by `UncertaintyStage.seed_key()` from
 `realization` + `entity_id_in_seed` + `stream_id`/`sub_stream` — there is no
-hand-written `seed_keys` field to drift out of sync. Slot order is
-`[entity_id?, sub_stream?, stream_id, period?, episode_seed, seed_salt]`,
-matching the **reference generators** (note: spec §6.3's prose snippet shows
-`period` before `stream_id`, but the actual generator code puts the stream
-first — codegen must match the code, and the differential runner proves the
-interpreter does, bit-exactly). The conformance harness's **determinism** and
-**decision-path-independence** tests validate the *generated code* honors it.
+hand-written `seed_keys` field to drift out of sync. **Slot order depends on
+`seed_scheme`.** v2 (spec §6.3, canonical for new domains) keys the intrinsic
+branch `[entity_id?, sub_stream?, period?, stream_id, 1, episode_seed,
+seed_salt]` — `period` *below* the source, branch word `1` above it. v1
+(frozen legacy) instead keys `stream_id` *before* `period`. Generated code
+must match **its own scheme**; the differential runner proves the interpreter
+reproduces it bit-exactly, and the conformance harness's **determinism** and
+**decision-path-independence** tests validate the generated code honors it.
 
 ---
 

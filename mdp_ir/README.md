@@ -46,15 +46,17 @@ print(traj.render())
 
 Decisions not fixed are drawn uniformly within their declared bounds,
 deterministically from the episode seed. Draws are keyed by the schema-derived
-seed keys — `[entity_id?, sub_stream?, stream_id, period?, episode_seed,
-seed_salt]`, matching the reference generators (n.b. spec §6.3's snippet shows
-`period` before `stream_id`; the actual generator code puts the stream first,
-and the IR follows the code) — so trajectories are reproducible and realized
-uncertainty is decision-path independent by construction
-(`interpreter_test.py` asserts this, plus conservation and termination
-properties, on both examples). Supported distribution families:
-`episode_categorical`, `categorical`, `poisson`, `normal`, `lognormal`,
-`uniform`, `bernoulli`.
+seed keys (`UncertaintyStage.seed_key`), whose slot order depends on
+`seed_scheme`: v1 (frozen legacy) keys `stream_id` before `period`; v2
+(spec §6.3, the canonical scheme for new domains) keys `period` below the
+source with a branch word. Generated code must match its own scheme — the
+differential runner proves the interpreter reproduces each bit-exactly — so
+trajectories are reproducible and realized uncertainty is decision-path
+independent by construction (`interpreter_test.py` asserts this, plus
+conservation and termination properties, on both examples). Supported
+per-period distribution families: `categorical`, `poisson`, `normal`,
+`lognormal`, `uniform`, `bernoulli`; scenario samplers add the recipe families
+`choice_without_replacement` and `normalized_uniform_weights`.
 
 ## Diff against real code (the differential runner)
 

@@ -15,11 +15,13 @@ Semantics implemented:
     (``x ~ source.stage``) or restricted Python statements executed against
     the IR namespace (state ∪ info ∪ decisions ∪ scenario constants ∪ locals
     ∪ whitelisted functions — the same namespace the schema validates).
-  * Seeding follows the schema's *derived* key (``UncertaintyStage.seed_key``):
-    ``[entity_id?, sub_stream?, stream_id, period?, episode_seed, seed_salt]``.
-    Episode-realization draws are cached per episode; period/event draws are
-    keyed on the current period, so realized uncertainty is decision-path
-    independent by construction.
+  * Seeding follows the schema's *derived* key (``UncertaintyStage.seed_key``),
+    whose slot order depends on ``seed_scheme``: v1 keys ``stream_id`` before
+    ``period``; v2 (spec §6.3, canonical for new domains) keys ``period`` below
+    the source with a branch word — see that method for both grammars. An
+    episode-realization stage takes a period-less key, so its draw is constant
+    across the episode; period/event draws key on the current period, so
+    realized uncertainty is decision-path independent by construction.
   * ``objective.per_step_components`` are evaluated at END_OF_PERIOD on
     end-of-period state; the decomposition info field carries them + ``total``.
   * The gym block supplies the default reward mode (evaluated per step) and
@@ -145,14 +147,13 @@ def _numeric_seed_key(
     key_vals: list[int] | None = None,
     scheme: str = "v1",
 ) -> list[int]:
-    """Numeric form of ``UncertaintyStage.seed_key`` (same slot order):
-    ``[entity_id?, key_exprs..., sub_stream?, stream_id, period?,
-    episode_seed, seed_salt]`` — matching the reference generators (e.g. a v1
-    two-stage episode-support generator keys ``[sub, stream, period,
-    episode_seed, seed_salt]``), so interpreter draws are bit-identical to
-    conforming domain code. ``key_vals`` are the evaluated ``key_exprs`` of a
-    keyed stage; keyed stages carry no period slot (the draw is a fixed
-    per-episode latent table indexed by the key values)."""
+    """Numeric form of ``UncertaintyStage.seed_key`` (same slot order, per
+    ``scheme``): v1 keys ``stream_id`` before ``period``; v2 (spec §6.3) keys
+    ``period`` below the source, then the branch word ``1`` — see
+    ``UncertaintyStage.seed_key`` for both symbolic grammars. Interpreter draws
+    are bit-identical to conforming domain code. ``key_vals`` are the evaluated
+    ``key_exprs`` of a keyed stage; keyed stages carry no period slot (the draw
+    is a fixed per-episode latent table indexed by the key values)."""
     key: list[int] = []
     if entity_id is not None:
         key.append(entity_id)
@@ -333,20 +334,10 @@ class IrInterpreter:
         self.T = int(consts[t]) if isinstance(t, str) else int(t)
 
     def _draw(self, source: UncertaintySource, stage: UncertaintyStage,
-              ns: dict, period: int, episode_seed: int, cache: dict) -> object:
-        fam = source.distribution.family
-        settings = source.distribution.settings
-
-        if fam == "episode_categorical":
-            support = self._episode_support(source, ns, episode_seed, cache)
-            if stage.realization is Realization.episode:
-                return support
-            vals, probs = support
-            rng = self._rng(source, stage, period, episode_seed, ns)
-            return int(rng.choice(vals, p=probs))
-
+              ns: dict, period: int, episode_seed: int) -> object:
         rng = self._rng(source, stage, period, episode_seed, ns)
-        return self._sample_family(rng, fam, settings, ns)
+        return self._sample_family(
+            rng, source.distribution.family, source.distribution.settings, ns)
 
     def _sample_family(self, rng: np.random.Generator, fam: str,
                        settings: dict, ns: dict) -> object:
@@ -386,25 +377,6 @@ class IrInterpreter:
             raw = rng.uniform(lo, hi, size=size)
             return [float(v) for v in raw / raw.sum()]
         raise NotImplementedError(f"distribution family {fam!r}")
-
-    def _episode_support(self, source: UncertaintySource, ns: dict,
-                         episode_seed: int, cache: dict) -> tuple:
-        """Draw-once (episode stage) support for the ``episode_categorical``
-        family (v1 only): a per-episode integer support drawn without
-        replacement, then random weights normalized to a distribution."""
-        stage = next(
-            st for st in source.stages if st.realization is Realization.episode
-        )
-        key = (source.name, stage.name)
-        if key not in cache:
-            s = int(self._setting(source.distribution.settings["support_size"], ns))
-            lo = int(self._setting(source.distribution.settings["support_low"], ns))
-            hi = int(self._setting(source.distribution.settings["support_high"], ns))
-            rng = self._rng(source, stage, 0, episode_seed)
-            vals = rng.choice(np.arange(lo, hi + 1), size=s, replace=False)
-            raw = rng.uniform(1.0, 10.0, size=s)
-            cache[key] = (vals.astype(int), raw / raw.sum())
-        return cache[key]
 
     # -- episode --------------------------------------------------------------
 
@@ -476,7 +448,6 @@ class IrInterpreter:
 
         ns = self._base_ns()
         ns.update(self._initial_state(ns))
-        cache: dict = {}
         traj = Trajectory(episode_seed=episode_seed, instance=self.instance)
         limit = self.T if max_periods is None else min(self.T, max_periods)
 
@@ -497,7 +468,7 @@ class IrInterpreter:
                         target, src_name, stage_name = m.groups()
                         src = self._sources[src_name]
                         stage = next(s for s in src.stages if s.name == stage_name)
-                        ns[target] = self._draw(src, stage, ns, period, episode_seed, cache)
+                        ns[target] = self._draw(src, stage, ns, period, episode_seed)
                     else:
                         self._exec(u, ns)
 

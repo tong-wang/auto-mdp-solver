@@ -83,9 +83,10 @@ compute; run training/tuning in the background and keep working.
 
 v1 envelope: finite horizon, low-dimensional state/action, single agent.
 Latent state is allowed (gym hides it; may need frame-stack/RecurrentPPO).
-The IR interpreter supports distribution families: `episode_categorical`,
-`categorical`, `poisson`, `normal`, `lognormal`, `uniform`, `bernoulli`;
-scalar `[lo,hi]` decision bounds. If the problem doesn't fit, say exactly what doesn't fit
+The IR interpreter supports per-period distribution families: `categorical`,
+`poisson`, `normal`, `lognormal`, `uniform`, `bernoulli` (plus the scenario-
+sampler recipe families `choice_without_replacement`,
+`normalized_uniform_weights`); scalar `[lo,hi]` decision bounds. If the problem doesn't fit, say exactly what doesn't fit
 and stop — extending `mdp_ir/` is a separate task the user must approve.
 
 ## Phase A — formalize (human in the loop)

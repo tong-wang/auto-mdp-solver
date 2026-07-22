@@ -91,8 +91,8 @@ class FixedDistributionDemand(DemandGenerator):
 
     The (vals, probs) pair typically comes from the world-latent draw in
     InvSingleScenarioSampler; within a concrete scenario they are plain
-    constants, so phi() is available (unlike the retired EpisodeDemand,
-    whose marginal PMF required integrating over episode randomness).
+    constants, so phi() is an exact PMF lookup — no integrating over the
+    episode-level demand draw, which the sampler has already realized.
     """
 
     is_discrete = True
