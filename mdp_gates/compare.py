@@ -50,6 +50,7 @@ class EvalStats:
     mean: float
     var: float
     rows: int
+    available_means: list[str] = field(default_factory=list)  # all *_mean columns present
 
 
 @dataclass
@@ -69,6 +70,7 @@ class GateReport:
     sense: str = "maximize"
     comparisons: list[Comparison] = field(default_factory=list)
     references: list[EvalStats] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -82,6 +84,7 @@ class GateReport:
             f"candidate  {c.label}: {c.metric} = {c.mean:.4f} ± {se_c:.4f} "
             f"(SE, n={self.n_seeds}; sense={self.sense}, {better} is better)"
         ]
+        lines += [f"  [WARN] {w}" for w in self.warnings]
         for cmp in self.comparisons:
             b = cmp.baseline
             verdict = "PASS" if cmp.passed else "FAIL"
@@ -109,8 +112,9 @@ def _read_eval_tsv(path: Path, metric: str | None) -> EvalStats:
     if not rows:
         raise ValueError(f"{path}: no data rows")
 
+    mean_cols = [c for c in rows[0] if c.endswith("_mean")]
     if metric is None:
-        metric = next((c for c in rows[0] if c.endswith("_mean")), None)
+        metric = mean_cols[0] if mean_cols else None
         if metric is None:
             raise ValueError(f"{path}: no *_mean column; have {list(rows[0])}")
     if metric not in rows[0]:
@@ -127,6 +131,7 @@ def _read_eval_tsv(path: Path, metric: str | None) -> EvalStats:
         mean=sum(means) / len(means),
         var=sum(varis) / len(varis),
         rows=len(rows),
+        available_means=mean_cols,
     )
 
 
@@ -144,6 +149,17 @@ def compare_evals(
     sense_sign = 1.0 if sense == "maximize" else -1.0
     cand = _read_eval_tsv(candidate, metric)
     report = GateReport(candidate=cand, n_seeds=n_seeds, z_min=z_min, sense=sense)
+    if metric is None:
+        # the metric was auto-picked (first *_mean column); the wrong pick
+        # gates on the wrong quantity, and its sense may not match --sense.
+        msg = (
+            f"metric auto-selected as {cand.metric!r} (first *_mean column); "
+            f"pass --metric to choose explicitly"
+        )
+        others = [m for m in cand.available_means if m != cand.metric]
+        if others:
+            msg += f". Other *_mean columns present: {others}"
+        report.warnings.append(msg)
     for path in baselines:
         base = _read_eval_tsv(path, metric or cand.metric)
         diff = cand.mean - base.mean            # raw mean difference (cand - base)

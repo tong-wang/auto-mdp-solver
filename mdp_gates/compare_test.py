@@ -78,6 +78,24 @@ def main() -> None:
         except ValueError:
             check(True, "invalid sense value raises ValueError")
 
+        # -- auto-metric warning ---------------------------------------------
+        # explicit --metric: no warning
+        rep = compare_evals(hi, [lo], [], n_seeds=N, metric="revenue_mean")
+        check(not rep.warnings, "explicit metric: no auto-select warning")
+        # auto-pick (metric=None): one warning naming the picked column
+        rep = compare_evals(hi, [lo], [], n_seeds=N)
+        check(len(rep.warnings) == 1 and "revenue_mean" in rep.warnings[0]
+              and "auto-selected" in rep.warnings[0],
+              "auto-selected metric emits a warning naming the column")
+        # ambiguity: multiple *_mean columns → warning lists the others
+        (d / "multi.tsv").write_text(
+            "cost_total_mean\tcost_total_var\treturn_mean\treturn_var\n"
+            "40.0\t1.0\t-40.0\t1.0\n")
+        base_multi = d / "multi.tsv"
+        rep = compare_evals(base_multi, [base_multi], [], n_seeds=N, sense="minimize")
+        check(rep.warnings and "return_mean" in rep.warnings[0],
+              "auto-pick with several *_mean columns warns and lists the others")
+
     print(f"\nall {_checks} checks passed")
 
 

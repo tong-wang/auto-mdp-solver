@@ -24,6 +24,11 @@ python -m mdp_gates \
   `mdp_tuning`'s `--minimize`.
 - `--reference` files (e.g. the DP optimum) are reported — gap and % of
   reference — but never gate.
+- When `--metric` is omitted the gate **auto-picks the first `*_mean` column**
+  and prints a `[WARN]` naming it (and listing any other `*_mean` columns).
+  Auto-picking the wrong column gates on the wrong quantity — and its sense may
+  not match `--sense` — so pass `--metric` explicitly whenever the TSV has more
+  than one metric.
 - All TSVs must use the same seed protocol (seeds `0..n-1`, spec §9.2).
   Shared seeds make the unpaired SE conservative, so PASS is trustworthy.
 - Comment lines starting with `#` are skipped; multi-row grid TSVs are
