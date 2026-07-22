@@ -119,6 +119,20 @@ def _domain_builtin(domain: str, module: str, func: str):
 _POLICY_STREAM = 9999
 
 
+def _meta_seed_key(
+    scheme: str, substream_id: int, episode_seed: int, seed_salt: int
+) -> list[int]:
+    """Meta-branch key for samplers/mixtures (spec §6.3). v2: leaf-first
+    ``[substream, 0, episode_seed, seed_salt]``. v1 legacy: the historical
+    ``[0, episode_seed, seed_salt]`` for the lone (substream 0) drawer, else
+    ``[0, substream, episode_seed, seed_salt]``."""
+    if scheme == "v2":
+        return [substream_id, 0, episode_seed, seed_salt]
+    if substream_id == 0:
+        return [0, episode_seed, seed_salt]
+    return [0, substream_id, episode_seed, seed_salt]
+
+
 def _numeric_seed_key(
     stage: UncertaintyStage,
     stream_id: int,
@@ -128,6 +142,7 @@ def _numeric_seed_key(
     seed_salt: int,
     entity_id: int | None = None,
     key_vals: list[int] | None = None,
+    scheme: str = "v1",
 ) -> list[int]:
     """Numeric form of ``UncertaintyStage.seed_key`` (same slot order):
     ``[entity_id?, key_exprs..., sub_stream?, stream_id, period?,
@@ -142,11 +157,20 @@ def _numeric_seed_key(
         key.append(entity_id)
     if key_vals:
         key += key_vals
-    if stage.sub_stream is not None:
-        key.append(stage.sub_stream)
-    key.append(stream_id)
-    if stage.realization not in (Realization.episode, Realization.keyed):
-        key.append(period)
+    has_period = stage.realization not in (Realization.episode, Realization.keyed)
+    if scheme == "v2":
+        # v2 seed tree (spec §6.3), leaf-first: [.., sub?, period?, source, 1, e, salt]
+        if stage.sub_stream is not None:
+            key.append(stage.sub_stream)
+        if has_period:
+            key.append(period)
+        key += [stream_id, 1]
+    else:
+        if stage.sub_stream is not None:
+            key.append(stage.sub_stream)
+        key.append(stream_id)
+        if has_period:
+            key.append(period)
     key += [episode_seed, seed_salt]
     return key
 
@@ -199,18 +223,27 @@ class IrInterpreter:
         self.ir = ir
         self.instance = instance
         self.seed_salt = seed_salt
+        self._scheme = ir.seed_scheme
+        # a mixture name is usable wherever an instance name is (spec §5.3);
+        # its component is drawn per episode in _episode_setup()
+        self._mixture = next(
+            (m for m in ir.mdp.scenario.mixtures if m.name == instance), None
+        )
+        base_instance = None if self._mixture is not None else instance
         self.constants: dict[str, object] = {
             c.name: c.value for c in ir.mdp.scenario.constants
         }
-        if instance is not None:
-            overrides = ir.mdp.scenario.instances.get(instance)
+        if base_instance is not None:
+            overrides = ir.mdp.scenario.instances.get(base_instance)
             if overrides is None:
                 raise KeyError(
-                    f"unknown scenario instance {instance!r}; "
-                    f"have {sorted(ir.mdp.scenario.instances)}"
+                    f"unknown scenario instance {base_instance!r}; "
+                    f"have {sorted(ir.mdp.scenario.instances)} "
+                    f"+ mixtures {[m.name for m in ir.mdp.scenario.mixtures]}"
                 )
             self.constants.update(overrides)
-        self.T = ir.mdp.horizon_T(instance)
+        self._base_constants = dict(self.constants)
+        self.T = ir.mdp.horizon_T(base_instance)
         self._sources = {s.name: s for s in ir.mdp.uncertainty_sources}
         self._decomposition = next(
             (f for f in ir.mdp.info_fields if f.type == "decomposition"), None
@@ -254,9 +287,48 @@ class IrInterpreter:
         key = _numeric_seed_key(
             stage, source.stream_id,
             period=period, episode_seed=episode_seed, seed_salt=self.seed_salt,
-            key_vals=key_vals,
+            key_vals=key_vals, scheme=self._scheme,
         )
         return np.random.default_rng(np.random.SeedSequence(key))
+
+    # -- episode setup: world-layer meta draws (spec §5.2, §5.3) --------------
+
+    def _episode_setup(self, episode_seed: int) -> None:
+        """Resolve this episode's constants and horizon: draw the mixture
+        component (if the target is a mixture), then run every applicable
+        sampler's draws in declaration order from its meta-keyed rng."""
+        scenario = self.ir.mdp.scenario
+        if self._mixture is None and not scenario.samplers:
+            return
+        consts = dict(self._base_constants)
+        inst = self.instance
+        if self._mixture is not None:
+            m = self._mixture
+            weights = np.asarray([w for w, _ in m.components], dtype=float)
+            rng = np.random.default_rng(np.random.SeedSequence(
+                _meta_seed_key(self._scheme, m.substream_id,
+                               episode_seed, self.seed_salt)))
+            k = int(rng.choice(len(m.components), p=weights / weights.sum()))
+            inst = m.components[k][1] or None
+            if inst:
+                consts.update(scenario.instances[inst])
+        ns: dict = {"__builtins__": {}, **_FUNCS, **consts}
+        for smp in scenario.samplers:
+            if smp.instances and (inst or "") not in smp.instances:
+                continue
+            # one rng per sampler; draws execute in order (multi-draw recipes
+            # like support-then-weights are bit-reproducible by construction)
+            rng = np.random.default_rng(np.random.SeedSequence(
+                _meta_seed_key(self._scheme, smp.substream_id,
+                               episode_seed, self.seed_salt)))
+            for draw in smp.draws:
+                value = self._sample_family(
+                    rng, draw.distribution.family, draw.distribution.settings, ns)
+                consts[draw.name] = value
+                ns[draw.name] = value
+        self.constants = consts
+        t = self.ir.mdp.horizon.T
+        self.T = int(consts[t]) if isinstance(t, str) else int(t)
 
     def _draw(self, source: UncertaintySource, stage: UncertaintyStage,
               ns: dict, period: int, episode_seed: int, cache: dict) -> object:
@@ -272,6 +344,12 @@ class IrInterpreter:
             return int(rng.choice(vals, p=probs))
 
         rng = self._rng(source, stage, period, episode_seed, ns)
+        return self._sample_family(rng, fam, settings, ns)
+
+    def _sample_family(self, rng: np.random.Generator, fam: str,
+                       settings: dict, ns: dict) -> object:
+        """Sample one value of a distribution family from ``rng``. Shared by
+        per-period/event draws and scenario-sampler draws (spec §5.2)."""
         if fam == "categorical":
             vals = self._setting(settings["values"], ns)
             probs = self._setting(settings["probabilities"], ns)
@@ -293,6 +371,19 @@ class IrInterpreter:
             # single-parameter family; accept any single setting key (p, p_high, …)
             (p,) = [self._setting(v, ns) for v in settings.values()]
             return int(rng.random() < float(p))
+        # sampler-recipe families (scenario samplers, spec §5.2): list-valued
+        if fam == "choice_without_replacement":
+            lo = int(self._setting(settings["low"], ns))
+            hi = int(self._setting(settings["high"], ns))
+            size = int(self._setting(settings["size"], ns))
+            return [int(v) for v in
+                    rng.choice(np.arange(lo, hi + 1), size=size, replace=False)]
+        if fam == "normalized_uniform_weights":
+            size = int(self._setting(settings["size"], ns))
+            lo = float(self._setting(settings.get("low", 1.0), ns))
+            hi = float(self._setting(settings.get("high", 10.0), ns))
+            raw = rng.uniform(lo, hi, size=size)
+            return [float(v) for v in raw / raw.sum()]
         raise NotImplementedError(f"distribution family {fam!r}")
 
     def _episode_support(self, source: UncertaintySource, ns: dict,
@@ -362,6 +453,9 @@ class IrInterpreter:
         per-period list of dicts, a constant dict, or None (random within
         bounds, seeded from the episode seed)."""
         ir = self.ir
+        # world-layer meta draws first: mixture component + sampler draws set
+        # this episode's constants/horizon before anything reads them
+        self._episode_setup(episode_seed)
         if decisions is None:
             policy = self._random_policy(episode_seed)
         elif callable(decisions):

@@ -301,10 +301,56 @@ class ScenarioConstant(_Base):
     desc: str = ""
 
 
+class SampledConstant(_Base):
+    """One world-latent draw inside a ScenarioSampler: realizes the named
+    scenario constant at episode start. The constant must already exist in
+    ``scenario.constants`` — its static value is the placeholder/example, so
+    every expr and validator sees the same namespace either way."""
+
+    name: str
+    distribution: "Distribution"
+
+
+class ScenarioSampler(_Base):
+    """World-latent sampler (spec §5.2): nature's per-episode draw, realized
+    once at episode start on the meta branch of the seed tree and written
+    into scenario constants. Draws execute **in order from one rng** seeded
+    by the sampler's meta key, so multi-draw recipes (a support then its
+    weights) are bit-reproducible."""
+
+    name: str
+    substream_id: int = 0                    # child id under branch 0 (§6.3)
+    draws: list[SampledConstant] = Field(min_length=1)
+    # hidden latents (policy must infer) suggest memory and are barred from
+    # observation exprs; observed latents (a forecast) are contextual inputs
+    hidden: bool = True
+    # instance names this sampler applies to; "" names the base constants;
+    # empty list = every instance incl. base
+    instances: list[str] = Field(default_factory=list)
+    desc: str = ""
+
+
+class ScenarioMixture(_Base):
+    """World mixture (spec §5.3): nature picks which component instance runs,
+    once per episode. Weights are a modeling commitment. Components name
+    scenario instances ("" = the base constants); a component's samplers then
+    apply with the episode seed delegated verbatim (standalone equivalence).
+    Usable anywhere an instance name is (``--instance``, gates)."""
+
+    name: str
+    substream_id: int = 0                    # child id under branch 0 (§6.3)
+    components: list[tuple[float, str]] = Field(min_length=2)
+    desc: str = ""
+
+
 class Scenario(_Base):
     constants: list[ScenarioConstant]
     # named alternative instances: overrides of constants by name -> _scenarios.py
     instances: dict[str, dict[str, float | int | bool | list]] = Field(default_factory=dict)
+    # world layer (spec §5.2, §5.3): samplers and mixtures; design-layer grids
+    # live OUTSIDE this node (MdpIR.grids), mirroring the two-layer split
+    samplers: list[ScenarioSampler] = Field(default_factory=list)
+    mixtures: list[ScenarioMixture] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check_instances(self) -> "Scenario":
@@ -318,7 +364,48 @@ class Scenario(_Base):
                 raise ValueError(
                     f"scenario instance {inst!r} overrides unknown constant(s) {sorted(bad)}"
                 )
+        # world-layer drawers: draw targets exist; instance refs exist; names
+        # and meta substream ids unique (children of branch 0, spec §6.3)
+        drawer_names = [s.name for s in self.samplers] + [m.name for m in self.mixtures]
+        clash = set(drawer_names) & set(self.instances)
+        if clash:
+            raise ValueError(f"sampler/mixture name(s) collide with instances: {sorted(clash)}")
+        if len(drawer_names) != len(set(drawer_names)):
+            raise ValueError(f"duplicate sampler/mixture names in {drawer_names}")
+        subs: dict[int, list[str]] = {}
+        for s in self.samplers:
+            subs.setdefault(s.substream_id, []).append(s.name)
+            bad = {d.name for d in s.draws} - known
+            if bad:
+                raise ValueError(
+                    f"sampler {s.name!r} draws unknown constant(s) {sorted(bad)}"
+                )
+            bad_inst = set(s.instances) - set(self.instances) - {""}
+            if bad_inst:
+                raise ValueError(
+                    f"sampler {s.name!r} references unknown instance(s) {sorted(bad_inst)}"
+                )
+        for m in self.mixtures:
+            subs.setdefault(m.substream_id, []).append(m.name)
+            for w, comp in m.components:
+                if w <= 0:
+                    raise ValueError(f"mixture {m.name!r}: weight {w} must be > 0")
+                if comp and comp not in self.instances:
+                    raise ValueError(
+                        f"mixture {m.name!r} references unknown instance {comp!r}"
+                    )
+        dupes = {k: v for k, v in subs.items() if len(v) > 1}
+        if dupes:
+            raise ValueError(f"meta substream_id shared by drawers: {dupes}")
         return self
+
+    @property
+    def sampled_constant_names(self) -> set[str]:
+        return {d.name for s in self.samplers for d in s.draws}
+
+    @property
+    def hidden_sampled_names(self) -> set[str]:
+        return {d.name for s in self.samplers if s.hidden for d in s.draws}
 
 
 class Distribution(_Base):
@@ -353,27 +440,41 @@ class UncertaintyStage(_Base):
             )
         return self
 
-    def seed_key(self, stream_id: int, entity_id_in_seed: bool) -> list[str]:
+    def seed_key(
+        self, stream_id: int, entity_id_in_seed: bool, scheme: str = "v1"
+    ) -> list[str]:
         """Derived symbolic seed key, reverse-tree order (most specific first).
         Never hand-written: `realization` fixes the `period` slot, the entity
         structure fixes the `entity_id` slot.
 
-        Slot order follows the reference generators (inv_single/owmr), which
-        key ``[sub_stream?, stream_id, period?, episode_seed, seed_salt]`` —
-        stream *before* period. (Spec §6.3's prose snippet shows period first;
-        the actual generator code does not — codegen must match the code.)
-        The ``stream:S.U`` symbol expands numerically to ``[U, S]``."""
+        **v1** (frozen legacy grammar) keys stream *before* period:
+        ``[entity_id?, expr:..., sub_stream?, stream_id, period?,
+        episode_seed, seed_salt]`` — matching the pre-redesign reference
+        generators. The ``stream:S.U`` symbol expands numerically to ``[U, S]``.
+
+        **v2** (spec §6.3 seed tree, leaf-first) keys the intrinsic branch:
+        ``[entity_id?, expr:..., sub_stream?, period?, stream_id, 1,
+        episode_seed, seed_salt]`` — period below the source, branch word 1
+        above it; ``stream_id`` is the per-instance source id (may be 0)."""
         key: list[str] = []
         if entity_id_in_seed:
             key.append("entity_id")
         if self.key_exprs:
             key += [f"expr:{e}" for e in self.key_exprs]
-        key.append(
-            f"stream:{stream_id}" if self.sub_stream is None
-            else f"stream:{stream_id}.{self.sub_stream}"
-        )
-        if self.realization not in (Realization.episode, Realization.keyed):
-            key.append("period")
+        has_period = self.realization not in (Realization.episode, Realization.keyed)
+        if scheme == "v2":
+            if self.sub_stream is not None:
+                key.append(f"sub:{self.sub_stream}")
+            if has_period:
+                key.append("period")
+            key += [f"source:{stream_id}", "branch:1"]
+        else:
+            key.append(
+                f"stream:{stream_id}" if self.sub_stream is None
+                else f"stream:{stream_id}.{self.sub_stream}"
+            )
+            if has_period:
+                key.append("period")
         key += ["episode_seed", "seed_salt"]
         return key
 
@@ -381,7 +482,9 @@ class UncertaintyStage(_Base):
 class UncertaintySource(_Base):
     name: str
     generator: str
-    stream_id: int = Field(ge=1)             # 0 is reserved for scenario sampling (spec §6.3)
+    # v1: >= 1 (0 reserved for scenario sampling); v2: the per-instance source
+    # id under branch 1 — may be 0. Enforced scheme-aware at the root.
+    stream_id: int = Field(ge=0)
     is_discrete: bool | None = None
     latent: bool = False
     distribution: Distribution
@@ -712,20 +815,39 @@ class ObservationMode(_Base):
 
 
 class ActionMode(_Base):
-    """A gym-layer *encoding* of a canonical decision (cf. OWMR action modes).
-    The ``_mdp`` layer consumes only the canonical decision; each mode maps the
-    agent-facing action onto it via ``transform`` (empty = identity)."""
+    """A gym-layer *encoding* of the canonical decision(s) (cf. OWMR action
+    modes). The ``_mdp`` layer consumes only the canonical decisions; each mode
+    maps the agent-facing action onto them via ``transform`` (empty = identity).
+
+    A problem whose period carries *several* simultaneous decisions (e.g. order
+    quantity **and** allocation) sets ``encodes`` to the list of decision names;
+    the agent action is then a vector whose k-th component drives
+    ``encodes[k]``, and ``bounds`` becomes one ``[lo, hi]`` pair per component
+    (extension 2026-07-21, adi_flex). The scalar forms remain valid and mean
+    exactly what they did before."""
 
     name: str
     default: bool = False
-    encodes: str                             # name of the canonical decision it maps to
+    # one decision name, or several driven by one vector action
+    encodes: str | list[str]
     type: DecisionType
     # entries may name scenario constants, like Decision.bounds (resolution is
-    # checked by the root validator, which can see the mdp block)
-    bounds: list[float | str]
+    # checked by the root validator, which can see the mdp block). Multi-decision
+    # modes carry one [lo, hi] pair per encoded decision, in the same order.
+    bounds: list[float | str] | list[list[float | str]]
     transform: str = ""                      # expr: agent action -> canonical decision
     feasibility_strategy: FeasibilityStrategy = FeasibilityStrategy.clip
     desc: str = ""
+
+    def encoded_decisions(self) -> list[str]:
+        """The canonical decisions this mode drives, in action-component order."""
+        return [self.encodes] if isinstance(self.encodes, str) else list(self.encodes)
+
+    def bounds_per_decision(self) -> list[list[float | str]]:
+        """One [lo, hi] per encoded decision, aligned with encoded_decisions()."""
+        if isinstance(self.encodes, str):
+            return [list(self.bounds)]                     # type: ignore[arg-type]
+        return [list(b) for b in self.bounds]              # type: ignore[union-attr]
 
     @model_validator(mode="after")
     def _check_strategy(self) -> "ActionMode":
@@ -737,6 +859,50 @@ class ActionMode(_Base):
             raise ValueError(
                 f"action mode {self.name!r}: reparametrize requires a non-empty transform"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _check_shape(self) -> "ActionMode":
+        """`encodes` and `bounds` must agree on arity: a scalar mode carries one
+        flat [lo, hi]; a multi-decision mode carries one pair per decision."""
+        nested = bool(self.bounds) and isinstance(self.bounds[0], list)
+        if isinstance(self.encodes, str):
+            if nested:
+                raise ValueError(
+                    f"action mode {self.name!r}: single-decision mode takes a flat "
+                    f"[lo, hi], got nested {self.bounds!r}"
+                )
+            pairs = [self.bounds]
+        else:
+            if len(self.encodes) < 2:
+                raise ValueError(
+                    f"action mode {self.name!r}: list `encodes` needs >= 2 decisions "
+                    f"(use the plain string form for one), got {self.encodes!r}"
+                )
+            if len(set(self.encodes)) != len(self.encodes):
+                raise ValueError(
+                    f"action mode {self.name!r}: `encodes` repeats a decision: {self.encodes!r}"
+                )
+            if not nested or len(self.bounds) != len(self.encodes):
+                raise ValueError(
+                    f"action mode {self.name!r}: multi-decision mode needs one [lo, hi] "
+                    f"per encoded decision ({len(self.encodes)}), got {self.bounds!r}"
+                )
+            if self.transform:
+                raise ValueError(
+                    f"action mode {self.name!r}: per-component transforms are not in v1; "
+                    f"multi-decision modes must be identity (transform=\"\")"
+                )
+            pairs = self.bounds                            # type: ignore[assignment]
+        for b in pairs:
+            if len(b) != 2:
+                raise ValueError(
+                    f"action mode {self.name!r}: bounds entries must be [lo, hi], got {b!r}"
+                )
+            if all(isinstance(x, (int, float)) for x in b) and b[0] >= b[1]:
+                raise ValueError(
+                    f"action mode {self.name!r}: bounds must satisfy lo < hi, got {b!r}"
+                )
         return self
 
 
@@ -826,13 +992,101 @@ class RlBlock(_Base):
 # ---------------------------------------------------------------------------
 
 
+class ScenarioGrid(_Base):
+    """Design-layer grid (spec §5.6): the finite generality target of a
+    generalist policy, expressed as axes over scenario constants crossed on a
+    base instance. Lives OUTSIDE the scenario node — the world layer never
+    contains a grid. Cell order is row-major over the axes in declaration
+    order; cell ids derive from axis names/values."""
+
+    name: str
+    base_instance: str = ""                  # "" = the base constants
+    axes: dict[str, list] = Field(min_length=1)   # constant -> values, ordered
+    desc: str = ""
+
+    def cells(self) -> list[tuple[str, dict]]:
+        """(cell_id, constant-overrides) in canonical row-major order."""
+        import itertools
+        names = list(self.axes)
+        out = []
+        for combo in itertools.product(*self.axes.values()):
+            overrides = dict(zip(names, combo))
+            cell_id = ",".join(f"{k}={v:g}" if isinstance(v, (int, float))
+                               else f"{k}={v}" for k, v in overrides.items())
+            out.append((cell_id, overrides))
+        return out
+
+
 class MdpIR(_Base):
     ir_version: str
+    # seed-key grammar (spec §6.3): "v1" frozen legacy (default — every
+    # pre-redesign IR keeps its draws bit-exact), "v2" the seed tree
+    seed_scheme: str = "v1"
     domain: Domain
     mdp: MdpBlock
     gym: GymBlock
     rl: RlBlock
+    # design layer (spec §5.6): generality targets for generalist training
+    grids: list[ScenarioGrid] = Field(default_factory=list)
     assumptions_log: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _seed_scheme_rules(self) -> "MdpIR":
+        if self.seed_scheme not in ("v1", "v2"):
+            raise ValueError(f"seed_scheme must be 'v1' or 'v2', got {self.seed_scheme!r}")
+        if self.seed_scheme == "v1":
+            bad = [s.name for s in self.mdp.uncertainty_sources if s.stream_id < 1]
+            if bad:
+                raise ValueError(
+                    f"v1 scheme: stream_id 0 is reserved for scenario sampling; "
+                    f"sources {bad} must use stream_id >= 1"
+                )
+        else:
+            # §4.3 enforced by grammar: an intrinsic key must contain the
+            # period level, so episode-realization stages cannot exist —
+            # world latents are scenario samplers under v2
+            bad = [
+                f"{src.name}.{st.name}"
+                for src in self.mdp.uncertainty_sources
+                for st in src.stages
+                if st.realization is Realization.episode
+            ]
+            if bad:
+                raise ValueError(
+                    f"v2 scheme: episode-realization stages {bad} are treatment A — "
+                    "model them as scenario.samplers (spec §4.3, §5.2)"
+                )
+            ids: dict[int, list[str]] = {}
+            for src in self.mdp.uncertainty_sources:
+                ids.setdefault(src.stream_id, []).append(src.name)
+            dupes = {k: v for k, v in ids.items() if len(v) > 1}
+            if dupes:
+                raise ValueError(f"v2 scheme: source ids shared: {dupes}")
+        return self
+
+    @model_validator(mode="after")
+    def _grids_resolve(self) -> "MdpIR":
+        consts = {c.name for c in self.mdp.scenario.constants}
+        names = [g.name for g in self.grids]
+        if len(names) != len(set(names)):
+            raise ValueError(f"duplicate grid names in {names}")
+        clash = set(names) & (set(self.mdp.scenario.instances)
+                              | {s.name for s in self.mdp.scenario.samplers}
+                              | {m.name for m in self.mdp.scenario.mixtures})
+        if clash:
+            raise ValueError(f"grid name(s) collide with world-layer names: {sorted(clash)}")
+        for g in self.grids:
+            bad = set(g.axes) - consts
+            if bad:
+                raise ValueError(f"grid {g.name!r}: axes {sorted(bad)} name no scenario constant")
+            empty = [a for a, vals in g.axes.items() if not vals]
+            if empty:
+                raise ValueError(f"grid {g.name!r}: empty axis value list for {empty}")
+            if g.base_instance and g.base_instance not in self.mdp.scenario.instances:
+                raise ValueError(
+                    f"grid {g.name!r}: unknown base_instance {g.base_instance!r}"
+                )
+        return self
 
     # -- cross-layer invariants (each enforces one downward edge) -----------
 
@@ -842,7 +1096,9 @@ class MdpIR(_Base):
         no observation mode."""
         state_names = {sv.name for sv in self.mdp.state_variables}
         info_names = {f.name for f in self.mdp.info_fields}
-        latent = self.mdp.latent_names
+        # hidden world latents (spec §5.2): a realized sampled constant is not
+        # automatically observable — bar hidden ones from observation exprs
+        latent = self.mdp.latent_names | self.mdp.scenario.hidden_sampled_names
         known = self.mdp.value_names - latent
         for mode in self.gym.observation_modes:
             for feat in mode.features:
@@ -874,21 +1130,31 @@ class MdpIR(_Base):
         decision_names = {d.name for d in self.mdp.decisions}
         constants = {c.name for c in self.mdp.scenario.constants}
         for m in self.gym.action_modes:
-            bad = [x for x in m.bounds if isinstance(x, str) and x not in constants]
+            flat = [x for pair in m.bounds_per_decision() for x in pair]
+            bad = [x for x in flat if isinstance(x, str) and x not in constants]
             if bad:
                 raise ValueError(
                     f"action mode {m.name!r}: bound entries {bad} name no scenario constant"
                 )
-            if m.encodes not in decision_names:
+            unknown = [d for d in m.encoded_decisions() if d not in decision_names]
+            if unknown:
                 raise ValueError(
-                    f"action mode {m.name!r} encodes unknown decision {m.encodes!r}; "
-                    f"must be one of {sorted(decision_names)}"
+                    f"action mode {m.name!r} encodes unknown decision(s) {unknown}; "
+                    f"must be among {sorted(decision_names)}"
                 )
             if m.transform:
                 _check_expr(
                     m.transform,
                     constants | decision_names | {m.name},
                     f"action mode {m.name!r}.transform",
+                )
+            # the mdp layer consumes every declared decision each period, so an
+            # action mode that drives only some of them cannot step the env
+            missing = decision_names - set(m.encoded_decisions())
+            if missing:
+                raise ValueError(
+                    f"action mode {m.name!r} leaves decision(s) {sorted(missing)} "
+                    f"unencoded; every mode must drive all {len(decision_names)} decisions"
                 )
         return self
 
@@ -922,7 +1188,7 @@ class MdpIR(_Base):
                 st.realization is Realization.episode for st in src.stages
             )
             for src in self.mdp.uncertainty_sources
-        )
+        ) or any(s.hidden for s in self.mdp.scenario.samplers)
         if self.rl.requires_memory.suggested != derived:
             raise ValueError(
                 f"rl.requires_memory.suggested={self.rl.requires_memory.suggested} "

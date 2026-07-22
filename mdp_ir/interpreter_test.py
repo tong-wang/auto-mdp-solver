@@ -171,12 +171,18 @@ def main() -> None:
     )
 
     # -- differential vs the handwritten inv_single domain ------------------------
-    from mdp_ir.differential import make_inv_single_adapter, run_differential
+    # the adapter lives beside the IR (portable-domain contract), so it is
+    # discovered from the IR path rather than imported from this package
+    from mdp_ir.differential import load_adapter_factory, run_differential
+
+    make_inv_single_adapter = load_adapter_factory(
+        ROOT / "examples" / "inv_single" / "inv_single_schema.json", inv
+    )
 
     for inst in (None, "lost_sales"):
         rep = run_differential(
-            inv, make_inv_single_adapter(inv, instance=inst),
-            episode_seeds=[0, 1, 2], instance=inst,
+            inv, make_inv_single_adapter(inv, instance=inst, seed_salt=1),
+            episode_seeds=[0, 1, 2], instance=inst, seed_salt=1,
         )
         check(
             rep.ok and rep.periods == 3 * inv.mdp.horizon_T(),
@@ -191,8 +197,111 @@ def main() -> None:
         "received = pipeline[0]", "inventory += received",   # missing shift
     ]
     bad_ir = MdpIR.model_validate(bad)
-    rep = run_differential(bad_ir, make_inv_single_adapter(bad_ir), episode_seeds=[0])
+    rep = run_differential(bad_ir, make_inv_single_adapter(bad_ir, seed_salt=1),
+                           episode_seeds=[0], seed_salt=1)
     check(not rep.ok, "differential: corrupted dynamics (missing pipeline shift) diverges")
+
+    # =====================================================================
+    # scenario redesign (scenario_redesign.md; spec §5, §6.3): world-layer
+    # samplers/mixtures, design-layer grids, seed scheme v2
+    # =====================================================================
+
+    # inv_single is natively seed_scheme v2 with hidden world-latent samplers
+    check(inv.seed_scheme == "v2" and len(inv.mdp.scenario.samplers) == 2
+          and all(s.hidden for s in inv.mdp.scenario.samplers),
+          "inv_single IR: v2 scheme, two hidden paper-demand samplers")
+
+    # -- v2 forbids treatment A (episode-realization stages) -----------------
+    ta = inv.model_dump(mode="json")
+    next(s for s in ta["mdp"]["uncertainty_sources"] if s["name"] == "demand")[
+        "stages"].append({"name": "support", "realization": "episode", "sub_stream": 0})
+    try:
+        MdpIR.model_validate(ta)
+        check(False, "v2 + episode-realization stage must fail validation")
+    except ValueError:
+        check(True, "v2 scheme rejects episode-realization stages (treatment A)")
+
+    # -- hidden latent wiring: derivation tracked, constants unobservable ----
+    rm = inv.model_dump(mode="json")
+    rm["rl"]["requires_memory"]["suggested"] = False
+    try:
+        MdpIR.model_validate(rm)
+        check(False, "hidden sampler must flip the requires_memory derivation")
+    except ValueError:
+        check(True, "hidden sampler flips requires_memory derivation (validator catches)")
+    d4 = {r["demand"] for r in simulate(inv, episode_seed=4, decisions={"order": 0.0}).rows}
+    d5 = {r["demand"] for r in simulate(inv, episode_seed=5, decisions={"order": 0.0}).rows}
+    check(len(d4) <= 5 and d4 != d5,
+          "v2 sampler: <=5-value support per episode, varying across seeds")
+
+    # -- v2 seed keys: period below source, branch word, leaf-first ----------
+    v2_ir = inv
+    src = next(s for s in v2_ir.mdp.uncertainty_sources if s.name == "demand")
+    stage = src.stages[0]
+    expected = ([f"sub:{stage.sub_stream}"] if stage.sub_stream is not None else []) + [
+        "period", f"source:{src.stream_id}", "branch:1", "episode_seed", "seed_salt"]
+    check(stage.seed_key(src.stream_id, False, scheme="v2") == expected,
+          "v2 symbolic key: [sub?, period, source, branch:1, episode_seed, seed_salt]")
+    from mdp_ir.interpreter import _meta_seed_key, _numeric_seed_key
+    nk = _numeric_seed_key(stage, src.stream_id, period=7, episode_seed=9,
+                           seed_salt=13, scheme="v2")
+    check(nk[-5:] == [7, src.stream_id, 1, 9, 13],
+          "v2 numeric key ends [period, source, 1, episode_seed, seed_salt]")
+    check(_meta_seed_key("v2", 2, 9, 13) == [2, 0, 9, 13]
+          and _meta_seed_key("v1", 0, 9, 13) == [0, 9, 13],
+          "meta keys: v2 [sub, 0, e, salt]; v1 legacy [0, e, salt]")
+
+    # -- duplicate meta substream ids fail -----------------------------------
+    dup = inv.model_dump(mode="json")
+    dup["mdp"]["scenario"]["samplers"].append(
+        {"name": "second", "substream_id": 0,
+         "draws": [{"name": "demand_probs", "distribution": {
+             "family": "normalized_uniform_weights", "settings": {"size": 5}}}]})
+    try:
+        MdpIR.model_validate(dup)
+        check(False, "duplicate substream_id must fail validation")
+    except ValueError:
+        check(True, "duplicate meta substream_id fails validation")
+
+    # -- mixture: standalone equivalence over components ---------------------
+    mx = inv.model_dump(mode="json")
+    mx["mdp"]["scenario"]["mixtures"] = [{
+        "name": "mix", "substream_id": 3,
+        "components": [[0.5, ""], [0.5, "lost_sales"]],
+    }]
+    mx_ir = MdpIR.model_validate(mx)
+    pure = {
+        comp: {e: IrInterpreter(mx_ir, instance=comp or None)
+               .run(e, decisions={"order": 0.0}).rows for e in range(10)}
+        for comp in ("", "lost_sales")
+    }
+    hit = {"": 0, "lost_sales": 0}
+    for e in range(10):
+        rows = IrInterpreter(mx_ir, instance="mix").run(e, decisions={"order": 0.0}).rows
+        matched = [c for c in hit if rows == pure[c][e]]
+        assert len(matched) == 1, f"mixture episode {e} matches {matched}"
+        hit[matched[0]] += 1
+    check(all(v > 0 for v in hit.values()),
+          f"mixture: every episode equals one component verbatim; both hit {hit}")
+
+    # -- design-layer grid: canonical cells ----------------------------------
+    axes_consts = [c.name for c in inv.mdp.scenario.constants
+                   if isinstance(c.value, (int, float)) and not isinstance(c.value, bool)]
+    g = inv.model_dump(mode="json")
+    g["grids"] = [{"name": "sweep",
+                   "axes": {axes_consts[0]: [1, 2], axes_consts[1]: [3, 4, 5]}}]
+    g_ir = MdpIR.model_validate(g)
+    cells = g_ir.grids[0].cells()
+    check(len(cells) == 6
+          and cells[0][0] == f"{axes_consts[0]}=1,{axes_consts[1]}=3"
+          and cells[1][1] == {axes_consts[0]: 1, axes_consts[1]: 4},
+          "grid: row-major cells, axis-derived ids")
+    try:
+        MdpIR.model_validate(
+            {**g, "grids": [{"name": "bad", "axes": {"no_such": [1]}}]})
+        check(False, "grid axis naming no constant must fail")
+    except ValueError:
+        check(True, "grid axis naming no constant fails validation")
 
     print(f"\nall {_checks} checks passed")
 

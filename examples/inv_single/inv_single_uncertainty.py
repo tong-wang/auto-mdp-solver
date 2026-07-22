@@ -1,10 +1,20 @@
-"""InvSingle stochastic primitives.
+"""InvSingle stochastic primitives (seed scheme v2).
 
 Defines the SamplingContext protocol and all generator classes for demand
 and lead time. These are the stochastic building blocks that InvSingleScenario
 is composed from; they have no dependency on the MDP dynamics.
 
-Dependency order: inv_single_uncertainty  ←  inv_single_scenarios  ←  inv_single_mdp
+Seed scheme v2 (scenario_redesign.md §4.2): one tree
+seed_salt -> episode_seed -> branch -> ..., encoded leaf-first (root last).
+Intrinsic draws (branch 1) key on
+
+    [(draw,) period, source_id, 1, episode_seed, seed_salt]
+
+Every generator *instance* carries a `source_id` — the child id under
+branch 1; instances composed into one scenario must have distinct ids
+(checked by InvSingleScenario). Demand defaults to 0, lead time to 1.
+
+Dependency order: inv_single_uncertainty  <-  inv_single_scenarios  <-  inv_single_mdp
 """
 
 from __future__ import annotations
@@ -13,6 +23,10 @@ import math
 from typing import Protocol
 
 import numpy as np
+
+SEED_SCHEME = "v2"
+
+_INTRINSIC_BRANCH = 1
 
 
 # ---------------------------------------------------------------------------
@@ -32,6 +46,21 @@ class SamplingContext(Protocol):
     seed_salt:    int
 
 
+def intrinsic_key(
+    source_id: int, ctx: SamplingContext, draw: int | None = None
+) -> list[int]:
+    """v2 intrinsic seed key: [(draw,) period, source_id, 1, episode_seed, seed_salt].
+
+    Leaf-first so the trailing word is always seed_salt (>= 1): SeedSequence
+    zero-pads entropy lists shorter than its 4-word pool, so routinely-zero
+    leaf ids (period 0, draw 0) must never sit in trailing position.
+    """
+    key = [ctx.period, source_id, _INTRINSIC_BRANCH, ctx.episode_seed, ctx.seed_salt]
+    if draw is not None:
+        key.insert(0, draw)
+    return key
+
+
 # ---------------------------------------------------------------------------
 # Demand generators
 # ---------------------------------------------------------------------------
@@ -40,8 +69,8 @@ class SamplingContext(Protocol):
 class DemandGenerator:
     """Abstract per-period demand model."""
 
-    _STREAM = 1  # demand occupies RNG stream 1
     is_discrete: bool
+    source_id:   int  # child id under branch 1; set per instance
 
     def sample(self, state: SamplingContext) -> int:
         raise NotImplementedError
@@ -57,110 +86,51 @@ class DemandGenerator:
         raise NotImplementedError
 
 
-class EpisodeDemand(DemandGenerator):
-    """Per-episode demand distribution.
+class FixedDistributionDemand(DemandGenerator):
+    """Per-period demand from a fixed, fully realized discrete distribution.
 
-    At the start of each episode a support of `support_size` integer values is
-    drawn uniformly (without replacement) from {support_low, ..., support_high}
-    with random weights.  Within the episode, each period's demand is sampled
-    from that fixed distribution.
-
-    Both the support and the per-step samples are derived deterministically from
-    the episode seed, so demand is path-independent and fully reproducible.
+    The (vals, probs) pair typically comes from the world-latent draw in
+    InvSingleEpisodeDemandSampler; within a concrete scenario they are plain
+    constants, so phi() is available (unlike the retired EpisodeDemand,
+    whose marginal PMF required integrating over episode randomness).
     """
 
     is_discrete = True
 
-    _SUB_SUPPORT = 0  # sub-stream for episode-level support sampling
-    _SUB_SAMPLE  = 1  # sub-stream for per-step demand sampling
-
-    def __init__(
-        self,
-        support_size: int = 5,
-        support_low:  int = 10,
-        support_high: int = 50,
-    ) -> None:
-        assert support_size >= 1, "support_size must be >= 1."
-        assert 0 <= support_low <= support_high, "support bounds invalid."
-        assert support_size <= (support_high - support_low + 1), (
-            "support_size exceeds the number of integers in [support_low, support_high]."
-        )
-        self.support_size = support_size
-        self.support_low  = support_low
-        self.support_high = support_high
-
-    def _episode_distribution(
-        self, episode_seed: int, seed_salt: int
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Deterministically derive this episode's demand vals and probs."""
-        ss  = np.random.SeedSequence(
-            [self._SUB_SUPPORT, self._STREAM, episode_seed, seed_salt]
-        )
-        rng = np.random.default_rng(ss)
-        vals = rng.choice(
-            np.arange(self.support_low, self.support_high + 1),
-            size=self.support_size,
-            replace=False,
-        )
-        raw_probs = rng.uniform(1.0, 10.0, size=self.support_size)
-        return vals.astype(int), raw_probs / raw_probs.sum()
+    def __init__(self, vals, probs, source_id: int = 0) -> None:
+        vals  = np.asarray(vals, dtype=int)
+        probs = np.asarray(probs, dtype=float)
+        assert vals.ndim == 1 and vals.shape == probs.shape, \
+            "vals and probs must be 1-D and match in length."
+        assert np.all(vals >= 0), "demand values must be non-negative."
+        assert np.all(probs >= 0) and probs.sum() > 0, \
+            "probs must be non-negative and sum to > 0."
+        self.vals      = vals
+        self.probs     = probs / probs.sum()
+        self.source_id = source_id
 
     def sample(self, state: SamplingContext) -> int:
-        vals, probs = self._episode_distribution(
-            state.episode_seed, state.seed_salt
+        rng = np.random.default_rng(
+            np.random.SeedSequence(intrinsic_key(self.source_id, state))
         )
-        ss  = np.random.SeedSequence(
-            [self._SUB_SAMPLE, self._STREAM, state.period,
-             state.episode_seed, state.seed_salt]
-        )
-        rng = np.random.default_rng(ss)
-        return int(rng.choice(vals, p=probs))
+        return int(rng.choice(self.vals, p=self.probs))
 
     def mean(self) -> float:
-        return (self.support_low + self.support_high) / 2.0
+        return float(np.dot(self.vals, self.probs))
 
     def max(self) -> float:
-        return float(self.support_high)
+        return float(self.vals.max())
 
     def phi(self, d: float) -> float:
-        raise NotImplementedError("EpisodeDemand has no episode-independent phi(); marginal PMF requires integrating over episode randomness.")
+        k = int(d)
+        hit = self.probs[self.vals == k]
+        return float(hit[0]) if len(hit) else 0.0
 
     def __repr__(self) -> str:
         return (
-            f"EpisodeDemand(support_size={self.support_size}, "
-            f"support_low={self.support_low}, support_high={self.support_high})"
+            f"FixedDistributionDemand(vals={self.vals.tolist()}, "
+            f"probs={np.round(self.probs, 4).tolist()})"
         )
-
-
-class NormalDemand(DemandGenerator):
-    """Independent normal demand."""
-
-    is_discrete = False
-
-    def __init__(self, mu: float, sigma: float) -> None:
-        assert sigma >= 0, "sigma must be non-negative."
-        self.mu    = mu
-        self.sigma = sigma
-
-    def sample(self, state: SamplingContext) -> float:
-        ss  = np.random.SeedSequence(
-            [self._STREAM, state.period, state.episode_seed, state.seed_salt]
-        )
-        rng = np.random.default_rng(ss)
-        return float(rng.normal(loc=self.mu, scale=self.sigma))
-
-    def mean(self) -> float:
-        return self.mu
-
-    def max(self) -> float:
-        return self.mu + 4.0 * self.sigma
-
-    def phi(self, d: float) -> float:
-        z = (d - self.mu) / self.sigma
-        return math.exp(-0.5 * z * z) / (self.sigma * math.sqrt(2.0 * math.pi))
-
-    def __repr__(self) -> str:
-        return f"NormalDemand(mu={self.mu}, sigma={self.sigma})"
 
 
 class PoissonDemand(DemandGenerator):
@@ -168,15 +138,15 @@ class PoissonDemand(DemandGenerator):
 
     is_discrete = True
 
-    def __init__(self, rate: float) -> None:
+    def __init__(self, rate: float, source_id: int = 0) -> None:
         assert rate > 0, "rate must be positive."
-        self.rate = rate
+        self.rate      = rate
+        self.source_id = source_id
 
     def sample(self, state: SamplingContext) -> int:
-        ss  = np.random.SeedSequence(
-            [self._STREAM, state.period, state.episode_seed, state.seed_salt]
+        rng = np.random.default_rng(
+            np.random.SeedSequence(intrinsic_key(self.source_id, state))
         )
-        rng = np.random.default_rng(ss)
         return int(rng.poisson(lam=self.rate))
 
     def mean(self) -> float:
@@ -204,7 +174,7 @@ class PoissonDemand(DemandGenerator):
 class LeadtimeGenerator:
     """Abstract lead time model."""
 
-    _STREAM = 2  # lead time occupies RNG stream 2
+    source_id: int  # child id under branch 1; set per instance
 
     def sample(self, state: SamplingContext) -> int:
         raise NotImplementedError
@@ -222,9 +192,10 @@ class LeadtimeGenerator:
 class DeterministicLeadtime(LeadtimeGenerator):
     """Fixed lead time."""
 
-    def __init__(self, value: int) -> None:
+    def __init__(self, value: int, source_id: int = 1) -> None:
         assert value >= 0, "Lead time must be non-negative."
-        self.value = value
+        self.value     = value
+        self.source_id = source_id
 
     def sample(self, state: SamplingContext) -> int:
         return self.value
@@ -249,6 +220,7 @@ class DiscreteLeadtime(LeadtimeGenerator):
         self,
         values:        list[int],
         probabilities: list[float],
+        source_id:     int = 1,
     ) -> None:
         assert len(values) == len(probabilities), \
             "values and probabilities must match in length."
@@ -261,12 +233,12 @@ class DiscreteLeadtime(LeadtimeGenerator):
         s = sum(probabilities)
         self.probabilities = [p / s for p in probabilities]
         self._mean = sum(v * p for v, p in zip(values, self.probabilities))
+        self.source_id = source_id
 
     def sample(self, state: SamplingContext) -> int:
-        ss  = np.random.SeedSequence(
-            [self._STREAM, state.period, state.episode_seed, state.seed_salt]
+        rng = np.random.default_rng(
+            np.random.SeedSequence(intrinsic_key(self.source_id, state))
         )
-        rng = np.random.default_rng(ss)
         return int(rng.choice(a=self.values, p=self.probabilities))
 
     def mean(self) -> float:

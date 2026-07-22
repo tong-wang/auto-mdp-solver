@@ -1,12 +1,12 @@
 {
   "ir_version": "0.4",
+  "seed_scheme": "v2",
   "domain": {
     "name": "inv_single",
     "class_prefix": "InvSingle",
     "one_line": "Single-echelon periodic-review inventory with stochastic lead time and backlogging.",
     "problem_class": "inventory_control"
   },
-
   "mdp": {
     "horizon": {
       "T": 30,
@@ -21,7 +21,10 @@
         "name": "period",
         "role": "time_index",
         "type": "int",
-        "bounds": [0, 30],
+        "bounds": [
+          0,
+          30
+        ],
         "observability": "observable",
         "desc": "current period t; horizon ends when period == T"
       },
@@ -29,7 +32,10 @@
         "name": "inventory",
         "role": "core",
         "type": "int",
-        "bounds": [-400, 400],
+        "bounds": [
+          -400,
+          400
+        ],
         "observability": "observable",
         "desc": "net on-hand inventory after all period events; read by next transition"
       },
@@ -38,7 +44,10 @@
         "role": "core",
         "type": "int_vector",
         "length": 6,
-        "element_bounds": [0, 400],
+        "element_bounds": [
+          0,
+          400
+        ],
         "observability": "observable",
         "desc": "pipeline[k] = quantity arriving at the k-th future R (receive) event; read by next R"
       }
@@ -55,14 +64,36 @@
           "rationale": "no later transition reads it; exposed to the agent only via the vec_d observation mode"
         }
       },
-      { "name": "received", "type": "int", "desc": "units received this period (R event)" },
-      { "name": "leadtime", "type": "int", "desc": "sampled lead time of this period's order" },
-      { "name": "lost_sales", "type": "int", "desc": "unmet demand dropped (only if allow_backlog=false)" },
-      { "name": "action_period", "type": "int", "desc": "period the emitting decision was taken (boundary invariant)" },
+      {
+        "name": "received",
+        "type": "int",
+        "desc": "units received this period (R event)"
+      },
+      {
+        "name": "leadtime",
+        "type": "int",
+        "desc": "sampled lead time of this period's order"
+      },
+      {
+        "name": "lost_sales",
+        "type": "int",
+        "desc": "unmet demand dropped (only if allow_backlog=false)"
+      },
+      {
+        "name": "action_period",
+        "type": "int",
+        "desc": "period the emitting decision was taken (boundary invariant)"
+      },
       {
         "name": "cost",
         "type": "decomposition",
-        "components": ["holding", "shortage", "order_fixed", "order_variable", "total"]
+        "components": [
+          "holding",
+          "shortage",
+          "order_fixed",
+          "order_variable",
+          "total"
+        ]
       }
     ],
     "decisions": [
@@ -76,12 +107,20 @@
         },
         "dim": 1,
         "bounds": {
-          "value": [0, 200],
-          "suggested": [0, 200],
+          "value": [
+            0,
+            200
+          ],
+          "suggested": [
+            0,
+            200
+          ],
           "source": "derived",
           "rationale": "~10x mean demand; upper bound caps the action scale, not a physical limit"
         },
-        "feasibility": ["non_negative"],
+        "feasibility": [
+          "non_negative"
+        ],
         "desc": "replenishment quantity placed at the O (order) event"
       }
     ],
@@ -89,50 +128,70 @@
       {
         "name": "demand",
         "generator": "EpisodeDemand",
-        "stream_id": 1,
+        "stream_id": 0,
         "is_discrete": true,
         "latent": false,
         "distribution": {
-          "family": "episode_categorical",
+          "family": "categorical",
           "settings": {
-            "support_size": "demand_support_size",
-            "support_low": "demand_support_low",
-            "support_high": "demand_support_high"
-          },
-          "note": "per-episode categorical: support + weights drawn once per episode, then sampled i.i.d. each period"
+            "values": "demand_vals",
+            "probabilities": "demand_probs"
+          }
         },
         "stages": [
-          { "name": "support", "realization": "episode", "sub_stream": 0 },
-          { "name": "sample", "realization": "period", "sub_stream": 1 }
+          {
+            "name": "sample",
+            "realization": "period",
+            "sub_stream": null
+          }
         ]
       },
       {
         "name": "leadtime",
         "generator": "DiscreteLeadtime",
-        "stream_id": 2,
+        "stream_id": 1,
         "is_discrete": true,
         "latent": false,
         "distribution": {
           "family": "categorical",
-          "settings": { "values": "leadtime_values", "probabilities": "leadtime_probs" }
+          "settings": {
+            "values": "leadtime_values",
+            "probabilities": "leadtime_probs"
+          }
         },
         "stages": [
-          { "name": "draw", "realization": "event", "trigger": "O && order>0" }
+          {
+            "name": "draw",
+            "realization": "event",
+            "trigger": "O && order>0"
+          }
         ]
       }
     ],
     "dynamics": {
-      "event_sequence": ["O", "R", "D"],
+      "event_sequence": [
+        "O",
+        "R",
+        "D"
+      ],
       "observation_point": "pre-order",
       "transitions": [
         {
           "event": "O",
           "guard": "order > 0",
-          "updates": ["L ~ leadtime.draw", "leadtime = L", "pipeline[L] += order"]
+          "updates": [
+            "L ~ leadtime.draw",
+            "leadtime = L",
+            "pipeline[L] += order"
+          ]
         },
         {
           "event": "R",
-          "updates": ["received = pipeline[0]", "inventory += received", "pipeline = pipeline[1:] + [0]"]
+          "updates": [
+            "received = pipeline[0]",
+            "inventory += received",
+            "pipeline = pipeline[1:] + [0]"
+          ]
         },
         {
           "event": "D",
@@ -142,55 +201,241 @@
             "if not allow_backlog: lost_sales = max(0, -inventory); inventory = max(0, inventory)"
           ]
         },
-        { "event": "END_OF_PERIOD", "updates": ["action_period = period", "period += 1"] }
+        {
+          "event": "END_OF_PERIOD",
+          "updates": [
+            "action_period = period",
+            "period += 1"
+          ]
+        }
       ]
     },
     "objective": {
       "sense": "minimize",
       "per_step_components": [
-        { "name": "holding", "expr": "h * max(0, inventory)", "desc": "evaluated at END_OF_PERIOD on end-of-period inventory" },
-        { "name": "shortage", "expr": "b * max(0, -inventory) if allow_backlog else b * lost_sales", "desc": "evaluated at END_OF_PERIOD: on end-of-period backlog, or on this period's lost sales in the lost-sales variant" },
-        { "name": "order_fixed", "expr": "K if order > 0 else 0" },
-        { "name": "order_variable", "expr": "c * order" }
+        {
+          "name": "holding",
+          "expr": "h * max(0, inventory)",
+          "desc": "evaluated at END_OF_PERIOD on end-of-period inventory"
+        },
+        {
+          "name": "shortage",
+          "expr": "b * max(0, -inventory) if allow_backlog else b * lost_sales",
+          "desc": "evaluated at END_OF_PERIOD: on end-of-period backlog, or on this period's lost sales in the lost-sales variant"
+        },
+        {
+          "name": "order_fixed",
+          "expr": "K if order > 0 else 0"
+        },
+        {
+          "name": "order_variable",
+          "expr": "c * order"
+        }
       ]
     },
     "scenario": {
       "constants": [
-        { "name": "h", "value": 0.2, "axis": "cost", "desc": "holding cost per unit of positive end-of-period stock" },
-        { "name": "b", "value": 2.0, "axis": "cost", "desc": "shortage cost per unit of backlog" },
-        { "name": "K", "value": 25.0, "axis": "cost", "desc": "fixed cost per order placed" },
-        { "name": "c", "value": 1.0, "axis": "cost", "desc": "variable cost per unit ordered" },
-        { "name": "allow_backlog", "value": true, "axis": "variant", "desc": "unmet demand accumulates as negative inventory (vs lost sales)" },
-        { "name": "demand_support_size", "value": 5, "axis": "demand" },
-        { "name": "demand_support_low", "value": 10, "axis": "demand" },
-        { "name": "demand_support_high", "value": 50, "axis": "demand" },
-        { "name": "leadtime_values", "value": [2, 3, 4, 5], "axis": "leadtime" },
-        { "name": "leadtime_probs", "value": [0.125, 0.375, 0.375, 0.125], "axis": "leadtime" }
+        {
+          "name": "h",
+          "value": 0.2,
+          "axis": "cost",
+          "desc": "holding cost per unit of positive end-of-period stock"
+        },
+        {
+          "name": "b",
+          "value": 2.0,
+          "axis": "cost",
+          "desc": "shortage cost per unit of backlog"
+        },
+        {
+          "name": "K",
+          "value": 25.0,
+          "axis": "cost",
+          "desc": "fixed cost per order placed"
+        },
+        {
+          "name": "c",
+          "value": 1.0,
+          "axis": "cost",
+          "desc": "variable cost per unit ordered"
+        },
+        {
+          "name": "allow_backlog",
+          "value": true,
+          "axis": "variant",
+          "desc": "unmet demand accumulates as negative inventory (vs lost sales)"
+        },
+        {
+          "name": "demand_support_size",
+          "value": 5,
+          "axis": "demand"
+        },
+        {
+          "name": "demand_support_low",
+          "value": 10,
+          "axis": "demand"
+        },
+        {
+          "name": "demand_support_high",
+          "value": 50,
+          "axis": "demand"
+        },
+        {
+          "name": "leadtime_values",
+          "value": [
+            2,
+            3,
+            4,
+            5
+          ],
+          "axis": "leadtime"
+        },
+        {
+          "name": "leadtime_probs",
+          "value": [
+            0.125,
+            0.375,
+            0.375,
+            0.125
+          ],
+          "axis": "leadtime"
+        },
+        {
+          "name": "demand_vals",
+          "value": [
+            10,
+            20,
+            30,
+            40,
+            50
+          ],
+          "axis": "",
+          "desc": "placeholder; realized per episode by the paper_demand samplers"
+        },
+        {
+          "name": "demand_probs",
+          "value": [
+            0.2,
+            0.2,
+            0.2,
+            0.2,
+            0.2
+          ],
+          "axis": "",
+          "desc": "placeholder; realized per episode by the paper_demand samplers"
+        }
       ],
       "instances": {
-        "lost_sales": { "allow_backlog": false }
-      }
+        "lost_sales": {
+          "allow_backlog": false
+        }
+      },
+      "samplers": [
+        {
+          "name": "paper_demand",
+          "substream_id": 0,
+          "hidden": true,
+          "instances": [
+            ""
+          ],
+          "draws": [
+            {
+              "name": "demand_vals",
+              "distribution": {
+                "family": "choice_without_replacement",
+                "settings": {
+                  "low": "demand_support_low",
+                  "high": "demand_support_high",
+                  "size": "demand_support_size"
+                }
+              }
+            },
+            {
+              "name": "demand_probs",
+              "distribution": {
+                "family": "normalized_uniform_weights",
+                "settings": {
+                  "size": "demand_support_size"
+                }
+              }
+            }
+          ],
+          "desc": "paper per-episode demand distribution (hidden world latent)"
+        },
+        {
+          "name": "paper_demand_ls",
+          "substream_id": 1,
+          "hidden": true,
+          "instances": [
+            "lost_sales"
+          ],
+          "draws": [
+            {
+              "name": "demand_vals",
+              "distribution": {
+                "family": "choice_without_replacement",
+                "settings": {
+                  "low": "demand_support_low",
+                  "high": "demand_support_high",
+                  "size": "demand_support_size"
+                }
+              }
+            },
+            {
+              "name": "demand_probs",
+              "distribution": {
+                "family": "normalized_uniform_weights",
+                "settings": {
+                  "size": "demand_support_size"
+                }
+              }
+            }
+          ],
+          "desc": "same latent for the lost_sales instance (own substream)"
+        }
+      ]
     },
     "initial_state": {
       "inventory": 0,
       "pipeline": "zeros(6)"
     }
   },
-
   "gym": {
     "observation_modes": [
       {
         "name": "vec",
         "default": true,
-        "features": [{ "ref": "inventory" }, { "ref": "pipeline" }]
+        "features": [
+          {
+            "ref": "inventory"
+          },
+          {
+            "ref": "pipeline"
+          }
+        ]
       },
       {
         "name": "vec_d",
-        "features": [{ "ref": "inventory" }, { "ref": "pipeline" }, { "ref": "info.demand" }]
+        "features": [
+          {
+            "ref": "inventory"
+          },
+          {
+            "ref": "pipeline"
+          },
+          {
+            "ref": "info.demand"
+          }
+        ]
       },
       {
         "name": "vec_ip",
-        "features": [{ "derived": "inventory_position", "expr": "inventory + sum(pipeline)" }]
+        "features": [
+          {
+            "derived": "inventory_position",
+            "expr": "inventory + sum(pipeline)"
+          }
+        ]
       }
     ],
     "action_modes": [
@@ -199,7 +444,10 @@
         "default": true,
         "encodes": "order",
         "type": "continuous",
-        "bounds": [0, 200],
+        "bounds": [
+          0,
+          200
+        ],
         "transform": "",
         "feasibility_strategy": "clip",
         "desc": "identity: the agent emits the order quantity directly, clipped into bounds"
@@ -218,22 +466,20 @@
       "early_terminated_when": null
     }
   },
-
   "rl": {
     "requires_memory": {
       "value": false,
-      "suggested": false,
-      "source": "human_confirmed",
+      "suggested": true,
+      "source": "human_override",
       "rationale": "no latent source with temporally-correlated realization"
     },
     "algo": "ppo",
     "frame_stack": 1,
     "obs_normalization": {
       "enabled": true,
-      "rationale": "inventory (±400) and pipeline entries (0–400) are stationary features of heterogeneous magnitude vs. a unit-scale demand feature; spec §8.3 says normalize"
+      "rationale": "inventory (\u00b1400) and pipeline entries (0\u2013400) are stationary features of heterogeneous magnitude vs. a unit-scale demand feature; spec \u00a78.3 says normalize"
     }
   },
-
   "assumptions_log": [
     "Order quantity modeled as continuous (float) and clipped to [0, 200]; the source description said 'how much to order' without specifying integrality.",
     "Initial inventory and pipeline assumed empty (0).",
@@ -241,6 +487,6 @@
     "Cost components are evaluated at END_OF_PERIOD on end-of-period inventory.",
     "`demand` placed in info (not state): no later transition reads it; it is exposed to the agent only via the vec_d observation mode.",
     "Period indexing is 0-based; horizon T=30; reaching T is `terminated` (T is part of the problem, no bootstrapping past it), not `truncated`.",
-    "Seed keys are derived from each stage's `realization` (spec §6.3): demand.support = [stream:1.0, episode_seed, seed_salt]; demand.sample and leadtime.draw include `period`."
+    "Seed keys are derived from each stage's `realization` (spec \u00a76.3): demand.support = [stream:1.0, episode_seed, seed_salt]; demand.sample and leadtime.draw include `period`."
   ]
 }

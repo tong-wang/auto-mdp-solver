@@ -126,7 +126,9 @@ def run_differential(
     episode_seeds: list[int],
     decisions: dict | None = None,
     instance: str | None = None,
-    seed_salt: int = 0,
+    # >= 1: v2 domains assert a positive salt (spec §6.3); harmless for v1
+    # (both sides always share the same salt, so MATCH is salt-invariant)
+    seed_salt: int = 1,
 ) -> DifferentialReport:
     """Replay each episode through interpreter and domain; diff trajectories.
 
@@ -208,7 +210,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--episodes", type=int, default=20)
     ap.add_argument("--first-seed", type=int, default=0)
     ap.add_argument("--instance", default=None)
-    ap.add_argument("--seed-salt", type=int, default=0)
+    ap.add_argument("--seed-salt", type=int, default=1)  # >= 1 for v2 domains (spec §6.3)
     ap.add_argument(
         "--decision", action="append", default=[], metavar="NAME=VALUE",
         help="hold a decision constant (default: random within bounds per episode)",

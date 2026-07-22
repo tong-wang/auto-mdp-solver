@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 
 from dynamic_pricing_uncertainty import PoissonArrivals
 
+SEED_SCHEME = "v2"
+
 
 # ---------------------------------------------------------------------------
 # Scenario
@@ -52,7 +54,7 @@ class DynamicPricingScenario:
     # stochastic model instance (derived from a / alpha / dt in __post_init__)
     demand: PoissonArrivals = field(init=False, repr=False)
 
-    # reproducibility
+    # reproducibility (universal knob, >= 1 — v2 rule, spec §6.3)
     seed_salt: int = field(default=1994, repr=False)
 
     # identifier and description
@@ -61,6 +63,7 @@ class DynamicPricingScenario:
 
     def __post_init__(self) -> None:
         assert self.horizon >= 1, "horizon must be >= 1."
+        assert self.seed_salt >= 1, "seed_salt must be >= 1 (v2 rule)."
         assert self.n0 >= 1,      "n0 must be >= 1."
         assert self.a > 0,        "a must be positive."
         assert self.alpha > 0,    "alpha must be positive."

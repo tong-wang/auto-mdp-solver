@@ -32,21 +32,11 @@ Demand is re-generated each step from a deterministic seed sequence combining th
 | Name | Demand | Lead time | h | b | K | Backlog |
 |---|---|---|---|---|---|---|
 | `simple` | Poisson(10) | 0 | 1.0 | 9.0 | 0 | yes |
-| `simple-single` | Poisson(10) | 0 | 1.0 | 9.0 | 0 | yes |
-| `simple-slt` | Poisson(10) | Discrete{1,2} | 1.0 | 9.0 | 0 | yes |
-| `simple-sltc` | Poisson(10) | Discrete{1,2,3} | 1.0 | 9.0 | 0 | yes |
 | `simple-k` | Poisson(10) | 0 | 1.0 | 9.0 | 20 | yes |
-| `simple-lt` | Poisson(10) | 2 | 1.0 | 9.0 | 0 | yes |
-| `paper_det` | EpisodeDemand(5, 10–50) | 3 | 0.2 | 2.0 | 25 | yes |
-| `paper_stochastic` | EpisodeDemand(5, 10–50) | Discrete{2–5} | 0.2 | 2.0 | 25 | yes |
-| `paper_lost_sales` | EpisodeDemand(5, 10–50) | Discrete{2–5} | 0.2 | 2.0 | 25 | no |
-| `high_penalty` | EpisodeDemand(5, 10–50) | Discrete{2–5} | 0.2 | 20.0 | 25 | yes |
-| `no_fixed_cost` | EpisodeDemand(5, 10–50) | Discrete{2–5} | 0.2 | 2.0 | 0 | yes |
+| `paper_stochastic` | sampled(5, 10–50) | Discrete{2–5} | 0.2 | 2.0 | 25 | yes |
+| `paper_lost_sales` | sampled(5, 10–50) | Discrete{2–5} | 0.2 | 2.0 | 25 | no |
 
-`simple-single`: horizon=1, used to verify single-period optimality.  
-`simple-slt`: stochastic lead time, range {1,2}.  
-`simple-sltc`: stochastic lead time with wider range {1,2,3}, higher crossover probability.  
-`EpisodeDemand(5, 10–50)`: at the start of each episode, 5 integer demand values are drawn uniformly from {10,…,50} with random weights; that distribution is fixed for the episode.
+`sampled(5, 10–50)`: the `paper_*` entries are `InvSingleEpisodeDemandSampler`s (world-latent samplers, spec §5.2): at the start of each episode, 5 integer demand values are drawn uniformly from {10,…,50} with random weights; the returned concrete scenario holds that distribution as a `FixedDistributionDemand`.
 
 ## Observation modes
 
@@ -108,7 +98,7 @@ python inv_single_train_ppo.py --scenario simple --total-timesteps 500000 --no-n
 cd inv_single
 python inv_single_benchmark_dp_eval.py                          # defaults (simple, 1000 episodes)
 python inv_single_benchmark_dp_eval.py --scenario simple-k --n-episodes 500
-python inv_single_benchmark_dp_eval.py --scenario simple-lt --no-cache
+python inv_single_benchmark_dp_eval.py --scenario simple-k --no-cache
 ```
 
 ### DP notes

@@ -8,7 +8,7 @@ import warnings
 import numpy as np
 import gymnasium as gym
 
-from inv_single_scenarios import InvSingleScenario
+from inv_single_scenarios import InvSingleScenario, ScenarioSource
 from inv_single_mdp import (
     InvSingleState,
     init_state,
@@ -41,7 +41,7 @@ class InvSingleEnv(gym.Env):
 
     def __init__(
         self,
-        scenario: InvSingleScenario,
+        scenario: ScenarioSource,
         observation_mode: str = "vec",
         action_mode: str = "continuous",
         logger_filename: str | None = None,
@@ -72,7 +72,12 @@ class InvSingleEnv(gym.Env):
                 stacklevel=2,
             )
 
+        # scenario source: a fixed scenario, or a sampler resolved per episode
+        # in reset(). Space building below reads only family-level attributes
+        # (horizon, leadtime, allow_backlog, demand bounds), which samplers
+        # expose under the same names as a concrete scenario.
         self.scenario = scenario
+        self._scenario_ep: InvSingleScenario | None = None
         self.observation_mode = observation_mode
         self.action_mode = action_mode
 
@@ -171,11 +176,16 @@ class InvSingleEnv(gym.Env):
         else:
             self._episode_seed = int(np.random.randint(0, 2_147_483_647))
 
+        self._scenario_ep = (
+            self.scenario(self._episode_seed)
+            if callable(self.scenario)
+            else self.scenario
+        )
         state, self._info = init_state(
-            scenario=self.scenario,
+            scenario=self._scenario_ep,
             episode_seed=self._episode_seed,
         )
-        self._state = advance1(self.scenario, state)
+        self._state = advance1(self._scenario_ep, state)
         self._step = 0
         self.total_reward = 0.0
 
@@ -190,9 +200,9 @@ class InvSingleEnv(gym.Env):
         else:
             order = max(0.0, float(action[0]))
 
-        new_state, self._info = advance2(self.scenario, self._state, order)
+        new_state, self._info = advance2(self._scenario_ep, self._state, order)
         self._state = (
-            advance1(self.scenario, new_state)
+            advance1(self._scenario_ep, new_state)
             if not new_state.terminated
             else new_state
         )

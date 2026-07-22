@@ -27,14 +27,17 @@ def make_adapter(
     if instance is not None:
         consts.update(ir.mdp.scenario.instances[instance])
 
-    scenario = scen.InvSingleScenario(
+    # world-latent sampler applicable to this instance (spec §5.2): the domain
+    # sampler shares the IR sampler's substream, so both sides realize the
+    # same per-episode demand distribution bit-for-bit
+    ir_sampler = next(
+        (s for s in ir.mdp.scenario.samplers
+         if not s.instances or (instance or "") in s.instances),
+        None,
+    )
+    source = scen.InvSingleEpisodeDemandSampler(
         scenario_name=f"ir_differential_{instance or 'base'}",
         horizon=ir.mdp.horizon_T(instance),
-        demand=unc.EpisodeDemand(
-            support_size=consts["demand_support_size"],
-            support_low=consts["demand_support_low"],
-            support_high=consts["demand_support_high"],
-        ),
         leadtime=unc.DiscreteLeadtime(
             values=consts["leadtime_values"],
             probabilities=consts["leadtime_probs"],
@@ -45,10 +48,15 @@ def make_adapter(
         order_cost_fixed=consts["K"],
         allow_backlog=consts["allow_backlog"],
         event_sequence=tuple(ir.mdp.dynamics.event_sequence),
+        support_size=consts["demand_support_size"],
+        support_low=consts["demand_support_low"],
+        support_high=consts["demand_support_high"],
+        substream_id=ir_sampler.substream_id,
         seed_salt=seed_salt,
     )
 
     def run_episode(episode_seed: int, decisions: list[dict]) -> list[dict]:
+        scenario = source(episode_seed)
         state, _ = mdp.init_state(scenario, episode_seed)
         rows: list[dict] = []
         for acts in decisions:
