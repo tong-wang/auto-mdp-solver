@@ -519,7 +519,7 @@ fields: experiment axes, not judgment calls.
 
 ## 6. Scenario-redesign additions (seed scheme v2)
 
-Added 2026-07-22 (`scenario_redesign.md`; spec §5, §6.3). All fields are
+Added 2026-07-22 (spec §5, §6.3). All fields are
 additive — every pre-existing IR validates unchanged as `seed_scheme: "v1"`
 with bit-identical draws.
 

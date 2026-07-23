@@ -4,7 +4,7 @@ Defines the SamplingContext protocol and all generator classes for demand
 and lead time. These are the stochastic building blocks that InvSingleScenario
 is composed from; they have no dependency on the MDP dynamics.
 
-Seed scheme v2 (scenario_redesign.md §4.2): one tree
+Seed scheme v2 (spec §6.3): one tree
 seed_salt -> episode_seed -> branch -> ..., encoded leaf-first (root last).
 Intrinsic draws (branch 1) key on
 

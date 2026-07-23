@@ -8,8 +8,8 @@ examples provide. All new MDP domains should follow these conventions.
 
 > **Transition note (2026-07-22):** the scenario architecture (§5) and seed
 > scheme (§6.3) were redesigned — world/design layers, mixture samplers,
-> grids, seed tree v2. Both shipped examples follow the new design;
-> rationale and migration plan: `scenario_redesign.md` at the repo root.
+> grids, seed tree v2. Both shipped examples follow the new design, which is
+> specified in full in §5 and §6.3 below.
 
 ---
 
@@ -617,7 +617,7 @@ class {Domain}ScenarioGrid:
 - Instances are named `grid_{name}`, registered in `GRIDS`; a migrating
   domain that previously trained via an ad-hoc sampler may offer a
   legacy-exact draw mode on its derived sampler to preserve recorded
-  numbers (see `scenario_redesign.md` §11.1 for a worked migration).
+  numbers.
 
 ---
 
@@ -746,8 +746,7 @@ domain declares its scheme (`SEED_SCHEME = "v1" | "v2"` in the scenarios
 module), never mixes schemes, and migrates only when its numbers are
 invalidated anyway. Even accidental cross-scheme mixing cannot collide: the
 v1 3-word meta key pads to `[0, e, salt, 0]`, ending in 0 — no v2 key ends
-in 0. Design rationale, verification runs, and per-domain migration notes:
-`scenario_redesign.md` at the repo root.
+in 0.
 
 ### 6.4 Transition functions
 

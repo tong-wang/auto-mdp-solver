@@ -432,7 +432,7 @@ def check_rng_generators(h: DomainHandle) -> CheckResult:
 
 
 # ---------------------------------------------------------------------------
-# Scenario-architecture checks (spec §5, §6.3; scenario_redesign.md §8)
+# Scenario-architecture checks (spec §5, §6.3)
 #
 # Scheme-aware: a domain declares SEED_SCHEME = "v1" | "v2" in its scenarios
 # (or uncertainty) module. Undeclared domains are treated as v1 — frozen

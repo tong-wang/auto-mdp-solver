@@ -5,7 +5,7 @@ the InvSingleMixtureSampler combinator, named instances, and the SCENARIOS
 registry. Registry values are ScenarioSources: either a concrete scenario or
 a sampler callable as `source(episode_seed) -> InvSingleScenario`.
 
-Seed scheme v2 (scenario_redesign.md §4.2): meta-level draws (branch 0) key
+Seed scheme v2 (spec §6.3): meta-level draws (branch 0) key
 leaf-first on
 
     [substream_id, 0, episode_seed, seed_salt]
@@ -156,7 +156,7 @@ class InvSingleScenarioSampler:
     replacement) from {support_low, ..., support_high} with random weights;
     the returned concrete scenario holds the realized distribution as a
     FixedDistributionDemand. Pure function `episode_seed -> scenario`
-    (scenario_redesign.md §4.2): stateless, deterministic per seed.
+    (spec §6.3): stateless, deterministic per seed.
 
     Family-level attributes (fixed across all generated scenarios) mirror
     InvSingleScenario field names so gyms and scripts read them uniformly.

@@ -205,7 +205,7 @@ def main() -> None:
     check(not rep.ok, "differential: corrupted dynamics (missing pipeline shift) diverges")
 
     # =====================================================================
-    # scenario redesign (scenario_redesign.md; spec §5, §6.3): world-layer
+    # scenario redesign (spec §5, §6.3): world-layer
     # samplers/mixtures, design-layer grids, seed scheme v2
     # =====================================================================
 
