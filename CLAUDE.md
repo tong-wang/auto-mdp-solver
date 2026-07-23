@@ -6,6 +6,13 @@ a private research workspace on 2026-07-21).
 
 ## What this repo is
 
+**North star:** a generic solver for the vast family of Markov Decision
+Processes (MDPs) — collapsing their notorious per-problem bespokeness by pairing
+Claude's power to *formalize* any verbal problem into a standardized,
+differentially-verified representation (its "digital twin") with RL's (PPO)
+generality to *solve* it competitively — and to *interpret* the learned policy
+back into structural insight, the way classical DP analysis does.
+
 The automatic solver that turns a verbal dynamic-decision problem into a
 trained, deployable RL policy. Its development objective is **strengthening
 auto-solving capability** — mainly by adding test cases under `cases/`.

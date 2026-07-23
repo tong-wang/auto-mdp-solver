@@ -1,5 +1,43 @@
 # auto-mdp-solver
 
+**A generic solver for the vast family of Markov Decision Processes (MDPs).**
+
+Markov Decision Processes have long resisted general-purpose tooling: each has
+tended to demand its own *custom model* and its own *custom solution procedure*.
+auto-mdp-solver sets out to collapse both by composing two engines of
+generality — **Claude to formalize** a verbally-described problem into a
+standardized representation and construct its simulation environment (a verified
+*digital twin*), and **reinforcement learning (PPO) to solve** it competitively,
+with no bespoke algorithm to derive.
+
+What keeps the automation trustworthy is an executable gate between every
+stage — above all a **bit-exact differential check** that replays identical
+randomness through the generated simulator and an independent IR interpreter, so
+the twin is a *verified* model of the problem, not a plausible-looking guess.
+Every policy ships benchmarked against baselines and, where tractable, an exact
+dynamic-programming reference, so you always know how close to optimal you are.
+
+Why *learn* the policy rather than compute it? The textbook route — dynamic
+programming — is exact but collapses under the **curse of dimensionality**: its
+cost explodes with the size of the state and action spaces, ruling it out for
+problems of any realistic scale. High dimensionality is exactly where RL
+shines — it learns strong policies by simulating the twin rather than
+enumerating it, reaching problems classical DP cannot touch. For now the solver
+is validated *against* exact DP on classical problems small enough to solve
+optimally — the deliberate proving ground before the real target: the far
+larger problems DP has never reached, where no optimal reference exists at all.
+
+And the aim is not a black box. Dynamic programming was prized for two things —
+an optimal policy *and* the structural insight that came with it (base-stock
+levels, *(s, S)* thresholds, monotone rules). We want both: a competitive policy
+*and* an interpretation of what it learned — recovering the policy's structure
+and, where a classical policy form exists, testing whether it rediscovers one.
+A solution to understand, not only to deploy.
+
+The whole semi-automatic pipeline — **formalize → build → solve → package** — is
+encapsulated as Claude Code skills (and, increasingly, deployable agents), so a
+competitive policy can be reached from a plain-English problem description.
+
 **Status: pre-release.** The PyPI name (`auto-mdp-solver`) currently holds a
 placeholder; the first functional release is being prepared from this repo.
 
