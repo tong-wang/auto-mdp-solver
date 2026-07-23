@@ -34,9 +34,10 @@ def check(cond: bool, label: str) -> None:
 def main() -> None:
     inv = load_ir(ROOT / "examples" / "inv_single" / "inv_single_schema.json")
     vrz = load_ir(ROOT / "examples" / "dynamic_pricing" / "vanryzin_pricing_schema.json")
+    fnv = load_ir(ROOT / "examples" / "fnv" / "fnv_schema.json")
 
     # -- determinism ---------------------------------------------------------
-    for ir, dec in ((inv, {"order": 40.0}), (vrz, {"price": 1.0})):
+    for ir, dec in ((inv, {"order": 40.0}), (vrz, {"price": 1.0}), (fnv, {"order": 0.5})):
         a = simulate(ir, episode_seed=7, decisions=dec)
         b = simulate(ir, episode_seed=7, decisions=dec)
         check(a.rows == b.rows, f"{ir.domain.name}: same seed -> identical trajectory")
@@ -203,6 +204,32 @@ def main() -> None:
     rep = run_differential(bad_ir, make_inv_single_adapter(bad_ir, seed_salt=1),
                            episode_seeds=[0], seed_salt=1)
     check(not rep.ok, "differential: corrupted dynamics (missing pipeline shift) diverges")
+
+    # -- differential vs the handwritten fnv domain (grid exemplar) ---------
+    # 1-indexed MMFE ordering: N=3 order periods; terminal-only stochastic
+    # payoff realized under the `period == N` guard; baked signal-volatility
+    # schedule keeps the interpreter's normal draw bit-exact with the domain.
+    make_fnv_adapter = load_adapter_factory(
+        ROOT / "examples" / "fnv" / "fnv_schema.json", fnv
+    )
+    rep = run_differential(
+        fnv, make_fnv_adapter(fnv, seed_salt=1),
+        episode_seeds=[0, 1, 2], seed_salt=1,
+    )
+    check(rep.ok and rep.periods == 3 * 3,
+          "differential[fnv]: interpreter == real fnv, bit-exact (3 order periods)")
+
+    # the MMFE information path is decision-path independent (§4.3): the signal
+    # is keyed on (period, seed, salt), so different order paths see the same I
+    lo = simulate(fnv, episode_seed=5, decisions={"order": 0.0}, seed_salt=1)
+    hi = simulate(fnv, episode_seed=5, decisions={"order": 3.0}, seed_salt=1)
+    check([r["information"] for r in lo.rows] == [r["information"] for r in hi.rows],
+          "fnv: MMFE information path independent of the order decisions")
+
+    # demand/sales are a terminal-only realization (0 until the horizon)
+    run = simulate(fnv, episode_seed=4, decisions={"order": 1.0}, seed_salt=1)
+    check(all(r["demand"] == 0 for r in run.rows[:-1]) and run.rows[-1]["demand"] != 0,
+          "fnv: demand/sales realized only at the terminal period")
 
     # =====================================================================
     # scenario redesign (spec §5, §6.3): world-layer

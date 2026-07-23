@@ -72,10 +72,11 @@ E=plugin/skills/mdp-solver/examples
 python -m mdp_ir.interpreter_test
 python -m mdp_gates.compare_test
 python -m mdp_tuning.resolve_metric_test
-python -m mdp_conformance $E/inv_single $E/dynamic_pricing
+python -m mdp_conformance $E/inv_single $E/dynamic_pricing $E/fnv
 python -m mdp_ir $E/inv_single/inv_single_schema.json
 python -m mdp_ir.differential $E/inv_single/inv_single_schema.json --episodes 40
 python -m mdp_ir.differential $E/dynamic_pricing/vanryzin_pricing_schema.json --episodes 40
+python -m mdp_ir.differential $E/fnv/fnv_schema.json --episodes 40
 ```
 
 Run these after any change to `harness/` or an example.
