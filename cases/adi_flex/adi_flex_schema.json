@@ -1,0 +1,501 @@
+{
+  "ir_version": "0.4",
+  "seed_scheme": "v2",
+  "domain": {
+    "name": "adi_flex",
+    "class_prefix": "AdiFlex",
+    "one_line": "Periodic-review inventory with advance demand information and flexible delivery: joint ordering and allocation under demand crossover (Wang & Toktay 2008, Mgmt Sci 54(4), section 4).",
+    "problem_class": "inventory_control"
+  },
+  "mdp": {
+    "horizon": {
+      "T": "n_periods",
+      "period_indexing": "0-based"
+    },
+    "entity_structure": {
+      "kind": "single",
+      "entity_id_in_seed": false
+    },
+    "state_variables": [
+      {
+        "name": "period",
+        "role": "time_index",
+        "type": "int",
+        "bounds": [
+          0,
+          12
+        ],
+        "observability": "observable",
+        "desc": "current period i; horizon ends when period == n_periods"
+      },
+      {
+        "name": "inventory",
+        "role": "core",
+        "type": "int",
+        "bounds": [
+          -300,
+          300
+        ],
+        "observability": "observable",
+        "desc": "net inventory x_i at the start of the period; negative = overdue demand backlogged"
+      },
+      {
+        "name": "due_now",
+        "role": "core",
+        "type": "int",
+        "bounds": [
+          0,
+          300
+        ],
+        "observability": "observable",
+        "desc": "v_i^i \u2014 unsatisfied advance demand due by the current period (not yet overdue)"
+      },
+      {
+        "name": "due_next",
+        "role": "core",
+        "type": "int",
+        "bounds": [
+          0,
+          300
+        ],
+        "observability": "observable",
+        "desc": "v_i^(i+1) \u2014 unsatisfied advance demand due by the next period"
+      }
+    ],
+    "info_fields": [
+      {
+        "name": "demand_now",
+        "type": "int",
+        "desc": "d_i^i \u2014 demand arriving this period, due this period"
+      },
+      {
+        "name": "demand_next",
+        "type": "int",
+        "desc": "d_i^(i+1) \u2014 arriving this period, due next period"
+      },
+      {
+        "name": "demand_later",
+        "type": "int",
+        "desc": "d_i^(i+2) \u2014 arriving this period, due in two periods"
+      },
+      {
+        "name": "region",
+        "type": "int",
+        "desc": "which of the five fulfilment regimes of eq (18)-(19) fired this period (1-5)",
+        "placement": {
+          "value": "info",
+          "suggested": "info",
+          "source": "human_confirmed",
+          "rationale": "pure diagnostic; no later transition reads it. Recorded because it makes the piecewise fulfilment auditable in the trajectory and in differential diffs"
+        }
+      },
+      {
+        "name": "action_period",
+        "type": "int",
+        "desc": "period the emitting decision was taken (boundary invariant)"
+      },
+      {
+        "name": "cost",
+        "type": "decomposition",
+        "components": [
+          "order_fixed",
+          "holding",
+          "shortage",
+          "total"
+        ]
+      }
+    ],
+    "decisions": [
+      {
+        "name": "order_quantity",
+        "type": {
+          "value": "discrete",
+          "suggested": "discrete",
+          "source": "human_confirmed",
+          "rationale": "paper section 3 p.719: 'All quantities (e.g., demand, inventory level/position, replenishment order) are assumed to be integers'; integrality also keeps costs strictly comparable with the enumerated DP reference"
+        },
+        "dim": 1,
+        "bounds": {
+          "value": [
+            0,
+            60
+          ],
+          "suggested": [
+            0,
+            60
+          ],
+          "source": "human_confirmed",
+          "rationale": "Table 3 at this setting has order-up-to levels 26-36 and reorder points down to -18, so a legitimate single order reaches ~55 units; 60 covers every policy the paper reports, with headroom"
+        },
+        "feasibility": [
+          "non_negative",
+          "integer"
+        ],
+        "desc": "z_i \u2014 replenishment quantity ordered at the start of the period (arrives immediately, L=0)"
+      },
+      {
+        "name": "hold_back",
+        "type": {
+          "value": "discrete",
+          "suggested": "discrete",
+          "source": "human_confirmed",
+          "rationale": "same integrality assumption; the protection level is a number of physical units"
+        },
+        "dim": 1,
+        "bounds": {
+          "value": [
+            0,
+            20
+          ],
+          "suggested": [
+            0,
+            20
+          ],
+          "source": "human_confirmed",
+          "rationale": "Table 2's most conservative protection level is 11; protection beyond the urgent demand's support does nothing and Poisson(6) essentially never exceeds 15, so 20 is inert headroom"
+        },
+        "feasibility": [
+          "non_negative",
+          "integer"
+        ],
+        "desc": "sigma_i \u2014 units of on-hand stock reserved from not-yet-due orders, protecting against next period's urgent arrivals"
+      }
+    ],
+    "uncertainty_sources": [
+      {
+        "name": "demand_now",
+        "generator": "PoissonDemand",
+        "stream_id": 0,
+        "is_discrete": true,
+        "latent": false,
+        "distribution": {
+          "family": "poisson",
+          "settings": {
+            "rate": "lambda_now"
+          }
+        },
+        "stages": [
+          {
+            "name": "sample",
+            "realization": "period"
+          }
+        ]
+      },
+      {
+        "name": "demand_next",
+        "generator": "PoissonDemand",
+        "stream_id": 1,
+        "is_discrete": true,
+        "latent": false,
+        "distribution": {
+          "family": "poisson",
+          "settings": {
+            "rate": "lambda_next"
+          }
+        },
+        "stages": [
+          {
+            "name": "sample",
+            "realization": "period"
+          }
+        ]
+      },
+      {
+        "name": "demand_later",
+        "generator": "PoissonDemand",
+        "stream_id": 2,
+        "is_discrete": true,
+        "latent": false,
+        "distribution": {
+          "family": "poisson",
+          "settings": {
+            "rate": "lambda_later"
+          }
+        },
+        "stages": [
+          {
+            "name": "sample",
+            "realization": "period"
+          }
+        ]
+      }
+    ],
+    "dynamics": {
+      "event_sequence": [
+        "O",
+        "D",
+        "F"
+      ],
+      "observation_point": "pre-order",
+      "transitions": [
+        {
+          "event": "O",
+          "updates": [
+            "avail = inventory + order_quantity"
+          ]
+        },
+        {
+          "event": "D",
+          "updates": [
+            "demand_now ~ demand_now.sample",
+            "demand_next ~ demand_next.sample",
+            "demand_later ~ demand_later.sample"
+          ]
+        },
+        {
+          "event": "F",
+          "updates": [
+            "need_now = due_now + demand_now",
+            "need_next = due_next + demand_next",
+            "need_later = demand_later",
+            "r0 = avail - need_now",
+            "r1 = r0 - need_next",
+            "r2 = r1 - hold_back",
+            "region = 1 if r0 < 0 else (2 if r1 < 0 else (3 if r2 < 0 else (4 if r2 < need_later else 5)))",
+            "inventory = r0 if region == 1 else (0 if region == 2 else (r1 if region == 3 else (hold_back if region == 4 else r1 - need_later)))",
+            "due_now = need_next if region == 1 else ((0 - r1) if region == 2 else 0)",
+            "due_next = need_later if region <= 3 else ((need_later - r2) if region == 4 else 0)"
+          ]
+        },
+        {
+          "event": "END_OF_PERIOD",
+          "updates": [
+            "action_period = period",
+            "period += 1"
+          ]
+        }
+      ]
+    },
+    "objective": {
+      "sense": "minimize",
+      "per_step_components": [
+        {
+          "name": "order_fixed",
+          "expr": "fixed_order_cost if order_quantity > 0 else 0"
+        },
+        {
+          "name": "holding",
+          "expr": "holding_cost * max(0, inventory)"
+        },
+        {
+          "name": "shortage",
+          "expr": "backorder_cost * max(0, 0 - inventory)"
+        }
+      ]
+    },
+    "scenario": {
+      "constants": [
+        {
+          "name": "lambda_now",
+          "value": 3,
+          "axis": "demand_split",
+          "desc": "Poisson rate of demand arriving due immediately (paper lambda_0)"
+        },
+        {
+          "name": "lambda_next",
+          "value": 1,
+          "axis": "demand_split",
+          "desc": "Poisson rate of demand arriving due next period (lambda_1)"
+        },
+        {
+          "name": "lambda_later",
+          "value": 2,
+          "axis": "demand_split",
+          "desc": "Poisson rate of demand arriving due in two periods (lambda_2)"
+        },
+        {
+          "name": "fixed_order_cost",
+          "value": 100.0,
+          "axis": "cost",
+          "desc": "K \u2014 charged once per period in which anything is ordered"
+        },
+        {
+          "name": "holding_cost",
+          "value": 1.0,
+          "axis": "cost",
+          "desc": "h \u2014 per unit of positive end-of-period stock"
+        },
+        {
+          "name": "backorder_cost",
+          "value": 9.0,
+          "axis": "cost",
+          "desc": "p \u2014 per unit of overdue unmet demand, per period"
+        },
+        {
+          "name": "n_periods",
+          "value": 12,
+          "axis": "",
+          "desc": "N \u2014 planning horizon"
+        },
+        {
+          "name": "supply_leadtime",
+          "value": 0,
+          "axis": "",
+          "desc": "L \u2014 structural in this IR: orders arrive immediately"
+        },
+        {
+          "name": "demand_window",
+          "value": 2,
+          "axis": "",
+          "desc": "T \u2014 structural: demand is due within 2 periods, so the profile is (due_now, due_next)"
+        },
+        {
+          "name": "discount",
+          "value": 1.0,
+          "axis": "",
+          "desc": "alpha \u2014 1.0 throughout the paper's experiments, so total cost is an undiscounted sum"
+        }
+      ],
+      "instances": {
+        "exp0": {
+          "lambda_now": 6,
+          "lambda_next": 0,
+          "lambda_later": 0
+        },
+        "exp1": {
+          "lambda_now": 5,
+          "lambda_next": 1,
+          "lambda_later": 0
+        },
+        "exp2": {
+          "lambda_now": 4,
+          "lambda_next": 1,
+          "lambda_later": 1
+        },
+        "exp3": {
+          "lambda_now": 3,
+          "lambda_next": 1,
+          "lambda_later": 2
+        },
+        "exp4": {
+          "lambda_now": 2,
+          "lambda_next": 1,
+          "lambda_later": 3
+        },
+        "exp5": {
+          "lambda_now": 1,
+          "lambda_next": 1,
+          "lambda_later": 4
+        },
+        "exp6": {
+          "lambda_now": 0,
+          "lambda_next": 1,
+          "lambda_later": 5
+        },
+        "exp7": {
+          "lambda_now": 0,
+          "lambda_next": 0,
+          "lambda_later": 6
+        }
+      }
+    },
+    "initial_state": {
+      "inventory": 0,
+      "due_now": 0,
+      "due_next": 0
+    }
+  },
+  "gym": {
+    "observation_modes": [
+      {
+        "name": "vec",
+        "default": true,
+        "features": [
+          {
+            "ref": "period"
+          },
+          {
+            "ref": "inventory"
+          },
+          {
+            "ref": "due_now"
+          },
+          {
+            "ref": "due_next"
+          }
+        ]
+      },
+      {
+        "name": "vec_mip",
+        "features": [
+          {
+            "ref": "period"
+          },
+          {
+            "derived": "modified_inventory_position",
+            "expr": "inventory - due_now - due_next"
+          },
+          {
+            "ref": "due_next"
+          }
+        ]
+      }
+    ],
+    "action_modes": [
+      {
+        "name": "joint",
+        "default": true,
+        "encodes": [
+          "order_quantity",
+          "hold_back"
+        ],
+        "type": "discrete",
+        "bounds": [
+          [
+            0,
+            60
+          ],
+          [
+            0,
+            20
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "clip",
+        "desc": "identity: the agent emits (order quantity, hold-back) as one 2-vector; every point in the box is feasible"
+      }
+    ],
+    "reward_modes": [
+      {
+        "name": "neg_cost",
+        "default": true,
+        "expr": "-total",
+        "desc": "negated per-step cost.total (objective sense is minimize)"
+      }
+    ],
+    "termination": {
+      "horizon_end": "terminated",
+      "early_terminated_when": null
+    }
+  },
+  "rl": {
+    "requires_memory": {
+      "value": false,
+      "suggested": false,
+      "source": "human_confirmed",
+      "rationale": "no latent state and no episode-correlated source: at L=0 the whole system state (inventory, due_now, due_next, period) is observable, so the observation is Markov"
+    },
+    "algo": "ppo",
+    "frame_stack": 1,
+    "obs_normalization": {
+      "enabled": true,
+      "rationale": "stationary features of heterogeneous magnitude \u2014 period 0-12, inventory roughly -60..60, due_now/due_next 0..30"
+    }
+  },
+  "assumptions_log": [
+    "Supply lead time L=0 is STRUCTURAL in this IR, not a scenario axis: with immediate delivery there is no supply pipeline, so no pipeline state variable exists. Reaching the paper's L=1..4 experiments (Figures 4 and 9) requires re-entering Phase A, not a new instance.",
+    "Demand window T=2 is likewise structural: it fixes the advance-demand profile at exactly (due_now, due_next). The homogeneous model of section 3 is recovered as instances exp0 (all mass due immediately, T=0) and exp7 (all mass due in two periods, T=2), per section 4.3.",
+    "Why T cannot be a scenario axis without an mdp_ir extension (reviewed and accepted as an envelope boundary): T changes the DECISION DIMENSION, not just constants. Section 4.2 needs one ordering decision plus T-1 protection levels \u2014 for T=3, 'protection stock sigma_i^(i+1) covering d_(i+1)^(i+1) and protection stock sigma_i^(i+2) covering d_(i+1)^(i+2)' \u2014 so the action space itself would vary per instance. It also changes the demand vector to T+1 components and the advance profile to T entries. Supporting it needs Decision.dim>1 honored by the interpreter (mdp_ir/interpreter.py _random_policy currently emits scalars regardless), per-decision action widths in the gym layer, and the unrolled five-region fulfilment generalized to a cumulative-reserve loop. Note also that the AP dynamic program has state dimension 1+(T-L-1), which is why the paper itself limited its numerics to the two-dimensional case.",
+    "The paper never varies T in section 4: 4.3 fixes 'L=0 and T=2', and both the 540- and 810-instance designs sweep L, K, h and p with T held at 2. T only moves in Figure 4's homogeneous study, and those points are reachable inside a T=2 profile as ladder corners. So T=2 costs no fidelity to this source.",
+    "Horizon N=12 (the section 4 setting) throughout. The section 3 figures use N=30, so the homogeneous corners here will not reproduce Figure 4's printed costs.",
+    "Both decisions are committed at the start of the period, before the demand vector is observed \u2014 matching the information set of the paper's own PL heuristics, whose sigma is a constant. The physical timing would allow the hold-back to be chosen after demand arrives (human_confirmed, section 3 event sequence).",
+    "Ordering cost is fixed-only (K per ordering period, no variable cost), per section 3: 'we assume that there is only a fixed-order cost and no variable cost'.",
+    "Cost components are evaluated at END_OF_PERIOD on end-of-period inventory, i.e. L(x_{i+1}) in eq (5).",
+    "Discount alpha=1.0 in every experiment the paper reports, so the objective is a plain sum and the RL discount should be set to 1.0 accordingly.",
+    "Terminal convention: the DP recursion ends with C_{N+1}=0, so advance demand arriving near the end of the horizon and due after it is never penalised. Unsatisfied due_now/due_next at the horizon carry no terminal cost.",
+    "Initial state (x, v^i, v^{i+1}) = (0, 0, 0), per section 3.3 ('the initial state is (x_1, W_1, V_1) = (0,0,0)').",
+    "The three demand components are independent Poisson draws on separate RNG streams (1, 2, 3); a rate of 0 still consumes a draw, so generated code must not short-circuit it.",
+    "The delivery-flexibility comparison (the paper's Delta, and its ADI / Gallego-Ozer counterpart) is out of scope for this IR by explicit decision; no exact-delivery dynamics branch exists.",
+    "`region` is recorded in info purely to make the piecewise fulfilment of eq (18)-(19) auditable; no transition reads it."
+  ]
+}
