@@ -16,7 +16,10 @@ from pathlib import Path
 from mdp_ir.interpreter import IrInterpreter, simulate
 from mdp_ir.schema import load_ir
 
-ROOT = Path(__file__).resolve().parent.parent  # repo root; fixtures under examples/
+# file lives at <repo>/harness/mdp_ir/interpreter_test.py; fixtures are the
+# shipped example domains under the plugin's skill directory
+REPO = Path(__file__).resolve().parents[2]
+ROOT = REPO / "plugin" / "skills" / "mdp-solver"  # holds examples/
 
 _checks = 0
 

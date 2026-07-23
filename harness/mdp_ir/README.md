@@ -1,24 +1,24 @@
 # mdp_ir
 
 Pydantic schema for the **MDP intermediate representation** (v0.4) — the
-Phase-A artifact of the MDP solver pipeline (`skills/mdp-solver/SKILL.md`
+Phase-A artifact of the MDP solver pipeline (`plugin/skills/mdp-solver/SKILL.md`
 Phase A; annotated reference in `MDP_IR_SAMPLE.md`). An IR is a
 machine-checkable JSON description of a dynamic decision problem that the user
 confirms *before* any domain code is generated; it then drives templated
 Phase-B codegen.
 
-`MDP_IR_SAMPLE.md` (in `skills/mdp-solver/`) is the annotated reference instance and explains
+`MDP_IR_SAMPLE.md` (in `plugin/skills/mdp-solver/`) is the annotated reference instance and explains
 every field; this package is its executable form.
 
 ## Validate
 
 ```bash
-python -m mdp_ir examples/inv_single/inv_single_schema.json examples/dynamic_pricing/vanryzin_pricing_schema.json
+python -m mdp_ir plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json plugin/skills/mdp-solver/examples/dynamic_pricing/vanryzin_pricing_schema.json
 ```
 
 ```python
 from mdp_ir import load_ir
-ir = load_ir("examples/inv_single/inv_single_schema.json")
+ir = load_ir("plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json")
 ir.mdp_fingerprint()   # freeze token of the problem block
 ir.unconfirmed()       # Confirmable fields not yet human-reviewed
 ```
@@ -32,8 +32,8 @@ Stage-1 **differential oracle**: generated `_mdp` code must reproduce its
 trajectories on shared `(instance, episode_seed, decisions)`.
 
 ```bash
-python -m mdp_ir.interpreter examples/inv_single/inv_single_schema.json --decision order=40
-python -m mdp_ir.interpreter examples/dynamic_pricing/vanryzin_pricing_schema.json \
+python -m mdp_ir.interpreter plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json --decision order=40
+python -m mdp_ir.interpreter plugin/skills/mdp-solver/examples/dynamic_pricing/vanryzin_pricing_schema.json \
     --decision price=1.0 --instance ample_stock --episode-seed 3
 python -m mdp_ir.interpreter_test        # invariant checks on both examples
 ```
@@ -67,9 +67,9 @@ field-for-field. A simulator that is spec-conformant but models the wrong
 problem fails here.
 
 ```bash
-python -m mdp_ir.differential examples/inv_single/inv_single_schema.json --episodes 20
+python -m mdp_ir.differential plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json --episodes 20
 # MATCH  inv_single: 20 episodes, 600 periods, fields=[...14 fields...]
-python -m mdp_ir.differential examples/inv_single/inv_single_schema.json --instance lost_sales
+python -m mdp_ir.differential plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json --instance lost_sales
 ```
 
 A **domain adapter** (`{ir.domain.name}_ir_adapter.py` in the IR's own

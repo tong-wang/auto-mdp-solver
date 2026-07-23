@@ -5,7 +5,7 @@ loads any `{domain}/` directory by the spec's file-naming convention and runs a
 suite of static and behavioral invariant checks against it.
 
 It is the reusable backbone for the MDP solver pipeline
-(`skills/mdp-solver/SKILL.md`): the
+(`plugin/skills/mdp-solver/SKILL.md`): the
 same per-check report is a **gate** for a generated domain and a **reward signal**
 for a trained generator.
 
@@ -13,7 +13,7 @@ for a trained generator.
 
 ```bash
 # from the repo root, using the project venv
-.venv/bin/python -m mdp_conformance examples/inv_single examples/dynamic_pricing
+.venv/bin/python -m mdp_conformance plugin/skills/mdp-solver/examples/inv_single plugin/skills/mdp-solver/examples/dynamic_pricing
 
 # no args: auto-discover every sibling domain (any dir with a *_mdp.py)
 .venv/bin/python -m mdp_conformance

@@ -20,12 +20,12 @@ Adapters live **with their domain**, not here (portable-domain contract): the
 IR's directory contains ``{ir.domain.name}_ir_adapter.py`` exposing
 ``make_adapter(ir, instance=None, seed_salt=0, domain_dir=None) -> DomainAdapter``
 with ``domain_dir`` defaulting to the adapter's own directory, so a domain
-folder works unchanged wherever it lives. ``examples/inv_single`` ships the
+folder works unchanged wherever it lives. ``plugin/skills/mdp-solver/examples/inv_single`` ships the
 reference adapter.
 
 CLI:
 
-    python -m mdp_ir.differential examples/inv_single/inv_single_schema.json \
+    python -m mdp_ir.differential plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json \
         [--episodes 20] [--instance lost_sales] [--seed-salt 0] \
         [--decision order=40] [--max-report 10]
 

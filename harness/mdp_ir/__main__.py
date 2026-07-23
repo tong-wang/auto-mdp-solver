@@ -1,6 +1,6 @@
 """Validate IR JSON files against the schema.
 
-    python -m mdp_ir examples/inv_single/inv_single_schema.json [more.json ...]
+    python -m mdp_ir plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json [more.json ...]
 
 Exit status is non-zero if any file fails validation.
 """

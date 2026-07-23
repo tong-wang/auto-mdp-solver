@@ -8,11 +8,11 @@ reference instance.
 
 Validate an IR JSON file:
 
-    python -m mdp_ir examples/inv_single/inv_single_schema.json
+    python -m mdp_ir plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json
 
 Execute an IR directly (round-trip trajectories / codegen oracle):
 
-    python -m mdp_ir.interpreter examples/inv_single/inv_single_schema.json --decision order=40
+    python -m mdp_ir.interpreter plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json --decision order=40
 
 See ``schema.py`` for the models and invariants, ``interpreter.py`` for the
 restricted executor.

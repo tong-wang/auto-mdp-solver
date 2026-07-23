@@ -19,15 +19,17 @@ RL policy from a verbal description of a dynamic decision-making problem**:
 
 ## Components
 
+Two independently-published artifacts live in their own subtrees:
+
 | path | role |
 |---|---|
-| `skills/mdp-solver/` | the Claude Code skill (SKILL.md + canonical spec `MDP_PROJECT_SPEC.md` + annotated IR reference `MDP_IR_SAMPLE.md`) |
-| `mdp_ir/` | IR schema (pydantic), reference interpreter, differential runner |
-| `mdp_conformance/` | architecture/RNG/purity conformance harness (11 checks) |
-| `mdp_gates/` | statistical eval gates (candidate vs baselines, ≥ 2 SE) |
-| `mdp_tuning/` | Optuna tuning driver for the generated training scripts |
-| `examples/` | frozen example domains — the regression suite (`examples/MANIFEST.md`) |
-| `cases/` | end-to-end pipeline test cases |
+| `harness/` | **the PyPI package** `auto-mdp-solver`: `mdp_ir` (IR schema + interpreter + differential runner), `mdp_conformance` (architecture/RNG/purity checks), `mdp_gates` (statistical eval gates, ≥ 2 SE), `mdp_tuning` (Optuna driver) |
+| `plugin/` | **the Claude Code plugin**: `skills/mdp-solver/` (SKILL.md + canonical spec `MDP_PROJECT_SPEC.md` + annotated IR reference `MDP_IR_SAMPLE.md`) and, shipped alongside it, `examples/` — frozen exemplar domains that double as the regression suite (`examples/MANIFEST.md`) |
+| `cases/` | end-to-end pipeline test cases (browse on GitHub) |
+| `README.md`, `docs/` | public landing + guides |
+
+The two packaging systems are disjoint: `pip install` sees only `harness/`; the
+plugin ships only `plugin/`.
 
 ## Install
 
@@ -44,28 +46,31 @@ Python toolchain only:
 ```bash
 pip install auto-mdp-solver   # placeholder today; real release upcoming
 # or, from source:
-pip install -e .
+pip install -e ./harness
 ```
 
 ## Verify (regression suite)
 
-From the repo root, with the package installed:
+From the repo root, with the harness installed (`pip install -e ./harness`):
 
 ```bash
+E=plugin/skills/mdp-solver/examples
 python -m mdp_ir.interpreter_test
-python -m mdp_conformance examples/inv_single examples/dynamic_pricing
-python -m mdp_ir.differential examples/inv_single/inv_single_schema.json --episodes 40
-python -m mdp_ir.differential examples/dynamic_pricing/vanryzin_pricing_schema.json --episodes 40
+python -m mdp_conformance $E/inv_single $E/dynamic_pricing
+python -m mdp_ir.differential $E/inv_single/inv_single_schema.json --episodes 40
+python -m mdp_ir.differential $E/dynamic_pricing/vanryzin_pricing_schema.json --episodes 40
 ```
 
-All gates must pass: interpreter invariants green, conformance 11/11,
-differential bit-exact MATCH.
+All gates must pass: interpreter invariants green, conformance green (SKIPs only
+for inapplicable checks), differential bit-exact MATCH.
 
 ## Example domains
 
-- `examples/inv_single` — single-echelon inventory control with stochastic
+Under `plugin/skills/mdp-solver/examples/`:
+
+- `inv_single` — single-echelon inventory control with stochastic
   lead times (two-step advance, episode-support demand, exact-DP benchmark).
-- `examples/dynamic_pricing` — finite-horizon revenue management (Gallego &
+- `dynamic_pricing` — finite-horizon revenue management (Gallego &
   van Ryzin 1994): continuous price control, decision-conditioned demand
   generator, exact-DP benchmark; PPO reaches within 0.6% of DP.
 

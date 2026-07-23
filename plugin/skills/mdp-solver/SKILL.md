@@ -44,7 +44,7 @@ Install into it (skip if the probe below already prints `ENV OK`):
 ```bash
 uv pip install --python .venv/bin/python "auto-mdp-solver[domain]"
 # no uv:              .venv/bin/python -m pip install "auto-mdp-solver[domain]"
-# from a repo checkout: ... install -e "<repo-root>[domain]"
+# from a repo checkout: ... install -e "<repo-root>/harness[domain]"
 ```
 
 The **`[domain]` extra is required**: the bare package is deliberately
@@ -318,9 +318,9 @@ continuous decision?" gates the bounds/masking question.)
 
 ## Phase B — build (gated stages)
 
-Pick few-shot exemplars by problem shape. Two ship with this plugin under
-`examples/` at the plugin root (two directories above this file's real
-location; see `examples/MANIFEST.md` there): `inv_single` two-step advance +
+Pick few-shot exemplars by problem shape. Two ship with this plugin in the
+`examples/` directory beside this file (see `examples/MANIFEST.md`):
+`inv_single` two-step advance +
 episode-support demand + exact-DP baseline; `dynamic_pricing` continuous
 price control + decision-conditioned generator + exact-DP baseline. If the
 current workspace contains other spec-conformant domains, prefer whichever

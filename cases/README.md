@@ -9,4 +9,4 @@ an `mdp_ir/` extension is a good case.
 
 Trained artifacts (`results/`) are gitignored; each case README's commands
 must reproduce them. A case whose domain proves broadly useful as a few-shot
-exemplar can be promoted to `examples/` (add manifest row).
+exemplar can be promoted to the examples set (`plugin/skills/mdp-solver/examples/`, add manifest row).

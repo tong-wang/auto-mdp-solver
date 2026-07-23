@@ -5,7 +5,7 @@ driven entirely by the conventions in MDP_PROJECT_SPEC.md: any domain with
 {prefix}_{algo}_train.py / {prefix}_{algo}_eval.py scripts exposing
 _build_arg_parser() (spec §8.2, §9.1) can be tuned with zero per-domain code.
 
-    python -m mdp_tuning examples/dynamic_pricing -s simple \
+    python -m mdp_tuning plugin/skills/mdp-solver/examples/dynamic_pricing -s simple \
         --metric revenue_mean --n-trials 25
 
 The search space is defined once per *algorithm* (spaces.py, RL-Zoo-style

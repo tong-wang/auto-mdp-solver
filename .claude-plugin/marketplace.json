@@ -5,7 +5,7 @@
   "plugins": [
     {
       "name": "auto-mdp-solver",
-      "source": "./",
+      "source": "./plugin",
       "description": "Build a trained RL policy from a verbal description of a dynamic decision-making problem, with executable gates between pipeline stages.",
       "author": { "name": "Tong Wang" },
       "homepage": "https://github.com/tong-wang/auto-mdp-solver",
