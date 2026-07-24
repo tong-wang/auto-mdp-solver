@@ -141,6 +141,10 @@ Rules:
     the skill, seeded from `topk_id`/`adi_flex` and grown per case. Each case's
     escalation trace ("symptom X, tried Y, result Z") is an entry; failures are content
     too (sudoku: budget exhausted without clearing the bar → negative-case entry).
+    The trace convention that feeds it — MAP (typed views, revised in place) +
+    FRAME-CHANGELOG + LEDGER, with the no-run-without-an-address rule — is specified in
+    `ESCALATION_LOG_GUIDE.md` (repo root; trial as of 2026-07-24, to be validated on a
+    live project before promotion into the plugin).
   - **Stopping rule** = competitive-vs-baselines (the same criterion that admits a
     domain into `examples/`) or escalation-budget exhaustion; the budget lives in the
     run-plan.
