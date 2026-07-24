@@ -69,6 +69,11 @@ they exist for the public GitHub repo.
   example/generated domain scripts need (SB3 + torch + tensorboard + pandas).
   This repo ships no `.venv`; create one if absent.
 - Never use `param`, `params`, or `param_*` as identifiers (spec rule).
+- **Plugin versioning:** the plugin is the versioned unit — individual SKILL.md /
+  doc files carry no per-file version stamps. Any change under `plugin/` bumps
+  `plugin/.claude-plugin/plugin.json` in the same commit, and each publish to
+  `main` gets a matching `git tag v<version>`, so "what version is live" is
+  always answerable from the tag and installed copies are comparable to it.
 
 ## Regression suite
 
