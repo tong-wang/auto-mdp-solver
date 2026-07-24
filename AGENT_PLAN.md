@@ -1,6 +1,7 @@
 # Agentization Plan — from skill to standalone agent
 
-*Design record, 2026-07-23. Captures the decisions, architecture, and roadmap for
+*Design record, 2026-07-23; revised 2026-07-24 (solve = backbone + escalation;
+gym-gate design, §14). Captures the decisions, architecture, and roadmap for
 turning the `mdp-solver` pipeline into a deployable agent. This is a plan, not yet
 built; nothing here is committed to code.*
 
@@ -57,7 +58,7 @@ boundaries), not per-stage. Four operations plus a conductor:
 |---|---|---|---|
 | `formalize` (Phase A) | verbal / paper | frozen IR + restatement | — (source) |
 | `build` (Stages 1–2) | frozen IR | domain code + gym | IR validates, `unconfirmed()` empty, fingerprint |
-| `solve` (Stages 3–4) | IR + domain + run-plan | leaderboard row + trained artifact | conformance 11/11, differential MATCH |
+| `solve` (Stages 3–4) | IR + domain + run-plan (incl. escalation budget) | leaderboard row + trained artifact | conformance 11/11, differential MATCH |
 | `interpret` *(deferred)* | winning artifact + IR (+ known policy) | policy-behavior findings → feed `package` | winning artifact exists |
 | `package` (Stage 5) | IR + winning artifact | `policy.py` + README | eval TSVs exist, ordering sane |
 | `auto` (= `mdp-solver`) | verbal / paper | everything | conducts the above with gates between |
@@ -96,6 +97,53 @@ Rules:
   Optional: expose two thin trigger front-doors (`/mdp-formalize`, `/mdp-replicate`) over
   the one shared engine for discoverability — distinct briefings, same core; never fork
   the engine.
+- **`solve` = mechanical backbone + conditional escalation layers (2026-07-24).** The
+  backbone — train (vanilla PPO) → eval vs baselines — is the mandatory must-run and the
+  thing that fans out. After it comes a **diagnosis point**: competitive vs baselines →
+  done (`adi_flex`: vanilla PPO cleared the bar; even tuning added little). Gap → the
+  brain judges which of **three orthogonal escalation layers** to open, singly or in
+  combination:
+  1. **HP layer** — hyperparameter tuning (`mdp_tuning`/Optuna);
+  2. **gym layer** — obs/action/reward reshaping;
+  3. **arch layer** — network architecture via `policy_kwargs` (feature extractor,
+     attention, CNN kernels).
+  All three are *optional* — escalation is a policy the brain applies to an outcome, not
+  a pipeline stage (an earlier draft had a mandatory `improve` op; `adi_flex` refutes
+  that). Precedent for the full-blown case: `topk_id` — many experiments running in
+  parallel across the grid of all three axes. Two asymmetries keep "orthogonal" from
+  meaning "interchangeable":
+  - **Verification cost.** HP and arch are gate-free — pure solve knobs, no MDP
+    implications, escalate freely. The **gym layer has its own gates** — resolved
+    design in §14: obs changes are free *by construction* inside the filtered view
+    (visibility tags); action changes need the feasibility-soundness check (+ coverage
+    declaration); reward shaping is training-only with all selection on the faithful
+    mode. Correction vs the first cut: gym edits never re-run the differential — that
+    gates `_mdp` vs the IR and is blind to gym. The genuinely gated events are the
+    upstream leaks: an info-completeness amendment (touches `_mdp` → differential
+    re-run) or a new-information need (IR change → back to `formalize`). In headless
+    form this partition is load-bearing — no human will catch a reward tweak that
+    silently redefined the problem.
+  - **Upstream reach.** Gym is the only layer that can leak past Phase B: an obs feature
+    needing information the MDP state doesn't carry sends you back into `build` (or the
+    IR). HP/arch never can. Hence a cheap-and-safe-first ordering for the automatic
+    case, even though a supervised session (`topk_id`) can run all three in parallel.
+  - **The brain's value is pruning, not searching.** The design space is high-dim and
+    the feedback loop (train→eval) very slow — nobody affords the grid. What the brain
+    contributes is a *prior* over which axis pays given the domain's structure, plus
+    *symptom → lever* diagnosis from cheap evidence: plateaus **near** best baseline
+    with a healthy curve → HP (squeezing, not missing); obs provably not a sufficient
+    statistic → gym/obs; obs rich but *structured* (spatial grid, set/permutation,
+    sequence) fed to a flat MLP → arch matched to the structure (the `topk_id`
+    signature); at or below **random** → suspect the backbone (build bug), don't
+    escalate at all.
+  - **Escalation playbook — an accreting asset**, same pattern as `interpret`'s to-dos:
+    a diagnosis table + per-layer levers + per-layer gate obligations, single-sourced in
+    the skill, seeded from `topk_id`/`adi_flex` and grown per case. Each case's
+    escalation trace ("symptom X, tried Y, result Z") is an entry; failures are content
+    too (sudoku: budget exhausted without clearing the bar → negative-case entry).
+  - **Stopping rule** = competitive-vs-baselines (the same criterion that admits a
+    domain into `examples/`) or escalation-budget exhaustion; the budget lives in the
+    run-plan.
 - **`interpret` — deferred, underspecified (to-dos to accumulate from examples).** After
   `solve`, make sense of the winning policy: recover its *structure*, not just its score.
   Sits between `solve` and `package` (findings feed the package README's empirical-findings
@@ -150,7 +198,9 @@ Phase-B fixtures (IR → expected leaderboard) and become the agent's regression
 The agent's runtime contract is `(frozen IR, run-plan)`. The **only** behavioral fork
 between the skill form and the agent form is Stage 0: the run-plan is *asked*
 interactively in the skill, *supplied* as input in the agent (and the ">30-min compute"
-pause becomes a policy flag).
+pause becomes a policy flag). The run-plan carries scope (which targets/cells) **and
+the escalation budget** — how much diagnosis-driven HP/gym/arch search `solve` may
+spend beyond the backbone (§4).
 
 ## 6. Agent architecture — mode-2 central orchestrator
 
@@ -161,8 +211,13 @@ and shared; Stages 3–4 are per-target/grid-cell.
 **Decision: mode 2 — one central orchestrator brain over LLM-free workers.** Not mode 1
 (a full agent per fan-out cell).
 
-- Reasoning is concentrated at the **seams** (build, gates, collect, repair), not spread
-  through the compute. The per-cell train/eval between seams is mechanical.
+- Reasoning is concentrated at the **seams** (build, gates, collect, **escalation
+  diagnosis**, repair), not spread through the compute. The per-cell train/eval between
+  seams is mechanical. The escalation diagnosis point (§4) is the richest of these
+  seams — it is where an LLM in the Phase-B loop earns its keep.
+- The fan-out unit **generalizes from scenario cell to (design-variant × cell)** when
+  escalation opens: `topk_id`-style experiment grids over HP/gym/arch and the scenario
+  fan-out are the same dispatcher fanning over runs; workers stay LLM-free either way.
 - The central brain has **global / cross-cell view** — it can tell "every cell fails the
   differential the same way → build bug, fix once" from "cell 7 alone underperforms →
   tune cell 7." A per-cell brain is blind to that.
@@ -195,6 +250,9 @@ logic-free**; the decision splits into three tiers landing in three places:
   Use SB3 callbacks (`StopTrainingOnNoModelImprovement`, `StopTrainingOnRewardThreshold`,
   custom `BaseCallback`) and Optuna pruners (ASHA/median, already available via
   `mdp_tuning`) for population-level pruning. Kills most wasted compute, zero Claude.
+  Under escalation (§4) this is what makes the slow feedback loop affordable: Tier 1
+  prunes *within* running experiments; the brain's scarce judgment allocates budget
+  *across* the three axes per diagnosis round.
 - **Tier 2 — judgment / cross-cell stops → the central orchestrator.** Monitoring is
   *observe → decide → act*; observe (read the curve off shared FS/TB) and act
   (`scancel`/kill) are cheap data + control channels the central brain holds for all
@@ -293,6 +351,8 @@ The cost question turns on **whose credentials the brain runs under.**
 - ~~Anthropic API egress from Alicloud / Atlas compute nodes~~ — **resolved:** the brain
   stays off-cluster (§8), so nothing that needs `api.anthropic.com` runs there; the
   remote workers are LLM-free.
+- ~~Gate design for gym-layer escalation~~ — **resolved 2026-07-24**, design in §14;
+  implementation deferred to the coordinated schema+spec batch listed there.
 - **Atlas** scheduler assumed Slurm — confirm the scheduler and `ssh` submission path.
 - **Subscription/SDK current caps** and whether the once-planned separate SDK credit pool
   is live (it was **paused** as of 2026-06); figures drift — check the console.
@@ -301,3 +361,160 @@ The cost question turns on **whose credentials the brain runs under.**
   downstream users BYO-API-key? Confirm with Anthropic support before advertising
   subscription auth to downstream users.
 - **Managed Agents GPU / wall-clock limits** — moot if self-hosting CPU boxes.
+
+## 14. Gym-gate design — visibility, objectives, the problem/solution boundary
+
+*Added 2026-07-24. Resolves the §13 gym-gate open item: what a gym-layer escalation
+(§4) may change, and how validity is enforced without a human in the loop. Decisions
+only — implementation is one deferred, coordinated schema+spec batch (end of section).*
+
+### 14.1 The ruling — gym is solution-side, inside problem-side admissibility rules
+
+The IR already splits correctly (MDP_IR_SAMPLE §0): `mdp` = the *problem* (frozen,
+fingerprinted, human-confirmed), `gym` = the *interface menus* (mutable Phase-B design
+axis, empirical oracle — "editing gym/rl does not change the fingerprint"). RL's
+env-vs-agent vocabulary cuts along a different axis and only *coincides* with
+problem-vs-solution for prefabricated benchmarks (Atari): here the Gym env is
+manufactured — `_mdp` (problem) × interface lens (solution) — and reward shaping /
+obs engineering / action design are solution work in RL practice too, just never
+formally bounded because a human researcher holds the boundary in their head.
+
+What escalation needs is not a new boundary but **richer admissibility constraints on
+the solution-side menu, declared problem-side**. Today's constraint is one bit:
+`observability: latent` / `hidden: true` bars a var from every obs mode (validated) —
+a **blocklist with a permissive default** (everything non-latent is presumed
+observable; censored demand is inexpressible; no timing; reward visibility absent).
+Decision: flip to an **allowlist with explicit timing** — default-deny, the safe
+polarity once a headless agent edits the gym block.
+
+### 14.2 Obs gate — visibility tags, enforced by construction
+
+- Per state/info element, a visibility tag in the **`mdp` block**, `Confirmable`-wrapped
+  (who-knows-what-when has no oracle → Phase-A interview + sign-off; `ir.unconfirmed()`
+  picks it up for free): `observed` (pre-decision at t) | `observed_expost` (enters the
+  information set at t+1) | `latent` (never). Timing granularity: three-way enum with
+  lag-1 semantics; exotic delays (episode-end revelation, lag-L) deferred until a case
+  forces them.
+- Formally the tags define the decision-maker's **filtration**; the gate in one
+  sentence: *every gym obs feature must be measurable w.r.t. it* — a function of
+  tagged-observable histories + own past actions + time index + scenario constants.
+- **Enforce by construction, not review:** the gym is handed only the **filtered view**
+  (the observable projection of state/info/reward histories per tags). Leaks become
+  unrepresentable; obs engineering inside the view is free escalation territory — the
+  semantic gate becomes a type-system gate.
+- Prerequisite: **info-completeness** — `_mdp` publishes *every* potentially-observable
+  realized quantity into `info` (transparency already implies it; the tags make it an
+  obligation). Needing a quantity `_mdp` doesn't publish = amendment → differential
+  re-run; needing information not in the problem = IR change → back to `formalize`.
+- **Reward gets a visibility tag too** (`per_step` | `terminal` | `never`): "prev-reward
+  in obs" is a standard trick, valid iff reward is tagged observable (topk_id: per-step
+  reward would reveal the latent target — a leak through the reward channel).
+- Cross-op dividends: the filtered view *is* the deployable `{domain}_policy.py` API;
+  baselines must respect the filtration to count as competitors (tags let the
+  leaderboard formally split admissible baselines from oracle/clairvoyant *bounds*);
+  `interpret`'s feature attribution is only meaningful over filtration-legal features.
+
+### 14.3 Action gate — soundness required, coverage declared
+
+- **Soundness (required):** the gym action map lands inside the IR-declared feasible
+  set — never emits an infeasible MDP action. Mechanically checkable.
+- **Coverage (recorded, not required):** reparametrizations (discrete↔box,
+  factorization, masking, order-up-to vs order-quantity) preserve the reachable set;
+  deliberate action pruning restricts the attainable optimum — legitimate escalation,
+  but declared on the leaderboard row ("RL lost" ≠ "RL-over-a-subset lost").
+- **Correction to §4's first cut:** gym edits never re-run the differential — it proves
+  interpreter ≡ `_mdp` and is blind to the gym layer.
+
+### 14.4 Reward framework — objective families, scenario-declared target
+
+The true objective already lives problem-side (`mdp.objective`, frozen; `info` mirrors
+its components, validated) and the whole selection chain — eval TSVs, `resolve_metric`,
+`mdp_gates` — already runs on info-derived economics, never the training reward. Two
+things were missing: the **stated link** and the **tag**. Evidence across repos:
+topk_id has the full distinction (`neg_oc` "THE eval metric" vs `shaped_round`
+"TRAINING-ONLY", enforced by eval argparse `choices=["neg_oc"]`) but as domain-local
+folklore; sudoku respects it by instinct (eval on `info["solved"]`, ignoring shaped
+modes); 2048 and retailer never declared theirs (below).
+
+- **The link (invariant to state in spec):** leaderboard/eval/tuning metric ≡
+  `mdp.objective` evaluated from `info`, independent of `gym.reward_mode`. All
+  selection decisions — eval, Optuna metric, best-checkpoint, leaderboard — on the
+  faithful mode. Shaping needs no invariance proof (sudoku's non-potential `fill` is
+  legal); eval-on-faithful is the arbiter, so shaping can only fail to help.
+- **Objective families:** multiple legitimate objectives = a *family of problems
+  sharing dynamics*, not one problem with many rewards (2048: `sum`/`max`/`logmax` are
+  members, not shapings — the objective was never pinned; a formalize gap). The
+  interview disambiguates three kinds of multiplicity: *ambiguity* → pick one
+  (`Confirmable`); *plurality* → family members, each with its own leaderboard,
+  baselines, and positivity verdict (per (domain, target), cf.
+  examples-must-be-positive); *preference trade-off* → true multi-objective RL, **out
+  of the v1 envelope** (a fixed scalarization collapses it to ambiguity).
+- **Scenario-declared target:** the target objective is a **scenario field**. Rationale:
+  the scenario already parameterizes the objective's numbers (cost coefficients); the
+  would-be (objective × design × cell) fan-out collapses into the existing scenario
+  axis (variants as `instances`, grids may put objective on an axis, run-plan selects
+  targets by selecting scenarios); gym / baselines / packaged policy become
+  self-describing (`resolve_metric("auto")` gets a principled answer); cross-objective
+  eval degenerates into cross-scenario eval. Guardrails: (1) **family-level, never
+  sampled** — no latent objectives (kin to the grid-never-in-SCENARIOS rule);
+  (2) **measurement, not world** — invisible to `init_state`/`advance`, consumed only
+  by gym reward assembly + eval/selection tooling (`sense: minimize` precedent:
+  declared problem-side, applied gym-side); (3) **optional, singleton default** —
+  required iff the family is plural, so inv_single-class domains never see it.
+- **Compute-when-determined:** `_mdp` computes **all** variants' components into
+  `info`, *unconditionally* — the target field selects among computed columns
+  downstream, never gates computation upstream. Otherwise cross-objective eval, the
+  multi-column TSV free lunch, and trajectory identity under target swap all silently
+  die. "Unconditional" ≠ "per-step": objectives have a **timing class** —
+  *accumulative* (episode value = Σ per-step components) or *terminal* (a functional
+  determined at episode end, landing in the terminal transition's `info`: topk_id OC,
+  sudoku `solved`, retailer gap). Schema gap: only `per_step_components` exists
+  (schema.py:526) — per-step-ness is baked into the name. Conformance check (gate, not
+  discipline): a scenario pair differing only in the target field must produce
+  bit-identical state/info trajectories. Escape hatch if a component ever gets
+  expensive: an explicit compute flag (kin to `logger_filename`), never the target
+  field.
+- **Role-relative shaping:** faithful-vs-shaping is **relative to the target binding**,
+  not intrinsic to a mode. Each variant has exactly one faithful mode (invariant:
+  episode-sum of faithful reward ≡ the variant's episode value — timing-agnostic; a
+  sparse terminal reward satisfies it trivially); under a chosen target, *every other*
+  mode — including other variants' faithful modes — is eligible training-only shaping
+  (2048 practice: train on `sum`, want max tile; retailer: train dense `revenue`, care
+  about `gap`). Terminal-class objectives are the canonical customers of shaping —
+  their faithful modes are sparse by nature (`shaped_round` exists because `neg_oc` is
+  terminal).
+- **Normalized objectives are distinct family members:** retailer's `gap`
+  (`100·total/opt − 100`) reweights episodes by 1/opt → a genuinely different optimal
+  policy than `revenue` whenever `opt` varies per episode; `regret` ≡ `revenue` iff the
+  benchmark is decision-independent. A real trained domain whose "which problem did we
+  solve?" currently lives in a default argument (`reward_mode: str = "gap"`) — the
+  motivating exhibit for explicit declaration. (Retailer also computes gap from
+  gym-side accumulators, predating spec §6.4's rule that `total_revenue`/`revenue_opt`
+  are `info` fields — under the new discipline its terminal modes become `expr` over
+  terminal info like any other.)
+
+### 14.5 Implementation batch — landing sites (deferred)
+
+Additive migration, seed-scheme-v2 pattern: every pre-existing IR validates unchanged;
+schema + spec + sample + examples move together; coordinated downstream check per
+CLAUDE.md before release. Do **not** implement piecemeal — half-migrated visibility
+semantics are worse than the honest 1-bit status quo.
+
+| item | landing site |
+|---|---|
+| three-way visibility tags + timing; reward visibility; `Confirmable`-wrapped | `mdp_ir/schema.py` + MDP_IR_SAMPLE §5.2 |
+| allowlist semantics replacing the latent blocklist; obs ⊆ filtration validator | schema validators + spec §5.2 |
+| filtered-view gym construction | spec §7 |
+| info-completeness obligation; terminal components in terminal `info` | spec §6.4 |
+| action soundness check + coverage declaration on leaderboard | spec §7 + leaderboard conventions |
+| `mdp.objective` → variants list; timing class; `per_step_components` rename/extension | schema + sample |
+| scenario objective field + guardrail validators (never sampled; invisible to dynamics; singleton default) | schema validators + spec §5 |
+| faithful-mode linkage (`objective_ref`); eval/tuning hard-wired to faithful mode (topk_id argparse pattern, generalized) | schema + spec §8 / generated eval scripts |
+| target-swap trajectory-invariance test | `mdp_conformance` |
+| interview additions: visibility elicitation; objective disambiguation (ambiguity / plurality / trade-off) | SKILL.md Phase A |
+
+**Sequencing:** couples to roadmap step 1 (the skill split) — the tags and objective
+interview touch `formalize`; the filtered view and faithful-mode eval touch `build`
+codegen; and the gates are exactly what makes gym-layer escalation (§4) safe headless.
+The escalation framework itself stays out of the spec — the spec describes domains,
+not the process that searches over them.
