@@ -144,7 +144,12 @@ Rules:
     The trace convention that feeds it — MAP (typed views, revised in place) +
     FRAME-CHANGELOG + LEDGER, with the no-run-without-an-address rule — is specified in
     `ESCALATION_LOG_GUIDE.md` (repo root; trial as of 2026-07-24, to be validated on a
-    live project before promotion into the plugin).
+    live project before promotion into the plugin). Agent-side enforcement is
+    three-tier: playbook instruction (the log *is* the brain's serialized diagnosis
+    state, so agents need it intrinsically for resume/cross-cell view) → a
+    deterministic lint (`mdp_escalog`-style check in the op entry gates) → dispatcher
+    refuses launches without a ledger ID (no-run-without-an-address enforced by
+    construction, same philosophy as §14's filtered view).
   - **Stopping rule** = competitive-vs-baselines (the same criterion that admits a
     domain into `examples/`) or escalation-budget exhaustion; the budget lives in the
     run-plan.
@@ -190,6 +195,29 @@ Rules:
 - **`auto` is the agent orchestrator in disguise:** it sequences the ops with the
   interactive Stage-0 run-plan question in the middle. The batch agent is the same
   conductor with the run-plan *supplied* instead of *asked*.
+- **`mdp-contribute` — an *ecosystem* op, not a pipeline stage (2026-07-24).** One
+  funnel at case close (or standalone): distill (always happens locally — log-guide §9)
+  → choose tier → sanitize interactively → package to convention → `gh` PR, with
+  nothing leaving the machine without explicit user send. Nested tiers map onto the
+  repo's two knowledge assets:
+  - **Tier 1 — full case** (IR + restatement + domain code + baselines + scripts +
+    ESCALATION.md + README repro commands; no `results/`) → `cases/`, feeding the
+    development objective directly. Review is *mechanical* — CI runs conformance +
+    differential + README-reproducibility on the PR — plus a provenance confirmation
+    (contributor has the right to publish the problem; `replicate` cases cite the
+    paper). Negative cases accepted as pipeline stress tests; they just don't promote
+    to `examples/` (positivity rule).
+  - **Tier 1b — re-skinned case**: isomorphic rename (story/units abstracted;
+    structure, distributions, dynamics intact) — feasible *because* the digital twin
+    is the IR, and isomorphism to the private original is mechanically checkable
+    (same fingerprint modulo names). "Share the MDP, not the business."
+  - **Tier 2 — playbook entries only**: sanitized symptom→lever entries → the
+    escalation playbook. Default-deny: schema fields travel as-is (structure-level by
+    construction), free-text evidence gets a scrub pass, numbers normalize to
+    %-over-baseline; Claude proposes the sanitized diff, the user approves before send.
+  - The shipped playbook stays **author-curated**: federated accretion, centralized
+    curation — entries are empirical claims, so PR review = evidence + scope
+    soundness, with contributor attribution as the incentive.
 
 ## 5. The contract between phases
 
@@ -335,6 +363,15 @@ The cost question turns on **whose credentials the brain runs under.**
   and their own compute** → **you bear nothing.** Marginal cost per user ≈ 0; it scales
   as a package download. This is continuous with how the plugin already works (installing
   it runs under the user's account, not the author's).
+- **The return path — contributions, not telemetry (2026-07-24).** Ship-code means zero
+  visibility into user runs, by design: everything executes under user credentials on
+  user hardware, silent phone-home would violate both the permission model and users'
+  proprietary research, and no built-in plugin telemetry mechanism exists anyway.
+  Feedback is therefore *voluntary contribution* via `mdp-contribute` (§4): the skill
+  distills at case close and **offers** to send. The log guide's layer split is the
+  privacy boundary — **the ledger stays local; distilled entries travel** (or a
+  re-skinned/full case, per tier). Inbound plumbing is GitHub-native: entry-schema
+  issue forms + case PRs with CI gate-checks; curation stays with the author.
 - **Host as a service (avoid).** Your key + your infrastructure → you bear tokens *and*
   the far-larger **training compute** for everyone. Architecturally wrong for a
   train-on-your-own-machine tool.
@@ -348,7 +385,9 @@ The cost question turns on **whose credentials the brain runs under.**
    with the **local subprocess backend** first. Run-plan supplied, not asked.
 3. **Add the Slurm/`ssh` backend** for Atlas; add **mid-run supervision** (progress
    stream + `scancel`) and the Tier-1 worker callbacks / Optuna pruning.
-4. **Publish as code** — launcher entry point, docs for BYO-credentials + BYO-compute.
+4. **Publish as code** — launcher entry point, docs for BYO-credentials + BYO-compute;
+   the `mdp-contribute` return path (case PRs with CI gate-checks + playbook entry
+   forms) ships with it.
 
 ## 13. Open items to verify (external mechanics — do not assume)
 
@@ -365,6 +404,9 @@ The cost question turns on **whose credentials the brain runs under.**
   downstream users BYO-API-key? Confirm with Anthropic support before advertising
   subscription auth to downstream users.
 - **Managed Agents GPU / wall-clock limits** — moot if self-hosting CPU boxes.
+- **`gh` contribution flow from a marketplace-installed plugin** — fork-and-PR for users
+  without push rights, `gh auth` prerequisites, friction of the full path; verify it is
+  smooth before advertising `mdp-contribute` publicly.
 
 ## 14. Gym-gate design — visibility, objectives, the problem/solution boundary
 

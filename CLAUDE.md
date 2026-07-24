@@ -37,6 +37,7 @@ subtrees, plus root-level material for public browsers:
 | `plugin/skills/mdp-solver/MDP_PROJECT_SPEC.md` | **canonical** per-domain architecture/naming/RNG/script conventions |
 | `plugin/skills/mdp-solver/MDP_IR_SAMPLE.md` | annotated MDP-IR reference |
 | `plugin/skills/mdp-solver/examples/` | frozen exemplar domains — ship with the plugin as few-shot exemplars **and** are the regression suite (see `examples/MANIFEST.md` there) |
+| `plugin/skills/mdp-contribute/SKILL.md` | the contribution skill (case PRs / re-skinned cases / playbook-entry issues; `.github/workflows/case-gates.yml` is its CI counterpart) |
 | `.claude-plugin/marketplace.json` | marketplace manifest (points at `./plugin`) |
 | `cases/` | auto-solve test cases: one folder per case, built end-to-end by the skill |
 | `README.md`, `docs/` | public-facing landing + guides/FAQ (browse on GitHub) |
