@@ -53,14 +53,14 @@ Inventory position = inventory + sum(pipeline).
 ```
 results/
   <scenario>/
-    RL/
-      PPO_<timestamp>_<changed-args>/
-        args.txt
-        ppo_inv_single.zip
-        vecnormalize.pkl
-        checkpoints/
-        train_log_*.log
-        monitor.csv
+    PPO_<timestamp>_<changed-args>/
+      <scenario>_ppo_args.txt
+      ppo_inv_single.zip
+      vecnormalize.pkl
+      checkpoints/
+      train.log                # captured console output of the run
+      train_log_*.log          # per-episode/per-step gym logs, only with --gym-log 1
+      monitor.csv
     benchmark/
       dp/
         V.csv
@@ -116,5 +116,5 @@ Both PPO and DP write `rollout/ep_rew_mean` using the same pseudo-timestep scale
 
 ```bash
 tensorboard --logdir inv_single/results/simple/
-# RL runs appear under RL/, DP benchmark under benchmark/dp/
+# RL runs appear as PPO_<timestamp>_*/, DP benchmark under benchmark/dp/
 ```

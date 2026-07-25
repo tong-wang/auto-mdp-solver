@@ -1059,8 +1059,10 @@ results/
       {scenario_name}_{algo}.zip     # saved SB3 model
       vecnormalize.pkl               # VecNormalize running stats (if used)
       {scenario_name}_{algo}_args.txt  # all CLI args at training time
-      train_log_episode.log          # per-episode log
-      train_log_step.log             # per-step log
+      train.log                      # captured stdout/stderr of the training run
+      eval.log                       # captured stdout/stderr of the eval run
+      train_log_episode.log          # per-episode log   (only with --gym-log 1, §11)
+      train_log_step.log             # per-step log      (only with --gym-log 1, §11)
       monitor.monitor.csv            # SB3 Monitor CSV
       {ALGO}_1/                      # TensorBoard event files
       ppo_eval_{eval_scenario}.tsv   # eval output (eval scenario encoded in filename)
@@ -1068,6 +1070,7 @@ results/
       {method}/                      # one dir per benchmark method (dp, lp, ...)
         {scenario_name}.txt          # precomputed solution table for this scenario, if any
       benchmark_{name}_eval_{scenario_name}.tsv  # benchmark eval output ({name} = method or policy variant)
+      benchmark_{name}.log           # captured stdout/stderr of that benchmark eval
   tuning/                            # `mdp_tuning` studies — domain-level, NOT scenario-nested
     optuna.db                        # sqlite store; holds every study for this domain
     {study_name}/                    # e.g. dynamic_pricing_simple_ppo (domain + scenario + algo)
@@ -1075,6 +1078,31 @@ results/
         train.log  eval.log  eval.tsv
         {scenario_name}/{run_name}/  # the tree above, re-applied by the train script
 ```
+
+**Anchor every output path to the script, never to the CWD.** Any script that
+writes into `results/` resolves it as
+`Path(__file__).resolve().parent / args.outdir / ...` — train, eval, and
+benchmark alike. A bare `Path(args.outdir)` is CWD-relative, so the same
+command run from the repo root silently creates a second `results/` tree
+there; the correctness of the layout must not depend on the caller's `cd`.
+Scripts that derive their destination from an input path instead (e.g. an eval
+that writes next to `--model-path`) are already anchored and need no `outdir`.
+
+**No level between `{scenario_name}/` and `{run_name}/`.** The tree above is
+exact: run directories sit directly under the scenario, alongside
+`benchmark/`. Do not interpose an algorithm-family directory (`RL/`, `PPO/`) —
+the algorithm already prefixes the run name.
+
+**Console output belongs with the run it describes.** Captured stdout/stderr
+is an artifact, not scratch: a training run goes to `{run_dir}/train.log`, an
+eval to `{run_dir}/eval.log`, and a benchmark eval to
+`{scenario_name}/benchmark/benchmark_{name}.log` — never to the domain folder
+or the CWD. `mdp_tuning` already does this for trials
+(`trial_{NNNN}/train.log`); manual and agent-driven launches follow the same
+rule. Because `{run_name}` carries a timestamp computed inside the train
+script, the launcher cannot name `{run_dir}` in advance — so the train script
+tees its own stdout/stderr into `{run_dir}/train.log` as soon as it has
+resolved the path, and the launcher's own redirect target stops mattering.
 
 **Why `tuning/` is not under `{scenario_name}/`**: the harness hands each
 `trial_{NNNN}/` to the domain's train script as `--outdir`, and that script
@@ -1092,14 +1120,16 @@ Two tiers of keys:
   Add these to `_SKIP_KEYS` and prepend them unconditionally before the defaults loop.
 - **Only when non-default** (hyperparameters — tuning knobs):
   `lr`, `n_steps`, `batch_size`, `n_epochs`, `gamma`, `ent_coef`, `total_timesteps`, etc.
-- **Always skipped**: `outdir`, `scenario_name`, `progress_bar`.
+- **Always skipped**: `outdir`, `scenario_name`, `progress_bar`, `gym_log`
+  (diagnostic toggles are not design axes — §11).
 
 ```python
 _SHORT_KEYS: dict[str, str] = {
     "total_timesteps": "steps",
     ...
 }
-_SKIP_KEYS = {"outdir", "scenario_name", "progress_bar", "observation_mode", "action_mode", "reward_mode"}
+_SKIP_KEYS = {"outdir", "scenario_name", "progress_bar", "gym_log",
+              "observation_mode", "action_mode", "reward_mode"}
 
 def build_run_name(args: argparse.Namespace) -> str:
     defaults = vars(_build_arg_parser().parse_args([]))
@@ -1315,6 +1345,26 @@ A benchmark solver may expose several closely-related policies through a `--poli
 - Both loggers initialized in the gym wrapper when `logger_filename is not None`.
 - Log filenames: `{filename}_episode.log` and `{filename}_step.log`.
 - `filename` / `outdir` encodes run identity (scenario, modes, algo, hyperparams, timestamp).
+- **`logger_filename` is always an absolute path under the run directory** —
+  `str(outdir / "train_log")`. A bare name resolves against the CWD (§8.4),
+  which is how a domain ends up littering the folder it was launched from.
+
+**These loggers are off by default.** The train script exposes
+`--gym-log {0,1}`, default **`0`**, and passes
+`logger_filename=str(outdir / "train_log") if args.gym_log else None`. It is a
+diagnostic toggle, not a design axis, so it goes in `_SKIP_KEYS` and never
+appears in the run name.
+
+Rationale: the per-step stream writes one line per environment step, from
+inside the hot loop. Measured on this codebase, a single `train_log_step.log`
+reaches 150–830 MB, and per-domain tuning trees ran to 6.5 GB (adi_flex) and
+30.1 GB (topk_id) of step logs — 97% of that study's total footprint — for
+traces nothing subsequently read. Under `mdp_tuning` the cost is also
+per-trial and lands on exactly the runs whose wall-clock is being compared.
+Enable it deliberately when debugging a transition or a reward, for one run,
+and leave it off otherwise. No tuning-side special case is needed: the default
+already holds for studies, so a domain that never adds the flag is still
+correct.
 
 ---
 

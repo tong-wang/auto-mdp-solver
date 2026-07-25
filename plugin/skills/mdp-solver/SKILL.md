@@ -431,10 +431,25 @@ spec-§9 seed loop, TSV columns
 (`<axes>... <metric>_mean <metric>_var semivar_d semivar_u`), and one seed
 count (default 8192). A benchmark that precomputes a solution table writes it
 to `results/{scenario}/benchmark/{method}/{scenario}.txt`; eval TSVs go to
-`results/{scenario}/benchmark/benchmark_{name}_eval_{scenario}.tsv`.
+`results/{scenario}/benchmark/benchmark_{name}_eval_{scenario}.tsv`. Resolve
+both from `Path(__file__).resolve().parent`, never from the CWD (spec §8.4) —
+and redirect each eval's console output into that same `benchmark/` directory:
+
+```bash
+cd {domain}
+out=results/{scenario}/benchmark; mkdir -p $out
+for m in random myopic dp; do
+  OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 nohup ../.venv/bin/python \
+    {domain}_benchmark_${m}_eval.py -s {scenario} --n-seeds 8192 \
+    > $out/benchmark_${m}.log 2>&1 &
+done
+```
 
 **GATE:** baselines run to completion and their ordering is sane
-(DP ≥ heuristics ≥ random); they now bound the reward scale.
+(DP ≥ heuristics ≥ random); they now bound the reward scale. Nothing was
+written outside `results/` — `git status --short {domain}/` shows no stray
+`*.log`/`*.tsv` in the domain folder, and no `results/` tree appeared anywhere
+but the domain directory.
 
 ### Stage 4 — train + eval (+ tune)
 
@@ -446,15 +461,45 @@ to `results/{scenario}/benchmark/{method}/{scenario}.txt`; eval TSVs go to
   reach it; VecNormalize per the IR's `obs_normalization` decision;
   run-name encodes obs/act/rew + non-default hyperparameters).
 - Launch with `OMP_NUM_THREADS=1 MKL_NUM_THREADS=1`, in the background;
-  watch `ep_rew_mean` against the baseline bounds while it runs.
+  watch `ep_rew_mean` against the baseline bounds while it runs. The train
+  script tees its own stdout/stderr to `{run_dir}/train.log` (spec §8.4), so
+  send the shell redirect to the scratchpad and poll the run's own log:
+
+  ```bash
+  cd {domain}
+  OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 nohup ../.venv/bin/python \
+    {domain}_ppo_train.py -s {scenario} -o {obs} > $SCRATCH/train_launch.log 2>&1 &
+  # the script prints `outdir=` on its first lines; watch results/{scenario}/*/train.log
+  ```
+
+  Never redirect a run's output into the domain folder — that is what leaves
+  orphaned `results_train_*.log` files behind.
 - `{domain}_ppo_eval.py` per spec §9.5 (VecNormalize injection), same seed
-  protocol as the baselines.
+  protocol as the baselines. It knows its run directory from `--model-path`,
+  so redirect it straight there: `> $(dirname <model-path>)/eval.log 2>&1`.
 
 **GATE:** `python -m mdp_gates --candidate <ppo_eval.tsv>
 --baseline <random.tsv> --baseline <myopic.tsv> [--reference <dp.tsv>]
 --n-seeds <N>` must exit 0 (beats every baseline by ≥ 2 SE). Report the
 gap to the DP reference. If a design axis (an action/obs mode) fails after
 its one repair attempt, ship the best passing axis and record the failure.
+
+**GATE (layout):** the produced tree matches spec §8.4 exactly — run dirs
+directly under `results/{scenario}/` with no interposed `RL/`, each holding
+`train.log`, `{scenario}_{algo}_args.txt`, the model, and the eval TSV; no
+`results/` anywhere but the domain directory; no `*.log`/`*.tsv` loose in the
+domain folder. Check it, don't assume it:
+
+```bash
+cd {domain}
+find results -maxdepth 2 -type d | sort          # expect {scenario}/{run_name}, {scenario}/benchmark
+ls *.log *.tsv 2>/dev/null && echo "STRAY FILES — fix the path anchoring"
+ls ../results 2>/dev/null && echo "CWD-ANCHORED WRITE — fix the path anchoring"
+```
+
+A miss here is almost always a script resolving `Path(args.outdir)` instead of
+`Path(__file__).resolve().parent / args.outdir`, or a shell redirect aimed at
+the CWD.
 
 - Tuning (on request, or if the DP gap is large): `{domain}_ppo_tune.py`
   thin wrapper over `mdp_tuning` pre-filling `--metric <metric>_mean`.

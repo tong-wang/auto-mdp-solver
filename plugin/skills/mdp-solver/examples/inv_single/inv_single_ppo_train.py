@@ -8,6 +8,7 @@ Example usage:
 """
 
 import argparse
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -44,6 +45,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--checkpoint-every",  type=int,   default=50_000)
     p.add_argument("--report-every",      type=int,   default=50_000)
     p.add_argument("--progress-bar",      action="store_true")
+    p.add_argument("--gym-log",           type=int,   default=0, choices=[0, 1],
+                   help="Write per-episode/per-step gym logs (spec §11). Off by "
+                        "default: the step stream costs hundreds of MB per run.")
     # PPO hyperparameters
     p.add_argument("--lr-init",           type=float, default=3e-4)
     p.add_argument("--lr-final",          type=float, default=3e-5)
@@ -103,7 +107,8 @@ _SHORT_KEYS: dict[str, str] = {
     "vecnorm_clip_obs": "clipobs",
     "norm_reward":     "normrew",
 }
-_SKIP_KEYS = {"outdir", "scenario_name", "progress_bar", "checkpoint_every", "report_every"}
+_SKIP_KEYS = {"outdir", "scenario_name", "progress_bar", "checkpoint_every",
+              "report_every", "gym_log"}
 
 
 def build_run_name(args: argparse.Namespace) -> str:
@@ -123,15 +128,46 @@ def build_run_name(args: argparse.Namespace) -> str:
 
 
 def resolve_paths(outdir_arg: str, scenario_name: str, run_name: str) -> tuple[Path, Path]:
-    outdir   = (Path(__file__).resolve().parent / outdir_arg / scenario_name / "RL" / run_name).resolve()
+    outdir   = (Path(__file__).resolve().parent / outdir_arg / scenario_name / run_name).resolve()
     ckpt_dir = outdir / "checkpoints"
     outdir.mkdir(parents=True, exist_ok=True)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     return outdir, ckpt_dir
 
 
+class _Tee:
+    """Write-through proxy mirroring a stream into a second file object."""
+
+    def __init__(self, stream, fh):
+        self._stream = stream
+        self._fh = fh
+
+    def write(self, data: str) -> int:
+        self._stream.write(data)
+        self._fh.write(data)
+        return len(data)
+
+    def flush(self) -> None:
+        self._stream.flush()
+        self._fh.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def tee_console(outdir: Path, name: str = "train.log") -> None:
+    """Mirror stdout/stderr into `outdir/name` (spec §8.4).
+
+    The run directory is only known once the timestamped run name exists, so a
+    launcher cannot redirect into it — the script captures its own console.
+    """
+    fh = open(outdir / name, "a", buffering=1)
+    sys.stdout = _Tee(sys.stdout, fh)
+    sys.stderr = _Tee(sys.stderr, fh)
+
+
 def write_args(args: argparse.Namespace, outdir: Path) -> None:
-    with open(outdir / "args.txt", "w") as f:
+    with open(outdir / f"{args.scenario_name}_ppo_args.txt", "w") as f:
         for k, v in sorted(vars(args).items()):
             f.write(f"{k}: {v}\n")
 
@@ -188,7 +224,7 @@ def build_training_env(args: argparse.Namespace, outdir: Path) -> VecNormalize:
         scenario=scenario,
         observation_mode=args.observation_mode,
         action_mode=args.action_mode,
-        logger_filename=str(outdir / "train_log"),
+        logger_filename=str(outdir / "train_log") if args.gym_log else None,
     )
     env = Monitor(env, filename=str(outdir / "monitor"))
     env = DummyVecEnv([lambda: env])
@@ -248,7 +284,7 @@ def evaluate(
         scenario=scenario,
         observation_mode=args.observation_mode,
         action_mode=args.action_mode,
-        logger_filename=str(outdir / "eval_log"),
+        logger_filename=str(outdir / "eval_log") if args.gym_log else None,
     )
     eval_env = DummyVecEnv([lambda: raw_env])
     if vecnorm_path.exists():
@@ -280,11 +316,12 @@ def evaluate(
 def main() -> None:
     args = parse_args()
     scenario = SCENARIOS[args.scenario_name]
-    print(scenario)
 
     run_name = build_run_name(args)
     outdir, ckpt_dir = resolve_paths(args.outdir, args.scenario_name, run_name)
+    tee_console(outdir)
     write_args(args, outdir)
+    print(scenario)
     print(f"observation_mode={args.observation_mode}  outdir={outdir}")
 
     env       = build_training_env(args, outdir)
