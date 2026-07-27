@@ -28,7 +28,7 @@ from mdp_tuning.driver import (
     DomainScripts, EVAL_SEEDS_DESTS, build_cmd, load_domain, newest_model,
     parse_overrides, resolve_metric, run_logged, tsv_column_means,
 )
-from mdp_tuning.spaces import SPACES
+from mdp_tuning.spaces import OPTIONAL_KNOBS, SPACES
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -42,6 +42,32 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("-s", "--scenario_name", default=None, type=str,
                    help="scenario to tune on (default: the train script's own default)")
     p.add_argument("--algo", default="ppo", type=str, choices=sorted(SPACES))
+    p.add_argument("--knobs", default="core", type=str,
+                   choices=("core", "breadth", "all"),
+                   help="knob tier to tune (SOLVE_LEVELS_PLAN §3.5): 'core' = "
+                        "the high-impact knobs (default; right for ~25 trials); "
+                        "'breadth' adds the second tier (use with ≥40 trials); "
+                        "'all' also opens the frozen tier (clip, max_grad_norm, "
+                        "gamma)")
+    p.add_argument("--fix", action="append", default=[], metavar="KNOB",
+                   help="lock a knob at the train script's default instead of "
+                        "tuning it (repeatable) — the forced-move lock; use "
+                        "--train-arg KEY=VALUE to pin at a non-default value")
+    p.add_argument("--beta", default=1.0, type=float,
+                   help="problem discount factor (objective.discount_factor): "
+                        "gamma is searched in (beta-0.05, beta], beta reachable; "
+                        "gamma > beta is never sampled")
+    p.add_argument("--episode-len", default=None, type=int,
+                   help="mean episode length T̄; with --min-rollout-episodes it "
+                        "raises the n_steps lower bound so every rollout spans "
+                        "the episode floor")
+    p.add_argument("--min-rollout-episodes", default=10, type=int,
+                   help="episodes each rollout buffer must span when "
+                        "--episode-len is given (rollout = n_steps × n_envs)")
+    p.add_argument("--no-warm-start", action="store_false", dest="warm_start",
+                   default=True,
+                   help="do not enqueue trial 0 = the train script's defaults "
+                        "(the L1-derived center)")
     p.add_argument("--n-trials", default=25, type=int)
     p.add_argument("--total-timesteps", default=200_000, type=int,
                    help="training budget per trial")
@@ -88,15 +114,19 @@ def _resolve_domain_dir(name: str) -> Path:
     raise FileNotFoundError(f"domain directory not found: {name}")
 
 
-def show_space(scripts: DomainScripts, algo: str,
-               pinned: set[str] = frozenset()) -> None:
+def show_space(scripts: DomainScripts, algo: str, tier: str = "all",
+               pinned: set[str] = frozenset(),
+               locked: set[str] = frozenset()) -> None:
     space = SPACES[algo]
-    tunable = [k for k in space.knobs
-               if k in scripts.train_args and k not in pinned]
-    skipped = [k for k in space.knobs if k not in scripts.train_args]
+    tier_knobs = space.tiers.get(tier, space.knobs)
+    tunable = [k for k in tier_knobs
+               if k in scripts.train_args and k not in pinned and k not in locked]
+    outside = [k for k in space.knobs if k not in tier_knobs]
+    skipped = [k for k in tier_knobs if k not in scripts.train_args]
     pinned_shown = [k for k in space.knobs if k in pinned]
+    locked_shown = [k for k in tier_knobs if k in locked]
     print(f"domain   : {scripts.prefix}  ({scripts.directory})")
-    print(f"algo     : {algo}")
+    print(f"algo     : {algo}  (tier: {tier})")
     print(f"train    : {scripts.train_script.name}")
     print(f"eval     : {scripts.eval_script.name}")
     seeds_dest = next((d for d in EVAL_SEEDS_DESTS if d in scripts.eval_args), None)
@@ -105,9 +135,20 @@ def show_space(scripts: DomainScripts, algo: str,
     if pinned_shown:
         print(f"pinned   ({len(pinned_shown)}): {', '.join(pinned_shown)} "
               "(fixed via --train-arg)")
+    if locked_shown:
+        print(f"locked   ({len(locked_shown)}): {', '.join(locked_shown)} "
+              "(held at script default via --fix)")
+    if outside:
+        print(f"out-of-tier ({len(outside)}): {', '.join(outside)} "
+              "(open with --knobs breadth|all)")
     if skipped:
         print(f"skipped  ({len(skipped)}): {', '.join(skipped)} "
               "(not exposed by the train script)")
+    rot = [k for k in skipped if k not in OPTIONAL_KNOBS]
+    if rot:
+        print(f"WARNING: in-tier knob(s) with no matching train-script flag: "
+              f"{', '.join(rot)} — the script predates the spec's required "
+              f"dests, or a dest was renamed (unmatched-knob lint)")
 
 
 def print_summary(study: optuna.Study, top: int = 5) -> None:
@@ -126,13 +167,39 @@ def print_summary(study: optuna.Study, top: int = 5) -> None:
     print(f"  -> best model: {best.user_attrs.get('model_path', '?')}")
 
 
+def resolve_tunable(scripts: DomainScripts, args: argparse.Namespace,
+                    fixed_train: dict) -> set[str]:
+    """Tier knobs ∩ exposed dests, minus --train-arg pins and --fix locks."""
+    space = SPACES[args.algo]
+    tier_knobs = space.tiers.get(args.knobs, space.knobs)
+    bad = [k for k in args.fix if k not in space.knobs]
+    if bad:
+        raise ValueError(f"--fix knob(s) not in the {args.algo} space: {bad}; "
+                         f"known: {sorted(space.knobs)}")
+    return {k for k in tier_knobs
+            if k in scripts.train_args
+            and k not in fixed_train and k not in set(args.fix)}
+
+
+def sample_kwargs_for(scripts: DomainScripts,
+                      args: argparse.Namespace) -> dict[str, object]:
+    """Domain-context kwargs for the sampler (SOLVE_LEVELS_PLAN §3.4):
+    structural n_envs from the script default, and the rollout-episode floor
+    translated into a per-env n_steps lower bound."""
+    n_envs_spec = scripts.train_args.get("n_envs")
+    n_envs = int(n_envs_spec.default) if n_envs_spec and n_envs_spec.default else 1
+    min_n_steps = None
+    if args.episode_len:
+        min_n_steps = -(-args.min_rollout_episodes * args.episode_len // n_envs)
+    return {"n_envs": n_envs, "min_n_steps": min_n_steps, "beta": args.beta}
+
+
 def make_objective(scripts: DomainScripts, args: argparse.Namespace,
                    scenario: str, study_dir: Path,
                    fixed_train: dict, fixed_eval: dict):
     space = SPACES[args.algo]
-    # a knob pinned via --train-arg is fixed, not tuned
-    tunable = {k for k in space.knobs
-               if k in scripts.train_args and k not in fixed_train}
+    tunable = resolve_tunable(scripts, args, fixed_train)
+    sample_kw = sample_kwargs_for(scripts, args)
 
     def _penalty(trial: optuna.Trial, err: Exception) -> float:
         """Value for a crashed trial (e.g. NaN divergence): the worst completed
@@ -147,7 +214,12 @@ def make_objective(scripts: DomainScripts, args: argparse.Namespace,
         return max(done) if done else 0.0
 
     def objective(trial: optuna.Trial) -> float:
-        cfg = space.sample(trial, tunable)
+        cfg = space.sample(trial, tunable, **sample_kw)
+        # one-DOF schedule pairs: finals derived from the tuned init, so a
+        # schedule can never invert (lr_final=lr/10, clip_final=clip_init/4)
+        for dest, (src, factor) in space.derived.items():
+            if src in cfg and dest in scripts.train_args and dest not in fixed_train:
+                cfg[dest] = round(cfg[src] * factor, 10)
         trial.set_user_attr("cfg", str(cfg))
         trial_dir = study_dir / f"trial_{trial.number:04d}"
         trial_dir.mkdir(parents=True, exist_ok=True)
@@ -211,7 +283,7 @@ def main() -> None:
     scripts = load_domain(domain_dir, algo=args.algo)
 
     if args.show_space:
-        show_space(scripts, args.algo)
+        show_space(scripts, args.algo, tier=args.knobs, locked=set(args.fix))
         return
 
     scenario = args.scenario_name or str(scripts.train_args["scenario_name"].default)
@@ -258,7 +330,31 @@ def main() -> None:
     print(f"budget   : {args.n_trials} trials x {args.total_timesteps} steps, "
           f"{args.eval_seeds} eval seeds"
           + (f", timeout {args.timeout}s" if args.timeout else ""))
-    show_space(scripts, args.algo, pinned=set(fixed_train))
+    show_space(scripts, args.algo, tier=args.knobs,
+               pinned=set(fixed_train), locked=set(args.fix))
+
+    # warm start (SOLVE_LEVELS_PLAN §3.6): trial 0 = the train script's own
+    # defaults for the tunable knobs — the L1-derived center. The study then
+    # directly measures what tuning adds over L1.
+    space = SPACES[args.algo]
+    if args.warm_start and space.encode is not None and not study.trials:
+        tunable = resolve_tunable(scripts, args, fixed_train)
+        sample_kw = sample_kwargs_for(scripts, args)
+        defaults = {}
+        for k in tunable:
+            v = scripts.train_args[k].default
+            if isinstance(v, list):
+                v = tuple(v)
+            if v is not None:
+                defaults[k] = v
+        enq, skipped = space.encode(defaults, **sample_kw)
+        if enq:
+            study.enqueue_trial(enq)
+            print(f"warm start: enqueued trial 0 = train-script defaults "
+                  f"({', '.join(sorted(enq))})")
+        if skipped:
+            print(f"warm start: default value outside the space for "
+                  f"{sorted(skipped)} — sampled instead")
 
     study.optimize(
         make_objective(scripts, args, scenario, study_dir, fixed_train, fixed_eval),
@@ -275,6 +371,26 @@ def main() -> None:
         print(f"{failed} trial(s) crashed (typically NaN divergence) and were "
               f"penalized — see their train.log")
     print_summary(study)
+    report_importances(study, study_dir)
+
+
+def report_importances(study: optuna.Study, study_dir: Path) -> None:
+    """Per-study parameter importances (fANOVA) — the empirical feedback that
+    turns the tier assignment from a literature prior into a measured one
+    (SOLVE_LEVELS_PLAN §3.8). Accretes into the escalation playbook."""
+    try:
+        from optuna.importance import get_param_importances
+        imp = get_param_importances(study)
+    except Exception as err:  # <2 completed trials, missing sklearn, …
+        print(f"(param importances unavailable: "
+              f"{err.__class__.__name__}: {err})")
+        return
+    print("\nparam importances (fANOVA):")
+    for k, v in imp.items():
+        print(f"  {k:24s} {v:.4f}")
+    out = study_dir / "param_importances.txt"
+    out.write_text("".join(f"{k}\t{v:.6f}\n" for k, v in imp.items()))
+    print(f"  -> {out}")
 
 
 if __name__ == "__main__":
