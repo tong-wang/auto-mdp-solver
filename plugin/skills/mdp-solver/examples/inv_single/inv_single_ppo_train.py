@@ -49,7 +49,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="Write per-episode/per-step gym logs (spec §11). Off by "
                         "default: the step stream costs hundreds of MB per run.")
     # PPO hyperparameters
-    p.add_argument("--lr-init",           type=float, default=3e-4)
+    # --learning_rate dest is the mdp_tuning contract (spec §8.2)
+    p.add_argument("--learning_rate", "--lr-init", dest="learning_rate",
+                   type=float, default=3e-4)
     p.add_argument("--lr-final",          type=float, default=3e-5)
     p.add_argument("--clip-init",         type=float, default=0.2)
     p.add_argument("--clip-final",        type=float, default=0.05)
@@ -62,6 +64,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--vf-coef",           type=float, default=0.5)
     p.add_argument("--max-grad-norm",     type=float, default=0.5)
     p.add_argument("--target-kl",         type=float, default=0.02)
+    p.add_argument("--net_arch",          type=int,   nargs="+", default=[64, 64])
+    p.add_argument("--n-envs",            type=int,   default=1)
     # VecNormalize
     p.add_argument("--vecnorm-clip-obs",  type=float, default=10.0)
     p.add_argument("--no-norm-reward",    action="store_false", dest="norm_reward", default=True)
@@ -91,8 +95,10 @@ _SHORT_KEYS: dict[str, str] = {
     "action_mode":     "act",
     "total_timesteps": "steps",
     "seed":            "seed",
-    "lr_init":         "lr",
+    "learning_rate":   "lr",
     "lr_final":        "lrf",
+    "net_arch":        "arch",
+    "n_envs":          "nenvs",
     "clip_init":       "clip",
     "clip_final":      "clipf",
     "n_steps":         "nsteps",
@@ -220,22 +226,29 @@ class InventoryMetricsCallback(BaseCallback):
 
 def build_training_env(args: argparse.Namespace, outdir: Path) -> VecNormalize:
     scenario = SCENARIOS[args.scenario_name]
-    env = InvSingleEnv(
-        scenario=scenario,
-        observation_mode=args.observation_mode,
-        action_mode=args.action_mode,
-        logger_filename=str(outdir / "train_log") if args.gym_log else None,
-    )
-    env = Monitor(env, filename=str(outdir / "monitor"))
-    env = DummyVecEnv([lambda: env])
-    return VecNormalize(env, norm_obs=True, norm_reward=args.norm_reward, clip_obs=args.vecnorm_clip_obs)
+
+    def make_env(rank: int):
+        def _make():
+            env = InvSingleEnv(
+                scenario=scenario,
+                observation_mode=args.observation_mode,
+                action_mode=args.action_mode,
+                logger_filename=(str(outdir / f"train_log_{rank}")
+                                 if args.gym_log else None),
+            )
+            return Monitor(env, filename=str(outdir / f"monitor_{rank}"))
+        return _make
+
+    env = DummyVecEnv([make_env(i) for i in range(args.n_envs)])
+    return VecNormalize(env, norm_obs=True, norm_reward=args.norm_reward,
+                        clip_obs=args.vecnorm_clip_obs, gamma=args.gamma)
 
 
 def build_model(args: argparse.Namespace, env, outdir: Path) -> PPO:
     return PPO(
         policy="MlpPolicy",
         env=env,
-        learning_rate=build_schedule(args.lr_init, args.lr_final),
+        learning_rate=build_schedule(args.learning_rate, args.lr_final),
         n_steps=args.n_steps,
         batch_size=args.batch_size,
         n_epochs=args.n_epochs,
@@ -246,6 +259,7 @@ def build_model(args: argparse.Namespace, env, outdir: Path) -> PPO:
         vf_coef=args.vf_coef,
         max_grad_norm=args.max_grad_norm,
         target_kl=args.target_kl,
+        policy_kwargs={"net_arch": list(args.net_arch)},
         verbose=1,
         tensorboard_log=str(outdir),
         seed=args.seed,

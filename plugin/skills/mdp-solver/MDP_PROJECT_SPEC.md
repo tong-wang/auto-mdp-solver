@@ -29,7 +29,7 @@ Each domain lives in its own subfolder `{domain}/`. Every file is prefixed with 
 | `{domain}_ppo_tune.py` | Optional thin wrapper over the repo-level `mdp_tuning` harness, pre-filling domain defaults (e.g. `--metric`) |
 | `{domain}_dreamerv3_train.py` | RLlib DreamerV3 training |
 | `{domain}_ppo_eval.py` | Evaluate a trained RL model over the full parameter grid |
-| `{domain}_benchmark_{method}.py` | Non-RL benchmark solver — `{method}` names the method (`lp`, `dp`, `myopic`, `greedy`, `fluid`, or a domain-custom heuristic). One per method; a solver may expose several related policies via `--policy` (§9.7) |
+| `{domain}_benchmark_{method}.py` | Non-RL benchmark solver — `{method}` names the method (`lp`, `dp`, `myopic`, `greedy`, `fluid`, or a domain-custom heuristic). One per method; a solver may expose several related policies via `--policy` (§9.8) |
 | `{domain}_benchmark_{method}_eval.py` | Evaluate a benchmark over the full parameter grid, same TSV format as the RL eval |
 | `{domain}_policy.py` | Deployable policy wrapper over the trained artifact (§12) |
 
@@ -863,6 +863,18 @@ class {Domain}Env(gym.Env):
 - `self.scenario` is the stored attribute name (the source, as passed in); `self._scenario_ep` is the per-episode concrete scenario, and everything episode-scoped (`init_state`, `advance*`) uses it. For a fixed scenario they are the same object.
 - Action and observation spaces built in private `_build_action_space()` / `_build_observation_space()` methods, reading only family-level attributes so a sampler works unchanged (§5.2 mirroring rule).
 - Supports `logger_filename` for per-episode and per-step log output.
+- **Episode-seed provenance.** `reset()` derives the episode seed like this — and never from the global `np.random`:
+
+  ```python
+  def reset(self, *, seed=None, options=None):
+      super().reset(seed=seed, options=options)   # maintains self.np_random
+      if seed is not None:
+          self._episode_seed = seed               # eval/benchmark contract: explicit seed pins the instance
+      else:
+          self._episode_seed = int(self.np_random.integers(0, 2_147_483_647))
+  ```
+
+  `super().reset(seed=...)` seeds gymnasium's per-env `self.np_random` once (SB3 passes `training_seed + rank` per env at the first reset); unseeded resets then draw the episode-seed stream from it — per-env independent, reproducible, and safe under any vec-env. Drawing from **global** `np.random` is forbidden: under `SubprocVecEnv` (fork) every worker inherits identical global state and the "parallel" envs replay the *same* episode-seed sequence from episode 2 on; under `DummyVecEnv` the stream is reset-order-fragile. Everything below `episode_seed` is already counter-keyed (§6.3) and unaffected.
 
 ### 7.1 Action Masking (discrete action spaces only)
 
@@ -1017,7 +1029,11 @@ if __name__ == "__main__":
 - `print(scenario)` at the top of `main()` to confirm configuration.
 - Env constructed with `scenario=scenario` (keyword argument, never positional).
 - RLlib `env_config` dict must use `"scenario"` as the key (RLlib calls `Env(**config)`).
-- **Do not hard-code `gamma`** in PPO kwargs — expose it as a CLI argument instead.
+- **Do not hard-code `gamma`** in PPO kwargs — expose it as a CLI argument instead. Its default is the IR's `objective.discount_factor` (β): training γ = β is the faithful setting; γ < β only as a logged escalation move, γ > β never (§8.6).
+- **Expose `--net_arch`** (`nargs="+", type=int`, default `64 64` → `policy_kwargs`): network size is a core tuning knob, and `mdp_tuning` can only reach dests the script exposes.
+- **Expose `--n-envs`** (structural, never tuned; default from the §8.6 derivation). All env access goes through the VecEnv API — **never `venv.envs`** — with zero-arg env factories and rank-suffixed Monitor filenames, so `DummyVecEnv`/`SubprocVecEnv` stay a one-argument swap. `DummyVecEnv` is the default; `SubprocVecEnv` only when a *measured* env-step cost (≳1 ms) justifies the IPC overhead. Eval scripts stay single-env (§9.5) regardless.
+- **Schedule pairs are one degree of freedom:** `lr_final = lr_init/10`, `clip_final = clip_init/4`. The flags may exist separately, but defaults obey the ratios and `mdp_tuning` derives the finals from the tuned inits — a schedule must never invert.
+- For high instance-variance domains pass `stats_window_size=500` (or more) to the model: the default 100-episode rolling `ep_rew_mean` swings even under a static policy.
 - **Pin BLAS/torch threads when launching training** (`OMP_NUM_THREADS=1 MKL_NUM_THREADS=1`): the policies in these domains are tiny, so torch's default all-cores threading adds sync overhead rather than speed, and on a shared machine it oversubscribes cores already used by other jobs (measured on a small-board CNN domain: 9 min → 11 s for 2048 steps on a box concurrently running an 8-core workload; expect a smaller but still real gain on an idle box). The `mdp_tuning` harness sets this for its subprocesses automatically.
 
 ### 8.3 SB3 env-wrapper stack (VecNormalize)
@@ -1025,12 +1041,20 @@ if __name__ == "__main__":
 For SB3 single-agent PPO scripts, wrap the env in this order:
 
 ```python
-env = {Domain}Env(scenario=scenario, ..., logger_filename=...)
-env = FrameStackObservation(env, stack_size=..., padding_type="zero")  # only if the domain uses it
-env = Monitor(env, filename=str(outdir / "monitor"))
-env = DummyVecEnv([lambda: env])
-env = VecNormalize(env, norm_obs=True, norm_reward=args.norm_reward, clip_obs=args.vecnorm_clip_obs)
+def make_env(rank: int):
+    def _make():
+        env = {Domain}Env(scenario=scenario, ..., logger_filename=...)
+        env = FrameStackObservation(env, stack_size=..., padding_type="zero")  # only if the domain uses it
+        return Monitor(env, filename=str(outdir / f"monitor_{rank}"))
+    return _make
+
+env = DummyVecEnv([make_env(i) for i in range(args.n_envs)])
+env = VecNormalize(env, norm_obs=True, norm_reward=args.norm_reward,
+                   clip_obs=args.vecnorm_clip_obs, gamma=args.gamma)
 ```
+
+- **Pass `gamma=args.gamma` to VecNormalize.** Its reward normalization divides by the std of a running *discounted* return with its **own** gamma defaulting to 0.99 — left unset it normalizes against a different discount than training.
+- **n_envs is structural** (§8.2): the rollout buffer is `n_steps × n_envs`; more envs decorrelate the buffer (more instances per update, stabler `obs_rms`), which matters most for long-episode domains. Rank-suffixed Monitor files keep per-env logs from interleaving.
 
 - **Order matters.** `Monitor` must sit **inside** `VecNormalize` so `rollout/ep_rew_mean` is logged on the **raw** reward scale — this keeps the metric comparable across runs regardless of reward normalization. (Only `train/value_loss`, `train/explained_variance`, etc. are on the normalized scale.)
 - **Expose two CLI flags:** `--vecnorm_clip_obs` (default `10.0`) and `--no_norm_reward` (`action="store_false", dest="norm_reward", default=True`). Encode both in the run name when non-default.
@@ -1176,6 +1200,56 @@ The shape is a reliable proxy only because the gym conventions make it one: spat
 
 Expose `--features_dim`, `--channels`, `--kernel_size` as CLI arguments so the `mdp_tuning` harness can reach them (its PPO space tunes `features_dim`/`channels` whenever the script exposes them). Domains may add specialized extractors beyond the default (e.g. row/column kernels for a grid board) behind a `--cnn_arch` choice.
 
+### 8.6 Solve levels and the L1 derivation
+
+Training runs are **leveled** by how much judgment produced their config.
+The invariant: **level ≥ L2 ⟺ more than one training configuration was
+tried** — replicate seeds are copies, not search; within-run model selection
+(plateau stop, best checkpoint) is part of L1's single run; a tuned result is
+always an escalation.
+
+- **L0 — faithful defaults** (control, reporting only, never a gate). The
+  library's defaults plus only what the *problem* forces: γ = β
+  (`objective.discount_factor`), the algorithm class the IR's validators
+  force, the env as built, the shared eval protocol, and a declared 2M-step
+  budget constant. No VecNormalize, constant LR 3e-4, constant clip 0.2,
+  `ent_coef` 0, batch 64, MLP (64,64), 1 env, terminal checkpoint. In one
+  line: `PPO("MlpPolicy", env, gamma=β, seed=s).learn(2_000_000)` — anything
+  that can't fit in that line is L1+. Record the SB3 version in args.txt.
+  L0 is the ruler: Δ(L1−L0) measures the configuration layer per case.
+- **L1 — the derived config** (the mandatory backbone). Every row below is a
+  *forced move* — a hard rule reading the IR, logged with a one-line
+  rationale (the `obs_normalization` decision pattern, generalized).
+  Judgment beyond these rules is L2.
+- **L2+ — escalations**, one level per round, tagged with the layer(s)
+  opened: `L2(hp)`, `L2(gym)`, `L2(arch)`, `L3(hp+arch)`, … Budget extension
+  ("still climbing at ceiling") is the cheapest L2 move.
+
+**The L1 derivation table** (signal → knob):
+
+| knob | rule |
+|---|---|
+| `gamma` | γ = β. Undiscounted indefinite horizon: γ = 1 − 1/T̄. γ < β only as a logged L2(hp) bias-variance move; γ > β never (more bias *and* more variance). |
+| `gae_lambda` | 0.95; raise toward 0.98+ when action consequences materialize ≫ 1/(1−λ) steps out. |
+| `n_envs`, `n_steps` | rollout = n_steps × n_envs ≥ max(2048 transitions, 10 episodes); n_envs = 4 default, structural, never tuned; long T̄ → raise n_envs before inflating n_steps. |
+| `batch_size` | rollout/32 … rollout/8, power of two. |
+| LR schedule | exogenous noise dominates reward variance (read the IR's uncertainty block) → 1e-4 → 1e-5; near-deterministic dense-reward → 3e-4 → 3e-5. `lr_final = lr_init/10`. |
+| clip schedule | 0.2 → 0.05 (`clip_final = clip_init/4`). |
+| `ent_coef` | 0.005; 0.01+ where premature determinism is a known hazard (bandit-like exploration, sparse success). |
+| `n_epochs`, `target_kl` | 10 / 0.02 fixed; target_kl is the safety valve, never tuned — repeated `approx_kl` truncation is the LR-too-high signal, fix the LR. |
+| `norm_obs` | §8.3 decision per the IR (heterogeneous stationary → on; drifting/accumulator obs → off, prefer sufficient-statistic obs). |
+| `norm_reward` | on, with `gamma=args.gamma` passed (§8.3). |
+| `net_arch` | (64,64) for obs dim ≤ ~32; scale the first hidden layer to ~2–4× obs dim above. Structured obs (set/permutation, grid, sequence) is never a width problem — record a *predicted escalation: arch* note. Boundary: `net_arch` widths = HP layer; custom extractors = arch layer. |
+| budget | ceiling = 20k–50k episodes × T̄ steps AND ≥ ~300 updates; plateau early-stop on the eval-callback curve, not the rollout curve. |
+| model selection | `EvalCallback` on a fixed CRN selection seed set **disjoint** from the reporting protocol's seeds, best-model saving, `sync_envs_normalization` before each eval; optionally weight-average the last ~5 checkpoints and validate against the best single one on the selection set. **The terminal checkpoint is never the deliverable.** |
+
+Diagnosis at the L1 gate: L1 ≤ random → suspect the build, don't escalate;
+L1 < L0 → the derivation misfired; L1 competitive vs baselines → done; gap →
+open L2. Tuning (`mdp_tuning`) is the L2(hp) layer: it warm-starts from the
+train script's defaults (= the L1 center), searches the `core` knob tier by
+default, and derives schedule finals — see its `--knobs`, `--fix`, `--beta`,
+`--episode-len` flags.
+
 ---
 
 ## 9. Evaluation Scripts
@@ -1219,7 +1293,16 @@ for ep_seed in range(n_seeds):
     returns[ep_seed] = info_last["<objective>"]   # e.g. profit (maximize) / cost (minimize)
 ```
 
-Default `n_seeds=65536` provides tight confidence intervals without tuning.
+Default `n_seeds=65536` provides tight confidence intervals without tuning;
+see §9.7 for the reporting tiers actually used per run level.
+
+**Score with β.** When the IR's `objective.discount_factor` β < 1, the
+per-episode objective is the *discounted* return `Σ β^t r_t` — in the PPO
+eval **and in every benchmark eval identically** (the leaderboard must
+compare one objective). β is applied here and as the training γ (§8.6),
+never by pre-discounting rewards inside the env or `_mdp` (that would make
+the reward non-stationary and pollute the differential contract). With the
+default β = 1 the plain sum stands.
 
 ### 9.3 Output columns (TSV)
 
@@ -1321,7 +1404,26 @@ for cell_id, source in targets:
 
 **Benchmark solutions file**: a precomputed solution table (e.g. a DP policy table) lives at `results/{scenario_name}/benchmark/{method}/{scenario_name}.txt`. These are artifacts analogous to a trained model: the table covers one scenario family and is referenced by `--solutions` at eval time. A model trained on `simple` can still reference the parent scenario's solutions file if `simple`'s parameters are a subset of that grid.
 
-### 9.7 Multiple policies per benchmark solver
+### 9.7 Eval tiers — how many episodes, and which numbers are quotable
+
+Three tiers with different jobs; only the third produces leaderboard numbers:
+
+| tier | where | episodes | job |
+|---|---|---|---|
+| smoke | train-script tail | 50 | sanity ("did it learn anything"); never quoted |
+| selection | `EvalCallback` during L1 training | ~256–512 CRN seeds, **disjoint** from reporting | rank checkpoints of one run + plateau detection; L0 has none |
+| reporting | `{domain}_ppo_eval.py` / benchmark evals | **2048 default, 8192 evidence-grade** | the leaderboard number; a ladder run *exists* only once this TSV does |
+
+Sizing: from a ~500-episode pilot SD σ, `n ≈ (2σ/ε)²` for the smallest delta
+ε worth resolving. Make comparative claims on **per-seed paired differences**
+(shared episode seeds are common random numbers — instance luck cancels, and
+the paired SE is typically several times smaller than the naive per-policy
+SE). Cost scales with `n × T̄`, so pick the smallest power of two that meets
+precision, not 8192 by reflex. At evidence-grade (3 training seeds), each
+replicate gets the full reporting eval; retrain spread and eval SE are
+different uncertainties — report both, never one as the other.
+
+### 9.8 Multiple policies per benchmark solver
 
 A benchmark solver may expose several closely-related policies through a `--policy` argument (e.g. a fluid-relaxation file offering `fixed`, `myopic`, and `random`), rather than one file per policy. Name the file after the method family it embodies (`{domain}_benchmark_fluid.py`), and encode the selected policy in the eval TSV name (`benchmark_myopic_eval_{scenario}.tsv`) so each benchmark run writes a distinct, gate-referenceable file.
 

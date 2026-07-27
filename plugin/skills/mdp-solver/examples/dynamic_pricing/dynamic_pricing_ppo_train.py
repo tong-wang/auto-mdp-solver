@@ -43,6 +43,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--gamma",            type=float, default=1.0)
     p.add_argument("--ent-coef",         type=float, default=0.0)
     p.add_argument("--net-arch",         type=int,   nargs="+", default=[64, 64])
+    p.add_argument("--n-envs",           type=int,   default=1)
     # VecNormalize
     p.add_argument("--vecnorm-clip-obs", type=float, default=10.0)
     p.add_argument("--no-norm-reward",   action="store_false", dest="norm_reward", default=True)
@@ -118,17 +119,21 @@ def main() -> None:
     print(f"observation_mode={args.observation_mode}  action_mode={args.action_mode}  "
           f"reward_mode={args.reward_mode}  outdir={outdir}")
 
-    env = DynamicPricingEnv(
-        scenario=scenario,
-        observation_mode=args.observation_mode,
-        action_mode=args.action_mode,
-        reward_mode=args.reward_mode,
-        logger_filename=str(outdir / "train_log"),
-    )
-    env = Monitor(env, filename=str(outdir / "monitor"))
-    env = DummyVecEnv([lambda: env])
+    def make_env(rank: int):
+        def _make():
+            env = DynamicPricingEnv(
+                scenario=scenario,
+                observation_mode=args.observation_mode,
+                action_mode=args.action_mode,
+                reward_mode=args.reward_mode,
+                logger_filename=str(outdir / f"train_log_{rank}"),
+            )
+            return Monitor(env, filename=str(outdir / f"monitor_{rank}"))
+        return _make
+
+    env = DummyVecEnv([make_env(i) for i in range(args.n_envs)])
     env = VecNormalize(env, norm_obs=True, norm_reward=args.norm_reward,
-                       clip_obs=args.vecnorm_clip_obs)
+                       clip_obs=args.vecnorm_clip_obs, gamma=args.gamma)
 
     model = PPO(
         policy="MlpPolicy",

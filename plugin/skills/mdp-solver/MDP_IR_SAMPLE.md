@@ -167,6 +167,12 @@ change the fingerprint and needs no re-confirmation.
     //     END_OF_PERIOD on end-of-period state. Reward construction is gym's job.
     "objective": {
       "sense": "minimize",
+      // β — the problem's intrinsic discount (time value of money /
+      // continuation probability), from the Phase-A interview. Part of the
+      // objective, never a solver knob: eval + all baselines score Σ β^t r_t,
+      // training gamma defaults to β (spec §8.6), rewards are never
+      // pre-discounted in the env. 1.0 = undiscounted (the default).
+      "discount_factor": 1.0,
       "per_step_components": [
         { "name": "holding",        "expr": "h * max(0,  inventory)" },
         { "name": "shortage",       "expr": "b * max(0, -inventory) if allow_backlog else b * lost_sales" },

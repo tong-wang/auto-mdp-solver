@@ -221,7 +221,12 @@ continuous decision?" gates the bounds/masking question.)
    separately** where a head-to-head comparison is meaningless (e.g. additive
    vs multiplicative MMFE — different demand models, not rival designs)? This
    stance drives the scenario set, the train/eval strategy, and the final
-   leaderboard; get it explicitly.
+   leaderboard; get it explicitly. Ask about **intrinsic discounting** here
+   too: does the objective discount future rewards (time value of money, a
+   continuation/survival probability)? That is `objective.discount_factor`
+   (β, default 1.0) — part of the *objective*, never a solver knob: eval and
+   every baseline score `Σ β^t r_t`, training γ defaults to β (spec §8.6),
+   and rewards are never pre-discounted inside the env.
 2. Interview the user; draft `{name}/{name}_schema.json` — the IR lives in the
    domain's own folder; create `{name}/` now if this is a new domain (v0.4 root:
    `{domain, mdp, gym, rl, assumptions_log}`; `MDP_IR_SAMPLE.md` is the
@@ -453,13 +458,26 @@ but the domain directory.
 
 ### Stage 4 — train + eval (+ tune)
 
+Training runs are **leveled** (spec §8.6): **L0** = faithful defaults
+(`PPO("MlpPolicy", env, gamma=β, seed=s).learn(2M)`, no VecNormalize — the
+control run and the ruler for agent contribution; reporting only, never a
+gate), **L1** = the spec-§8.6 derivation table applied — the mandatory run,
+with every derived knob logged with its one-line rationale — and **L2+** =
+escalations (hp / gym / arch), only after the L1 gate shows a gap. A tuned
+result is always L2: level ≥ L2 ⟺ more than one training config was tried.
+Run L0 by default (it is usually the cheapest run on the board); put both on
+the leaderboard, clearly labeled.
+
 - Train on the **Stage-0 target and strategy** (the selected fixed scenario or
   world sampler for a specialist, or `grid.as_sampler()` for a generalist) —
   eval enumerates the grid's cells only when the strategy is generalist.
 - `{domain}_ppo_train.py` per spec §8 (`_build_arg_parser`/`parse_args`/
-  `main`; expose `--learning_rate` under that dest so `mdp_tuning` can
-  reach it; VecNormalize per the IR's `obs_normalization` decision;
-  run-name encodes obs/act/rew + non-default hyperparameters).
+  `main`; expose `--learning_rate` under that dest plus `--net_arch` and
+  `--n-envs` (spec §8.2) so `mdp_tuning` can reach them; VecNormalize per
+  the IR's `obs_normalization` decision **with `gamma=args.gamma` passed**;
+  script defaults = the L1-derived values, so the tuner's warm-start trial 0
+  is the L1 center; run-name encodes obs/act/rew + non-default
+  hyperparameters).
 - Launch with `OMP_NUM_THREADS=1 MKL_NUM_THREADS=1`, in the background;
   watch `ep_rew_mean` against the baseline bounds while it runs. The train
   script tees its own stdout/stderr to `{run_dir}/train.log` (spec §8.4), so
@@ -501,8 +519,13 @@ A miss here is almost always a script resolving `Path(args.outdir)` instead of
 `Path(__file__).resolve().parent / args.outdir`, or a shell redirect aimed at
 the CWD.
 
-- Tuning (on request, or if the DP gap is large): `{domain}_ppo_tune.py`
-  thin wrapper over `mdp_tuning` pre-filling `--metric <metric>_mean`.
+- Tuning — the **L2(hp)** escalation, opened only when the L1 gate shows a
+  gap (or on request): `{domain}_ppo_tune.py` thin wrapper over `mdp_tuning`
+  pre-filling `--metric <metric>_mean` (and `--beta`/`--episode-len` from
+  the IR). The driver warm-starts trial 0 from the script defaults (the L1
+  center) and tunes the `core` knob tier by default — `--knobs breadth`
+  needs ≥ ~40 trials. Diagnosis before escalating (spec §8.6): L1 ≤ random
+  → build bug; L1 < L0 → derivation misfired; competitive → stop at L1.
   **Selection-bias rule:** the study winner was selected on its tuning
   seeds — always re-evaluate the winning artifact with the full protocol
   before comparing or shipping, and expect the score to drop. A config

@@ -174,7 +174,9 @@ class InvSingleEnv(gym.Env):
         if seed is not None:
             self._episode_seed = seed
         else:
-            self._episode_seed = int(np.random.randint(0, 2_147_483_647))
+            # per-env stream (spec §7): global np.random would replay
+            # identical episode-seed sequences across SubprocVecEnv workers
+            self._episode_seed = int(self.np_random.integers(0, 2_147_483_647))
 
         self._scenario_ep = (
             self.scenario(self._episode_seed)

@@ -129,7 +129,9 @@ class FnvEnv(gym.Env):
     ) -> tuple[np.ndarray, dict]:
         super().reset(seed=seed, options=options)
 
-        self._episode_seed = seed if seed is not None else int(np.random.randint(0, 2_147_483_647))
+        # per-env stream (spec §7): global np.random would replay identical
+        # episode-seed sequences across SubprocVecEnv workers
+        self._episode_seed = seed if seed is not None else int(self.np_random.integers(0, 2_147_483_647))
 
         self._current_scenario = (
             self.scenario(self._episode_seed) if callable(self.scenario)
