@@ -73,6 +73,25 @@ _FUNCS: dict[str, object] = {
     "range": range,
 }
 
+# numpy Generator scalar-distribution methods callable by name: a family not
+# handled explicitly in `_sample_family` is dispatched to `rng.<family>(...)`
+# with its `settings` passed straight through as numpy's own keyword arguments
+# (e.g. gamma -> {shape, scale}; binomial -> {n, p}; beta -> {a, b}). Curated
+# once from numpy's univariate distributions, so a new distribution needs no
+# code here — just name it in the IR. Array-valued draws (dirichlet,
+# multinomial, multivariate_*) are intentionally excluded: this samples one
+# scalar. Families with friendlier aliases (poisson.rate, normal.mean/std) are
+# handled explicitly above and take precedence over this generic path.
+_NUMPY_SCALAR_DISTS: frozenset[str] = frozenset({
+    "beta", "binomial", "chisquare", "exponential", "f", "gamma",
+    "geometric", "gumbel", "hypergeometric", "laplace", "logistic",
+    "lognormal", "logseries", "negative_binomial", "noncentral_chisquare",
+    "noncentral_f", "normal", "pareto", "poisson", "power", "rayleigh",
+    "standard_cauchy", "standard_exponential", "standard_gamma",
+    "standard_normal", "standard_t", "triangular", "uniform", "vonmises",
+    "wald", "weibull", "zipf",
+})
+
 
 def _domain_builtin(domain: str, module: str, func: str):
     """Import a domain-owned builtin implementation on first use.
@@ -376,6 +395,15 @@ class IrInterpreter:
             hi = float(self._setting(settings.get("high", 10.0), ns))
             raw = rng.uniform(lo, hi, size=size)
             return [float(v) for v in raw / raw.sum()]
+        # any other numpy Generator scalar distribution, by name: settings map
+        # straight to numpy's own parameters. New distributions need no code
+        # here (see _NUMPY_SCALAR_DISTS). `.item()` surfaces numpy's native
+        # int/float, so discrete families coerce to int and continuous to float.
+        if fam in _NUMPY_SCALAR_DISTS:
+            draw = getattr(rng, fam)(
+                **{k: self._setting(v, ns) for k, v in settings.items()}
+            )
+            return draw.item() if hasattr(draw, "item") else draw
         raise NotImplementedError(f"distribution family {fam!r}")
 
     # -- episode --------------------------------------------------------------

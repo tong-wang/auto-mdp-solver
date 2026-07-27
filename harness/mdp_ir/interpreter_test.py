@@ -376,6 +376,45 @@ def main() -> None:
     except ValueError:
         check(True, "expr_builtins shadowing a core builtin fails validation")
 
+    # -- generic numpy dispatch: any Generator scalar distribution by name ---
+    import numpy as np
+
+    from mdp_ir.interpreter import _NUMPY_SCALAR_DISTS
+
+    interp0 = IrInterpreter(inv)
+    for fam, kw in (
+        ("gamma", {"shape": 9.0, "scale": 3.3333}),
+        ("binomial", {"n": 20, "p": 0.3}),
+        ("exponential", {"scale": 2.0}),
+        ("negative_binomial", {"n": 5, "p": 0.4}),
+    ):
+        check(fam in _NUMPY_SCALAR_DISTS, f"{fam} in numpy scalar-dist allowlist")
+        got = interp0._sample_family(np.random.default_rng(7), fam, dict(kw), {})
+        want = getattr(np.random.default_rng(7), fam)(**kw)
+        want = want.item() if hasattr(want, "item") else want
+        check(got == want, f"generic dispatch reproduces numpy {fam} bit-for-bit")
+    check(
+        isinstance(
+            interp0._sample_family(
+                np.random.default_rng(1), "binomial", {"n": 5, "p": 0.5}, {}
+            ),
+            int,
+        ),
+        "generic dispatch: integer-valued distribution coerces to int",
+    )
+    # settings resolve as exprs over the namespace, same as explicit families
+    check(
+        interp0._sample_family(np.random.default_rng(2), "gamma",
+                               {"shape": "3 + 6", "scale": 3.3333}, {})
+        == np.random.default_rng(2).gamma(shape=9, scale=3.3333),
+        "generic dispatch: settings evaluate as namespace exprs",
+    )
+    try:
+        interp0._sample_family(np.random.default_rng(1), "no_such_dist", {}, {})
+        check(False, "unknown family must raise")
+    except NotImplementedError:
+        check(True, "unknown distribution family still raises NotImplementedError")
+
     print(f"\nall {_checks} checks passed")
 
 
