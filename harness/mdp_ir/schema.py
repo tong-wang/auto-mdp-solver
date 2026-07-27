@@ -523,6 +523,15 @@ class Objective(_Base):
     (spec §6.4). Reward *construction* is the gym block's `reward_modes`."""
 
     sense: Sense
+    # β — the problem's intrinsic discount factor (time value of money,
+    # continuation probability), asked for in the Phase-A interview. Part of
+    # the OBJECTIVE, never tuned: eval and every baseline score
+    # J = E[Σ β^t r_t]; training gamma = β is the faithful default (γ < β
+    # only as a logged bias-variance escalation, γ > β never — see
+    # SOLVE_LEVELS_PLAN §2). Never pre-discount env rewards: β enters at
+    # eval time and as the solver's gamma, keeping per-step rewards
+    # stationary and the differential contract intact. 1.0 = undiscounted.
+    discount_factor: float = Field(default=1.0, gt=0.0, le=1.0)
     per_step_components: list[ObjectiveComponent] = Field(min_length=1)
 
     @property

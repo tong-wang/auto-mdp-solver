@@ -35,7 +35,7 @@ def main(argv: list[str]) -> int:
             f"      mdp: states={len(m.state_variables)} info={len(m.info_fields)} "
             f"decisions={len(m.decisions)} sources={len(m.uncertainty_sources)} "
             f"constants={len(m.scenario.constants)} instances={len(m.scenario.instances)} "
-            f"fingerprint={ir.mdp_fingerprint()}\n"
+            f"beta={m.objective.discount_factor} fingerprint={ir.mdp_fingerprint()}\n"
             f"      gym: obs_modes={len(g.observation_modes)} act_modes={len(g.action_modes)} "
             f"reward_modes={len(g.reward_modes)} horizon_end={g.termination.horizon_end.value}\n"
             f"      rl : algo={r.algo.value} requires_memory={r.requires_memory.value}"
