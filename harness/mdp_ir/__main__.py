@@ -2,15 +2,20 @@
 
     python -m mdp_ir plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json [more.json ...]
 
-Exit status is non-zero if any file fails validation.
+A catalog schema (per-slot candidates, IR_LAYERING_PLAN §10) is validated by
+resolving its base selection **and every named instance** — each must produce
+a valid ``MdpIR``. Exit status is non-zero if any file fails.
 """
 
 from __future__ import annotations
 
+import json
 import sys
+from pathlib import Path
 
 from pydantic import ValidationError
 
+from mdp_ir import layering
 from mdp_ir.schema import load_ir
 
 
@@ -22,7 +27,16 @@ def main(argv: list[str]) -> int:
     failures = 0
     for path in argv:
         try:
-            ir = load_ir(path)
+            raw = json.loads(Path(path).read_text())
+            catalog = layering.is_catalog(raw)
+            if catalog:
+                inst_names = sorted((raw["mdp"].get("scenario") or {}).get("instances") or {})
+                ir = load_ir(path)                      # base selection
+                for inst in inst_names:                 # every instance resolves
+                    load_ir(path, instance=inst)
+            else:
+                inst_names = []
+                ir = load_ir(path)
         except (ValidationError, ValueError, OSError) as exc:
             failures += 1
             print(f"FAIL  {path}")
@@ -42,6 +56,23 @@ def main(argv: list[str]) -> int:
             f"({r.requires_memory.source.value}) frame_stack={r.frame_stack} "
             f"obs_norm={r.obs_normalization.enabled}"
         )
+        if catalog:
+            slots = raw["mdp"]["uncertainty_slots"]
+            menu = "  ".join(
+                f"{s['name']}: "
+                + " | ".join(
+                    c + ("*" if c == s["default"] else "")
+                    for c in s["candidates"]
+                )
+                for s in slots
+            )
+            print(
+                f"      catalog: {menu}\n"
+                f"      structural_fingerprint={layering.structural_fingerprint(raw)} "
+                f"(instances validated: base"
+                + (", " + ", ".join(inst_names) if inst_names else "")
+                + ")"
+            )
         if unconfirmed:
             print(f"      unconfirmed ({len(unconfirmed)}): {', '.join(unconfirmed)}")
     return 1 if failures else 0

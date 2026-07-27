@@ -29,6 +29,8 @@ subtrees, plus root-level material for public browsers:
 |---|---|
 | `harness/` | **the PyPI package** `auto-mdp-solver` (its own `pyproject.toml`) |
 | `harness/mdp_ir/` | IR schema (pydantic), interpreter, differential runner |
+| `harness/mdp_ir/layering.py` | catalog ⊕ selection resolution + symbolic bounds (one `{domain}_schema.json`; each uncertainty slot declares a `candidates` pool + `default`, instances select candidates and override constants; `load_ir(path, instance=, select=)` resolves, so nothing downstream sees the catalog) |
+| `harness/mdp_ir/families.py` | distribution-family registry: derived `mean`/`max`/`is_discrete` (with latent composition) that symbolic bounds resolve against — never hand-authored per domain |
 | `harness/mdp_conformance/` | spec-conformance harness (`python -m mdp_conformance <domain-dir>`) |
 | `harness/mdp_gates/` | eval-gate comparison (`python -m mdp_gates`) |
 | `harness/mdp_tuning/` | Optuna tuning driver (`python -m mdp_tuning <domain-dir> ...`) |
@@ -86,8 +88,10 @@ python -m mdp_ir.interpreter_test
 python -m mdp_gates.compare_test
 python -m mdp_tuning.resolve_metric_test
 python -m mdp_conformance $E/inv_single $E/dynamic_pricing $E/fnv
-python -m mdp_ir $E/inv_single/inv_single_schema.json
-python -m mdp_ir.differential $E/inv_single/inv_single_schema.json --episodes 40
+python -m mdp_ir $E/inv_single/inv_single_schema.json \
+                 $E/dynamic_pricing/vanryzin_pricing_schema.json \
+                 $E/fnv/fnv_schema.json
+python -m mdp_ir.differential $E/inv_single/inv_single_schema.json --all-instances --episodes 40
 python -m mdp_ir.differential $E/dynamic_pricing/vanryzin_pricing_schema.json --episodes 40
 python -m mdp_ir.differential $E/fnv/fnv_schema.json --episodes 40
 ```

@@ -33,10 +33,14 @@ Demand is re-generated each step from a deterministic seed sequence combining th
 |---|---|---|---|---|---|---|
 | `simple` | Poisson(10) | 0 | 1.0 | 9.0 | 0 | yes |
 | `simple-k` | Poisson(10) | 0 | 1.0 | 9.0 | 20 | yes |
-| `paper_stochastic` | sampled(5, 10–50) | Discrete{2–5} | 0.2 | 2.0 | 25 | yes |
-| `paper_lost_sales` | sampled(5, 10–50) | Discrete{2–5} | 0.2 | 2.0 | 25 | no |
+| `discrete_stochastic` | sampled(3, 8–12) | Discrete{2–5} | 0.2 | 2.0 | 25 | yes |
+| `discrete_lost_sales` | sampled(3, 8–12) | Discrete{2–5} | 0.2 | 2.0 | 25 | no |
+| `poisson` | Poisson(λ), λ~Gamma(9,0.3) | Discrete{2–5} | 0.2 | 2.0 | 25 | yes |
 
-`sampled(5, 10–50)`: the `paper_*` entries are `InvSingleScenarioSampler`s (world-latent samplers, spec §5.2): at the start of each episode, 5 integer demand values are drawn uniformly from {10,…,50} with random weights; the returned concrete scenario holds that distribution as a `FixedDistributionDemand`.
+The `discrete_*` and `poisson` entries are latent-bearing sources (spec §5.2): the world latent lives on the demand generator itself, realized per episode through the generic `InvSingleScenarioSource` on the demand slot's own stream — so instances sharing a demand model see identical latent draws per episode seed (common random numbers):
+
+- `sampled(3, 8–12)` — a `LatentDiscreteDemand`: each episode draws 3 integer demand values uniformly from {8,…,12} with random weights, realized as a `DiscreteDemand`.
+- `Poisson(λ), λ~Gamma(9,0.3)` — a `LatentPoissonDemand`: each episode draws a hidden Poisson rate λ ~ Gamma(9, 0.3) (mean 30), realized as a `PoissonDemand`.
 
 ## Observation modes
 
@@ -74,7 +78,7 @@ results/
 ```bash
 cd inv_single
 python inv_single_train_ppo.py                        # defaults
-python inv_single_train_ppo.py --scenario paper_stochastic --seed 42
+python inv_single_train_ppo.py --scenario discrete_stochastic --seed 42
 python inv_single_train_ppo.py --scenario simple --total-timesteps 500000 --no-norm-reward
 ```
 

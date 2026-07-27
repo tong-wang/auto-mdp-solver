@@ -1068,6 +1068,10 @@ class MdpIR(_Base):
     # design layer (spec §5.6): generality targets for generalist training
     grids: list[ScenarioGrid] = Field(default_factory=list)
     assumptions_log: list[str] = Field(default_factory=list)
+    # the slot->candidate selection this IR was resolved under (catalog ⊕
+    # selection, IR_LAYERING_PLAN §10); None for a legacy resolved single
+    # file. Set by ``load_ir``, never hand-authored.
+    selection: dict[str, str] | None = None
 
     @model_validator(mode="after")
     def _seed_scheme_rules(self) -> "MdpIR":
@@ -1296,10 +1300,37 @@ class MdpIR(_Base):
 DOMAIN_DIRS: list[Path] = []
 
 
-def load_ir(path: str | Path) -> MdpIR:
-    """Load and validate an IR JSON file into an ``MdpIR``."""
+def load_ir(
+    path: str | Path,
+    *,
+    instance: str | None = None,
+    select: dict[str, str] | None = None,
+) -> MdpIR:
+    """Load and validate an IR file into an ``MdpIR``.
+
+    Accepts the catalog form or a legacy resolved single file:
+
+    - a **catalog** schema (``mdp.uncertainty_slots`` with per-slot
+      ``candidates`` + ``default``) — resolved under a selection: slot
+      defaults, overridden by the named ``instance``'s slot-valued keys,
+      overridden by an explicit ``select`` mapping (IR_LAYERING_PLAN §10);
+    - a single file with ``mdp.uncertainty_sources`` — loaded as-is, so
+      pre-catalog domains keep working (``instance``/``select`` are the
+      catalog's load-time axes and are ignored here; instance resolution at
+      *run* time stays with the consumers, as always).
+    """
+    from mdp_ir import layering
+
     p = Path(path).resolve()
     data = json.loads(p.read_text())
     if p.parent not in DOMAIN_DIRS:
         DOMAIN_DIRS.insert(0, p.parent)
+
+    if layering.is_catalog(data):
+        data = layering.resolve_catalog(data, instance=instance, select=select)
+    elif select:
+        raise layering.LayeringError(
+            f"{p.name}: --select applies to catalog schemas; this file is a "
+            "legacy resolved IR with fixed uncertainty_sources"
+        )
     return MdpIR.model_validate(data)

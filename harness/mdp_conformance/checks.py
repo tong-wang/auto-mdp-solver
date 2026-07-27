@@ -496,8 +496,11 @@ def check_sampler_registry(h: DomainHandle) -> CheckResult:
 
 
 def check_meta_v2(h: DomainHandle) -> CheckResult:
-    """v2 template (spec §6.3): meta drawers carry distinct substream_id;
-    every seed_salt >= 1; generator instances carry distinct source_id."""
+    """v2 template (spec §6.3): composition-scoped meta drawers (mixtures)
+    carry distinct substream_id; every seed_salt >= 1; generator instances
+    carry distinct source_id. A callable source without a substream_id is the
+    generator-owned-latent convention (catalog model): its meta stream is the
+    latent generator's own source_id, covered by the source_id checks below."""
     if _declared_scheme(h) != "v2":
         return CheckResult("scheme.v2_ids", "SKIP", "v1/undeclared domain (frozen keys)")
     problems = []
@@ -508,9 +511,7 @@ def check_meta_v2(h: DomainHandle) -> CheckResult:
             problems.append(f"{key}: seed_salt={salt} < 1")
         if callable(value):
             sub = getattr(value, "substream_id", None)
-            if sub is None:
-                problems.append(f"{key}: meta drawer without substream_id")
-            else:
+            if sub is not None:
                 substreams[key] = sub
     dupes = {}
     for key, sub in substreams.items():

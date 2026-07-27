@@ -4,7 +4,7 @@ Trains PPO on InvSingleEnv, saves the model, then runs a short deterministic eva
 
 Example usage:
     python inv_single_ppo_train.py
-    python inv_single_ppo_train.py -s paper_stochastic -o vec_d
+    python inv_single_ppo_train.py -s discrete_stochastic -o vec_d
 """
 
 import argparse

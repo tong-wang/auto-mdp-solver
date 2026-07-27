@@ -236,10 +236,13 @@ def main() -> None:
     # samplers/mixtures, design-layer grids, seed scheme v2
     # =====================================================================
 
-    # inv_single is natively seed_scheme v2 with hidden world-latent samplers
-    check(inv.seed_scheme == "v2" and len(inv.mdp.scenario.samplers) == 2
-          and all(s.hidden for s in inv.mdp.scenario.samplers),
-          "inv_single IR: v2 scheme, two hidden paper-demand samplers")
+    # inv_single is natively seed_scheme v2; the demand slot's latent draws
+    # desugar to ONE hidden sampler at the slot's stream id (catalog model:
+    # instances share it — common random numbers across instances)
+    check(inv.seed_scheme == "v2" and len(inv.mdp.scenario.samplers) == 1
+          and inv.mdp.scenario.samplers[0].substream_id == 0
+          and inv.mdp.scenario.samplers[0].hidden,
+          "inv_single IR: v2 scheme, one hidden demand-latent sampler at the slot's stream id")
 
     # -- v2 forbids treatment A (episode-realization stages) -----------------
     ta = inv.model_dump(mode="json")
@@ -285,7 +288,7 @@ def main() -> None:
     dup = inv.model_dump(mode="json")
     dup["mdp"]["scenario"]["samplers"].append(
         {"name": "second", "substream_id": 0,
-         "draws": [{"name": "demand_probs", "distribution": {
+         "draws": [{"name": "demand_probabilities", "distribution": {
              "family": "normalized_uniform_weights", "settings": {"size": 5}}}]})
     try:
         MdpIR.model_validate(dup)
@@ -414,6 +417,81 @@ def main() -> None:
         check(False, "unknown family must raise")
     except NotImplementedError:
         check(True, "unknown distribution family still raises NotImplementedError")
+
+    # =====================================================================
+    # catalog ⊕ selection (IR_LAYERING_PLAN §10)
+    # =====================================================================
+    import copy as _copy
+
+    from mdp_ir import layering
+
+    inv_path = ROOT / "examples" / "inv_single" / "inv_single_schema.json"
+    raw = json.loads(inv_path.read_text())
+    check(layering.is_catalog(raw), "inv_single schema is a catalog document")
+    check(inv.selection == {"demand": "discrete", "leadtime": "discrete"},
+          "base load records the default selection")
+
+    poi = load_ir(inv_path, instance="poisson")
+    demand_src = next(s for s in poi.mdp.uncertainty_sources if s.name == "demand")
+    check(poi.selection["demand"] == "poisson"
+          and demand_src.distribution.family == "poisson",
+          "instance 'poisson' selects the poisson candidate")
+    check(inv.mdp.decision_bounds("order") == (0.0, 200.0)
+          and poi.mdp.decision_bounds("order") == (0.0, 600.0),
+          "symbolic bounds resolve per selection from derived demand.mean (10 vs 30)")
+    sel = load_ir(inv_path, select={"demand": "poisson"})
+    check(sel.mdp_fingerprint() == poi.mdp_fingerprint(),
+          "--select demand=poisson resolves identically to instance 'poisson'")
+    check(sorted(inv.mdp.scenario.instances) == ["lost_sales"]
+          and sorted(poi.mdp.scenario.instances)
+          == ["lost_sales", "poisson", "poisson_lost_sales"]
+          and poi.mdp.scenario.instances["poisson"] == {},
+          "instances inconsistent with the selection drop; slot keys strip from survivors")
+
+    # every declared composition passes the differential (the covering set)
+    for inst in ("poisson", "poisson_lost_sales"):
+        ir_i = load_ir(inv_path, instance=inst)
+        rep = run_differential(
+            ir_i, make_inv_single_adapter(ir_i, instance=inst, seed_salt=1),
+            episode_seeds=[0, 1, 2], instance=inst, seed_salt=1,
+        )
+        check(rep.ok, f"differential[{inst}]: selected composition matches, bit-exact")
+
+    # structural fingerprint: values, new instances, new candidates are free;
+    # a dynamics edit is not
+    fp = layering.structural_fingerprint(raw)
+    tweaked = _copy.deepcopy(raw)
+    next(c for c in tweaked["mdp"]["scenario"]["constants"] if c["name"] == "h")["value"] = 9.9
+    tweaked["mdp"]["scenario"]["instances"]["hot"] = {"b": 4.0}
+    tweaked["mdp"]["uncertainty_slots"][0]["candidates"]["poisson_u"] = {
+        "generator": "PoissonDemand", "family": "poisson",
+        "settings": {"rate": {"draw": {"family": "uniform",
+                                       "settings": {"low": 20.0, "high": 40.0}},
+                              "example": 30.0}}}
+    check(layering.structural_fingerprint(tweaked) == fp,
+          "structural fingerprint: value edits / new instance / new candidate do not move it")
+    dyn_edit = _copy.deepcopy(raw)
+    dyn_edit["mdp"]["dynamics"]["transitions"][1]["updates"].append("received = received + 0")
+    check(layering.structural_fingerprint(dyn_edit) != fp,
+          "structural fingerprint: a dynamics edit moves it")
+
+    # a freshly appended candidate resolves + validates with zero other edits
+    novel = MdpIR.model_validate(
+        layering.resolve_catalog(tweaked, select={"demand": "poisson_u"}))
+    nsrc = next(s for s in novel.mdp.uncertainty_sources if s.name == "demand")
+    check(novel.selection["demand"] == "poisson_u"
+          and nsrc.distribution.family == "poisson"
+          and novel.mdp.decision_bounds("order") == (0.0, 600.0)
+          and novel.mdp.scenario.samplers[0].draws[0].name == "demand_rate",
+          "appended candidate: resolves, derives bounds (uniform-latent mean 30), desugars its draw")
+
+    # read-API is lazy: underivable attrs only error when referenced
+    vrz_raw = json.loads(
+        (ROOT / "examples" / "dynamic_pricing" / "vanryzin_pricing_schema.json").read_text())
+    check(layering.is_catalog(vrz_raw)
+          and load_ir(ROOT / "examples" / "dynamic_pricing" / "vanryzin_pricing_schema.json")
+          .selection == {"demand": "poisson"},
+          "state-dependent settings are legal while nothing references the slot's read-API")
 
     print(f"\nall {_checks} checks passed")
 

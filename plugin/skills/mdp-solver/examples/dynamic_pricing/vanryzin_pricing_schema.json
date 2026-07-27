@@ -99,28 +99,6 @@
         "desc": "canonical decision consumed by the _mdp layer: the price charged this period. Agent-facing encodings (price vs intensity) are the gym.action_modes menu."
       }
     ],
-    "uncertainty_sources": [
-      {
-        "name": "demand",
-        "generator": "PoissonArrivals",
-        "stream_id": 0,
-        "is_discrete": true,
-        "latent": false,
-        "distribution": {
-          "family": "poisson",
-          "settings": {
-            "rate": "a * exp(-alpha * price) * dt"
-          },
-          "note": "regular exponential demand family lambda(p)=a*e^{-alpha p}; per-period mean arrivals = lambda(price)*dt where dt = horizon_length/T"
-        },
-        "stages": [
-          {
-            "name": "sample",
-            "realization": "period"
-          }
-        ]
-      }
-    ],
     "dynamics": {
       "event_sequence": [
         "P",
@@ -218,7 +196,34 @@
     },
     "initial_state": {
       "inventory": "n0"
-    }
+    },
+    "uncertainty_slots": [
+      {
+        "name": "demand",
+        "interface": "DemandGenerator",
+        "stream_id": 0,
+        "latent": false,
+        "stages": [
+          {
+            "name": "sample",
+            "realization": "period"
+          }
+        ],
+        "desc": "",
+        "default": "poisson",
+        "candidates": {
+          "poisson": {
+            "generator": "PoissonArrivals",
+            "family": "poisson",
+            "settings": {
+              "rate": "a * exp(-alpha * price) * dt"
+            },
+            "is_discrete": true,
+            "desc": "regular exponential demand family lambda(p)=a*e^{-alpha p}; per-period mean arrivals = lambda(price)*dt where dt = horizon_length/T"
+          }
+        }
+      }
+    ]
   },
   "gym": {
     "observation_modes": [

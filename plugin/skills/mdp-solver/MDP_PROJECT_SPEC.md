@@ -20,8 +20,8 @@ Each domain lives in its own subfolder `{domain}/`. Every file is prefixed with 
 | File | Purpose |
 |---|---|
 | `{domain}_exceptions.py` | Custom exception hierarchy (optional) |
-| `{domain}_uncertainty.py` | Stochastic primitives: the `SamplingContext` protocol and all `{Source}Generator` classes (demand, leadtime, …) — **omit entirely when the dynamics are deterministic** (§4.3) |
-| `{domain}_scenarios.py` | **World layer**: the `{Domain}Scenario` / `{Domain}ScenarioSampler` / `{Domain}MixtureSampler` classes, their predefined instances, and the `SCENARIOS` registry |
+| `{domain}_uncertainty.py` | Stochastic primitives: the `SamplingContext` protocol and all `{Source}Generator` classes (demand, leadtime, …) — including latent-bearing generators that own their source's per-episode world latent (§5.2) — **omit entirely when the dynamics are deterministic** (§4.3) |
+| `{domain}_scenarios.py` | **World layer — composition only**: the `{Domain}Scenario` / `{Domain}ScenarioSource` / `{Domain}MixtureSampler` classes, their predefined instances, and the `SCENARIOS` registry. Owns no sampling: latents live on generators (§5.2) |
 | `{domain}_grids.py` | **Design layer** (optional): the `{Domain}ScenarioGrid` class and the `GRIDS` registry — generality targets for generalist training (§5.6) |
 | `{domain}_mdp.py` | Core MDP simulator: `{Domain}State` and the state-transition functions |
 | `{domain}_gym.py` | Gymnasium single-agent wrapper |
@@ -44,7 +44,7 @@ The three domain-model files form a strict, acyclic layering — each imports on
 ```
 
 - **`{domain}_uncertainty.py`** is the base: it has no domain imports (only `numpy` and `typing`). It must **not** import `{Domain}State` — see the `SamplingContext` protocol in §4.1.
-- A domain with **deterministic dynamics** has no `{domain}_uncertainty.py` at all; the chain shortens to `{domain}_scenarios ← {domain}_mdp`. Initial conditions belong to the scenario, and per-episode variety comes from a `{Domain}ScenarioSampler` (§4.3, §5.2) — e.g. a Sudoku domain, where the puzzle *is* the scenario and placements are deterministic.
+- A domain with **deterministic dynamics** has no `{domain}_uncertainty.py` at all; the chain shortens to `{domain}_scenarios ← {domain}_mdp`. Initial conditions belong to the scenario, and per-episode variety comes from a bespoke callable instance source in `{domain}_scenarios.py` — the one case with no generator to own the draw, so the source carries its own `substream_id` like a mixture (§4.3, §5.2) — e.g. a Sudoku domain, where the puzzle *is* the scenario and placements are deterministic.
 - **`{domain}_scenarios.py`** imports the generator classes from `{domain}_uncertainty` and composes them into `{Domain}Scenario` instances.
 - **`{domain}_mdp.py`** imports `{Domain}Scenario` from `{domain}_scenarios` (for type annotations) and the generator classes from `{domain}_uncertainty` (only where it needs to construct them, e.g. its `__main__` smoke test).
 - **Gym wrappers** sit on top of all three: `{Domain}State` and transition functions from `{domain}_mdp`, `{Domain}Scenario` from `{domain}_scenarios`, generator classes from `{domain}_uncertainty` as needed.
@@ -58,18 +58,19 @@ The three domain-model files form a strict, acyclic layering — each imports on
 |---|---|---|
 | Generator base class | `{Source}Generator` | `DemandGenerator`, `LeadtimeGenerator` |
 | Generator leaf class | `{Variant}{Source}` | `PoissonDemand`, `NormalDemand`, `DiscreteLeadtime` |
+| Latent-bearing generator (world latent, §5.2) | `Latent{Variant}{Source}` | `LatentPoissonDemand`, `LatentDiscreteDemand` |
 | Sampling-context protocol | `SamplingContext` or `{Source}Context` | `SamplingContext`, `SpawnContext`, `DemandContext` |
 | Scenario config class | `{Domain}Scenario` | `InvSingleScenario` |
-| Scenario sampler class (world latents, §5.2) | `{Domain}ScenarioSampler` | `InvSingleScenarioSampler` |
+| Scenario source wrapper (realizes latents, §5.2) | `{Domain}ScenarioSource` | `InvSingleScenarioSource` |
 | Mixture sampler class (§5.3) | `{Domain}MixtureSampler` | `InvSingleMixtureSampler` |
 | Scenario grid class (design layer, §5.6) | `{Domain}ScenarioGrid` | `InvSingleScenarioGrid` |
-| Scenario source (term / type alias) | `ScenarioSource` | `{Domain}Scenario \| {Domain}ScenarioSampler` (any callable sampler counts) |
+| Scenario source (term / type alias) | `ScenarioSource` | `{Domain}Scenario \| {Domain}ScenarioSource \| {Domain}MixtureSampler` (any callable counts) |
 | MDP state class | `{Domain}State` | `InvSingleState` |
 | Gym env class | `{Domain}Env` | `InvSingleEnv` |
 | Scenario instances | `scenario_{name}` | `scenario_simple` |
-| Scenario sampler instances | `sampler_{name}` | `sampler_default` |
+| Scenario source instances | `source_{name}` | `source_poisson` |
 | Grid instances | `grid_{name}` | `grid_costs` |
-| Scenario registry dict | `SCENARIOS` | `SCENARIOS = {"simple": scenario_simple, "random": sampler_default, ...}` |
+| Scenario registry dict | `SCENARIOS` | `SCENARIOS = {"simple": scenario_simple, "random": source_random, ...}` |
 | Grid registry dict | `GRIDS` | `GRIDS = {"cost-sweep": grid_costs, ...}` |
 | Scenario registry key | `scenario_name` | `scenario_name="simple"` |
 | Scenario description | `desc` | `desc="zero lead times everywhere"` |
@@ -78,8 +79,8 @@ The three domain-model files form a strict, acyclic layering — each imports on
 
 Which file each class lives in:
 
-- **`{domain}_uncertainty.py`**: `SamplingContext`, `{Source}Generator` and its leaf classes, the `intrinsic_key()` helper.
-- **`{domain}_scenarios.py`**: `{Domain}Scenario`, `{Domain}ScenarioSampler`, `{Domain}MixtureSampler`, the `meta_key()` helper, `scenario_{name}` / `sampler_{name}` instances, `SCENARIOS`.
+- **`{domain}_uncertainty.py`**: `SamplingContext`, `{Source}Generator` and its leaf classes (concrete and `Latent{...}`), the `intrinsic_key()` **and** `meta_key()` helpers — both seed branches of a source live with the source.
+- **`{domain}_scenarios.py`**: `{Domain}Scenario`, `{Domain}ScenarioSource`, `{Domain}MixtureSampler`, `scenario_{name}` / `source_{name}` instances, `SCENARIOS`.
 - **`{domain}_grids.py`**: `{Domain}ScenarioGrid`, `grid_{name}` instances, `GRIDS`.
 - **`{domain}_mdp.py`**: `{Domain}State`, transition functions.
 
@@ -225,18 +226,19 @@ class Normal{Source}({Source}Generator):
 transition and keyed by something that advances within the episode (`period`,
 a draw counter). *Meta-level* randomness selects **which problem instance**
 the episode poses: it is realized once at episode start and keyed by
-`episode_seed` only. Only intrinsic randomness belongs in this file;
-meta-level randomness is `{Domain}ScenarioSampler` territory (§5.2, branch 0
-of the seed tree, §6.3). Under the v2 seed scheme the boundary is enforced
-by grammar: an intrinsic key *must* contain the period level, so a
-meta-level draw cannot be expressed inside a generator without leaving the
+`episode_seed` only. Both live with the source that owns them, on different
+seed branches: intrinsic draws in `sample()` (branch 1), meta-level draws in
+a latent-bearing generator's `realize()` (§5.2, branch 0 of the seed tree,
+§6.3) — never inside `sample()`. Under the v2 seed scheme the boundary is
+enforced by grammar: an intrinsic key *must* contain the period level, so a
+meta-level draw cannot be expressed inside `sample()` without leaving the
 key template. Apply the tests below to every source whose classification is
 not obvious:
 
 1. **Timing.** A draw that depends only on `(episode_seed, seed_salt)` — no
-   `period`, no per-transition counter — is scenario sampling in disguise.
-   Model it as a `{Domain}ScenarioSampler` and make the scenario hold the
-   *realized* value. This includes draws hiding *inside* a two-stream
+   `period`, no per-transition counter — is a world latent. Model it as a
+   `Latent{...}` generator whose `realize()` returns the realized concrete
+   generator (§5.2). This includes draws hiding *inside* a two-stream
    generator whose `sample()` keys on `period` but whose internal
    distribution parameters come from an episode-only sub-stream (the
    conformance harness flags both forms).
@@ -275,18 +277,21 @@ scenario; placements are deterministic).
 
 Scenario-level structure lives in **two layers with a strict direction**:
 
-- **World layer** (`{domain}_scenarios.py`): models the *problem*. Fixed
-  `{Domain}Scenario` instances, plus samplers for **world latents only** —
-  draws nature makes once per episode (§5.2, §5.3). Registry: `SCENARIOS`.
+- **World layer** (`{domain}_scenarios.py`): *composes* the problem. Fixed
+  `{Domain}Scenario` instances, `{Domain}ScenarioSource` wrappers realizing
+  templates whose generators carry **world latents** — draws nature makes
+  once per episode, owned by the generators themselves (§5.2) — and mixtures
+  (§5.3). Registry: `SCENARIOS`.
 - **Design layer** (`{domain}_grids.py`, optional): models the *experiment*.
   A `{Domain}ScenarioGrid` is a finite set of complete scenario sources — the
   generality target of a generalist policy (§5.5, §5.6). Registry: `GRIDS`.
 
 A grid may contain anything from the world layer; nothing in the world layer
 may contain or import a grid, and the `_mdp` / `_gym` layers never see one
-(§1.1). The union `{Domain}Scenario | {Domain}ScenarioSampler` is called a
-**`ScenarioSource`** — the type of `SCENARIOS` values, the gym's `scenario`
-argument, mixture components, and grid cells.
+(§1.1). The union `{Domain}Scenario | {Domain}ScenarioSource |
+{Domain}MixtureSampler` is called a **`ScenarioSource`** — the type of
+`SCENARIOS` values, the gym's `scenario` argument, mixture components, and
+grid cells.
 
 `{domain}_scenarios.py` imports generator classes from `{domain}_uncertainty`
 and composes them:
@@ -343,62 +348,92 @@ class {Domain}Scenario:
   separate branches, is a per-study choice, not a property of the class. (These
   scenario modes live on the `mdp` layer — distinct from the gym's
   obs/action/reward *modes*, §7.)
-- `seed_salt` is the domain's universal reproducibility knob (§6.3) and must be **`>= 1`** (the v2 seed grammar relies on a nonzero trailing word); `scenario_name` is the registry key. A deterministic-dynamics domain (§4.3) has **no `seed_salt` on the scenario or the state** — there is no intrinsic randomness to salt; only its `{Domain}ScenarioSampler` keeps one, for the per-episode instance draw.
-- **A scenario is a fully concrete problem instance**: together with an `episode_seed` it must pin the episode completely. Anything one might hand-craft, name, or benchmark against (a specific puzzle board, a specific demand profile) must be representable as a fixed scenario; distributions over instances live only in samplers (§5.2, world latents) — and finite *sets* of instances in grids (§5.6, design families). If a "scenario" still needs a random draw to become a concrete problem, that draw belongs in a `{Domain}ScenarioSampler`, not in `{domain}_uncertainty.py` (§4.3).
+- `seed_salt` is the domain's universal reproducibility knob (§6.3) and must be **`>= 1`** (the v2 seed grammar relies on a nonzero trailing word); `scenario_name` is the registry key. A deterministic-dynamics domain (§4.3) has **no `seed_salt` on the scenario or the state** — there is no intrinsic randomness to salt; only its callable instance source keeps one, for the per-episode instance draw.
+- **A simulated scenario is a fully concrete problem instance**: together with an `episode_seed` it must pin the episode completely. Anything one might hand-craft, name, or benchmark against (a specific puzzle board, a specific demand profile) must be representable as a fixed scenario; distributions over instances live only in latent generators realized through a `{Domain}ScenarioSource` (§5.2, world latents) — and finite *sets* of instances in grids (§5.6, design families). A scenario holding an unrealized `Latent{...}` generator is a **template**: register it wrapped in a source, never simulate it directly.
 - **`seed_salt` must be declared `field(default=<default_int>, repr=False)`** so it is excluded from the dataclass `repr`. It is an internal reproducibility knob, not a meaningful configuration value to a reader; keeping it out of the `repr` avoids cluttering the `print(scenario)` output that training scripts emit at startup (§8.2).
 - **`scenario_name`** is the short registry key (e.g. `"simple"`, `"test1a"`); **`desc`** is a human-readable one-line description of the scenario. Keep the name short and put the explanation in `desc` rather than encoding everything into a long name. Prefer `desc` over a leading `#` comment on the instance, so the description travels with the object: drivers and eval scripts can print a self-describing header, e.g. `print(f"=== {scenario.scenario_name}: {scenario.desc} ===")`.
 - Validate all structural constraints in `__post_init__`.
 
-### 5.2 `{Domain}ScenarioSampler` (optional) — world latents
+### 5.2 World latents — generator-owned, realized through `{Domain}ScenarioSource`
 
-Define a sampler when the **problem itself** contains a latent draw nature
-makes once per episode: a hidden market size, a demand-regime pick, a whole
-problem instance (a puzzle board). A sampler is **world modeling** — its
+Model a world latent when the **problem itself** contains a draw nature makes
+once per episode: a hidden market size, a demand-regime pick, a whole problem
+instance (a puzzle board). A world latent is **world modeling** — its
 distribution is part of the MDP, and changing it changes the problem. A
 distribution used merely to train one policy across a family of complete
-problems is *not* a sampler: it is a grid (§5.5–§5.6). When in doubt, apply
+problems is *not* a latent: it is a grid (§5.5–§5.6). When in doubt, apply
 the litmus tests in §5.5.
 
+**The latent belongs to the source of randomness it parameterizes** (catalog
+model, IR_LAYERING_PLAN §10): a `Latent{...}` generator class in
+`{domain}_uncertainty.py` carries the latent's hyper-parameters and realizes
+it in `realize(episode_seed, seed_salt)` — keyed on the **meta branch at the
+generator's own `source_id`**, one stream identity per source on both
+branches — returning the realized concrete generator. A concrete generator's
+`realize()` returns itself, so every composition resolves uniformly.
+
 ```python
+# {domain}_uncertainty.py
 def meta_key(substream_id: int, episode_seed: int, seed_salt: int) -> list[int]:
-    """v2 meta seed key: [substream_id, 0, episode_seed, seed_salt] (§6.3)."""
+    """v2 meta seed key: [substream_id, 0, episode_seed, seed_salt] (§6.3).
+    For a source's latents substream_id IS the source_id; composition-scoped
+    drawers (mixtures, deterministic-instance sources) use >= N_SOURCE_IDS."""
     return [substream_id, 0, episode_seed, seed_salt]
 
 
-@dataclass
-class {Domain}ScenarioSampler:
-    """Draws the {latent} and returns the concrete scenario for that seed.
+class Latent{Variant}{Source}({Source}Generator):
+    """{Latent} drawn once per seed; realized as a concrete {Source} generator."""
 
-    Pure function: episode_seed -> {Domain}Scenario.
-    """
+    latent = True
 
-    # family-level attributes (fixed across all generated scenarios), under
-    # the SAME NAMES as the {Domain}Scenario fields — see below
-    horizon: int
-    # ...
+    def __init__(self, <hyper-params>, source_id: int = <slot id>): ...
 
-    # latent-draw configuration (distribution hyper-parameters)
-    # ...
-
-    # meta-level substream id (§6.3 branch 0); distinct per drawer per module
-    substream_id: int = 0
-
-    seed_salt: int = field(default=<default_int>, repr=False)
-    scenario_name: str | None = None
-    desc: str = ""
-
-    def __call__(self, episode_seed: int) -> {Domain}Scenario:
+    def realize(self, episode_seed: int, seed_salt: int) -> {Source}Generator:
         rng = np.random.default_rng(np.random.SeedSequence(
-            meta_key(self.substream_id, episode_seed, self.seed_salt)))
-        latent = ...   # realize the world latent
-        return {Domain}Scenario(..., scenario_name=self.scenario_name)
+            meta_key(self.source_id, episode_seed, seed_salt)))
+        <latent> = ...
+        return {Variant}{Source}(<latent>, source_id=self.source_id)
+
+    def mean(self): ...   # family-level ENVELOPE over the latent prior —
+    def max(self): ...    # what gym wrappers size spaces from (§7)
+
+    def sample(self, state):   # unrealized: fail loudly, never draw
+        raise RuntimeError("unrealized latent — resolve the source first")
 ```
 
-- Lives in `{domain}_scenarios.py`, alongside `{Domain}Scenario`. Instances
-  are named `sampler_{name}`; `SCENARIOS` may hold either kind.
+`{domain}_scenarios.py` then only **composes**: a `{Domain}Scenario` holding
+latent generators is a *template*, registered through the single generic
+wrapper —
+
+```python
+# {domain}_scenarios.py
+class {Domain}ScenarioSource:
+    """Pure function episode_seed -> {Domain}Scenario: realizes each latent
+    generator; all other attribute access delegates to the template."""
+
+    def __init__(self, template: {Domain}Scenario):
+        self._template = template
+
+    def __call__(self, episode_seed: int) -> {Domain}Scenario:
+        t = self._template
+        return dataclasses.replace(
+            t,
+            demand=t.demand.realize(episode_seed, t.seed_salt),
+            leadtime=t.leadtime.realize(episode_seed, t.seed_salt),
+        )
+
+    def __getattr__(self, item):
+        return getattr(self._template, item)
+```
+
+- Instances are named `source_{name}`; `SCENARIOS` may hold either kind.
+  "Fixed scenario vs per-seed source" is thereby **derived from content** —
+  whether any composed generator is latent — not a per-family class split:
+  swapping the demand family or its latent recipe touches only
+  `{domain}_uncertainty.py` and the template line, never a sampler subclass.
 - **Pure function** `episode_seed -> {Domain}Scenario`: calling twice with
   the same seed must return equal scenarios, and a call must not mutate the
-  sampler — vectorized envs share one sampler instance across workers. There
+  source — vectorized envs share one source instance across workers. There
   is deliberately **no lifecycle hook** (`episode_init()` or similar):
   "drawn once per episode" is enforced by who calls it (the gym's `reset()`)
   and by the seed key (no `period` level), not by a method name.
@@ -407,32 +442,35 @@ class {Domain}ScenarioSampler:
   one seed at `reset()`. Phrase docstrings "per seed" / "per draw", never
   "per episode". (The parameter name `episode_seed` is kept for consistency
   with `SamplingContext`.)
-- Keys on the **meta branch** of the seed tree (§6.3), via `meta_key()` —
-  never a raw `SeedSequence`. Every meta-level drawer in the module (samplers
-  and mixtures, at any nesting depth) carries a distinct `substream_id`;
-  assert uniqueness next to the registry.
-- This is **meta-level** randomness, **not** intrinsic MDP randomness. Do not
-  model it as a `{Source}Generator` — see the boundary tests in §4.3.
-- A sampler may draw **entire problem instances** (a full Sudoku board carved
+- Latents key on the **meta branch** of the seed tree (§6.3) via
+  `meta_key()` — never a raw `SeedSequence` — at the owning generator's
+  `source_id`. Corollary: scenarios sharing a latent recipe share latent
+  draws per seed (**common random numbers across instances**, sharpening
+  paired comparisons). The only drawers with their *own* `substream_id` are
+  composition-scoped — mixtures (§5.3) and a deterministic-dynamics domain's
+  instance source (§4.3) — allocating at or above `N_SOURCE_IDS` so they
+  never collide with a source's latent stream.
+- A latent may be an **entire problem instance** (a full Sudoku board carved
   from a random solved grid), not just scalar parameters. Unbounded,
-  procedurally generated instance families stay samplers even though the
-  draw is arguably the experimenter's — the grid alternative requires a
-  finite, enumerable set (§5.5). Generation helpers live in
-  `{domain}_scenarios.py` as module-level functions; the returned scenario
-  holds the realized instance.
+  procedurally generated instance families stay world latents even though
+  the draw is arguably the experimenter's — the grid alternative requires a
+  finite, enumerable set (§5.5). In the deterministic-dynamics case there is
+  no generator to own the draw, so the bespoke callable instance source in
+  `{domain}_scenarios.py` owns it directly (with its own `substream_id`);
+  generation helpers live there as module-level functions.
 - The gym wrapper checks `callable(self.scenario)` and calls
   `self.scenario(episode_seed)` in `reset()` to get the concrete scenario
   for that episode (§7).
-- **`scenario_name`**: set to the same key used in `SCENARIOS` (e.g.
-  `scenario_name="hidden-market-size"`) so scripts can read it without an
+- **`scenario_name`**: the template's name is the `SCENARIOS` key; the
+  source delegates attribute access, so scripts read it without an
   isinstance check.
-- **Family-level attributes — the mirroring rule**: expose every attribute
-  the gym or eval scripts need before a draw *under the same name as the
-  corresponding `{Domain}Scenario` field* (`horizon`, `leadtime`,
-  `allow_backlog`, mode flags, …). For the *latent* part, expose a small
-  bounds object under the generator's field name with the generator's read
-  API (`max()`, `mean()`, `is_discrete`). Done this way, the gym's
-  space-building code works unchanged against a scenario or a sampler.
+- **Family-level attributes — the mirroring rule, now automatic**: the gym
+  and eval scripts read pre-draw attributes (`horizon`, `allow_backlog`,
+  `demand.max()`, …) off the source; `__getattr__` delegation covers the
+  scenario fields, and the latent generator itself exposes the read API
+  (`max()`, `mean()`, `is_discrete`) as envelopes over its latent prior. No
+  separate bounds object; space-building code works unchanged against a
+  scenario or a source.
 - **Observed vs hidden latent** — same machinery, different problems, so
   state which one you mean in `desc`: an *observed* latent (a forecast the
   agent sees) makes a contextual MDP — an observation mode may expose the
@@ -456,11 +494,13 @@ scenario") is not a mixture; it is grid weights (§5.5, §5.6).
 class {Domain}MixtureSampler:
     """Draws one component scenario source per seed."""
 
-    # (weight, component); components may be fixed scenarios OR samplers,
+    # (weight, component); components may be fixed scenarios OR sources,
     # including other mixtures
     components: list[tuple[float, ScenarioSource]]
 
-    substream_id: int = 0        # meta-level substream id (§6.3 branch 0)
+    # meta-level substream id (§6.3 branch 0); composition-scoped, so it
+    # allocates at or above N_SOURCE_IDS — never in the sources' latent range
+    substream_id: int = N_SOURCE_IDS
     seed_salt: int = field(default=<default_int>, repr=False)
     scenario_name: str | None = None
     desc: str = ""
@@ -479,9 +519,9 @@ class {Domain}MixtureSampler:
   mirroring rule of §5.2 (bounds combine across components: max of maxes,
   weighted mean of means).
 - **`episode_seed` is delegated verbatim** to the chosen component. Combined
-  with per-drawer substream ids this gives *standalone equivalence*: episode
-  seed `e` through a mixture branch equals seed `e` run on that component
-  directly — any branch is reproducible in isolation.
+  with the mixture's own out-of-range substream id this gives *standalone
+  equivalence*: episode seed `e` through a mixture branch equals seed `e` run
+  on that component directly — any branch is reproducible in isolation.
 - **Mixtures of mixtures are allowed** — components are `ScenarioSource`s and
   a mixture is one. Nesting adds structure, not expressive power (weights
   multiply through to a flat mixture); its value is reuse — embed a named
@@ -493,18 +533,20 @@ class {Domain}MixtureSampler:
 scenario_simple = {Domain}Scenario(scenario_name="simple", desc="...", ...)
 scenario_{name} = {Domain}Scenario(scenario_name="{name}", desc="...", ...)
 
-sampler_hidden_mu = {Domain}ScenarioSampler(scenario_name="hidden-mu", substream_id=0, ...)
+source_hidden_mu = {Domain}ScenarioSource({Domain}Scenario(
+    scenario_name="hidden-mu", desc="...",
+    demand=Latent{Variant}Demand(<hyper-params>), ...))
 
 SCENARIOS: dict[str, ScenarioSource] = {
     "simple":    scenario_simple,
     "{name}":    scenario_{name},
-    "hidden-mu": sampler_hidden_mu,   # world-latent sampler entries allowed
+    "hidden-mu": source_hidden_mu,   # latent-bearing source entries allowed
 }
 ```
 
-- Fixed scenario instances are named `scenario_{name}`; sampler instances are named `sampler_{name}`.
-- `SCENARIOS` values are `ScenarioSource`s: `{Domain}Scenario`, `{Domain}ScenarioSampler`, or `{Domain}MixtureSampler` — **world layer only; a grid must never appear in `SCENARIOS`** (it is not callable and deliberately fails the gym's sampler check).
-- Assert meta-level `substream_id` uniqueness across the module's drawers next to the registry (a `_check_meta_substreams()` helper); the conformance harness checks it externally.
+- Fixed scenario instances are named `scenario_{name}`; source instances are named `source_{name}`.
+- `SCENARIOS` values are `ScenarioSource`s: `{Domain}Scenario`, `{Domain}ScenarioSource`, or `{Domain}MixtureSampler` — **world layer only; a grid must never appear in `SCENARIOS`** (it is not callable and deliberately fails the gym's sampler check).
+- Next to the registry, assert every callable entry resolves seed 0 to a fully concrete scenario (a `_check_registry()` helper); the conformance harness checks purity and source-id distinctness externally.
 - `SCENARIOS` dict provides the canonical lookup for training and evaluation scripts.
 - Small smoke-test scenarios used only by the `{domain}_mdp.py` `__main__` driver may be defined here as plain module-level instances and imported by the driver; they need not be added to `SCENARIOS` if they are not meant as training/eval targets.
 

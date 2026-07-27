@@ -240,17 +240,24 @@ continuous decision?" gates the bounds/masking question.)
    only the first two are asked about here:
    - realized per transition, or evolving *within* the episode (a regime
      that can flip mid-episode is intrinsic, however mixture-like it looks)
-     → `uncertainty_sources`;
+     → an `uncertainty_slots` entry: structural skeleton (name, interface,
+     `stream_id`, stages) + a `candidates` pool holding the concrete
+     family the problem poses (`default` names it). The forward run authors
+     exactly one candidate; more append later as one-line selections, never
+     a second schema (`MDP_IR_SAMPLE.md` §1, §7);
    - realized once per episode **as part of the problem's story** — nature
      draws it (a hidden market size, a demand-regime pick, a random problem
-     instance) → a **world latent** → `ScenarioSampler` / `MixtureSampler`,
-     *not* a generator. Ask the deployment test in the problem's own words:
+     instance) → a **world latent** → a `draw` spec on the candidate
+     setting it realizes (desugared to a `ScenarioSampler` at the slot's
+     stream id; mixtures stay `scenario.mixtures`), *not* a generator.
+     Ask the deployment test in the problem's own words:
      "in the real system, would this be drawn afresh each episode by the
      environment?" Then the follow-up that shapes observations and
      baselines: does the decision-maker *see* the realized value (observed)
-     or must the policy cope without it (hidden)? Record which. A draw
-     hiding *inside* a per-period source (its distribution's parameters
-     fixed at episode start) is still a world latent — extract it.
+     or must the policy cope without it (hidden)? Record `hidden` on the
+     draw spec accordingly. A draw hiding *inside* a per-period source (its
+     distribution's parameters fixed at episode start) is still a world
+     latent — extract it into a draw spec.
    - a distribution that exists only to train one policy across many
      complete problem variants is **neither** — that is the training-target
      question, asked in step 4, never during randomness classification.
@@ -261,8 +268,8 @@ continuous decision?" gates the bounds/masking question.)
    attribute *classification* (step 2) is fixed; the concrete *values and
    compositions* are the human's call. If the source (a paper, a brief)
    already carries an experiment design, **extract and translate it faithfully**
-   into concrete `instances`, a world `ScenarioSampler`, and/or a
-   `{Domain}ScenarioGrid`, then ask the human to
+   into concrete `instances`, world-latent `draw` specs on the relevant
+   candidates, and/or a `{Domain}ScenarioGrid`, then ask the human to
    confirm the translation. If it does not, **propose a reasonable grid + mode
    composition, with your reasoning,** and ask. Either way the concrete set
    being confirmed must be visible before the human answers: lay the

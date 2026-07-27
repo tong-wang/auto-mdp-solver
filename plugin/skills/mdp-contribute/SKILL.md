@@ -77,7 +77,7 @@ own commands at the stated eval protocol? Record both answers in the PR body.
 ```bash
 $PY -m mdp_ir cases/<name>/<name>_schema.json
 $PY -m mdp_conformance cases/<name>
-$PY -m mdp_ir.differential cases/<name>/<name>_schema.json --episodes 40
+$PY -m mdp_ir.differential cases/<name>/<name>_schema.json --all-instances --episodes 40
 ```
 
 Red gate → fix or stop; never open a PR with red gates.

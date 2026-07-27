@@ -583,7 +583,10 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--max-rows", type=int, default=20)
     args = ap.parse_args(argv)
 
-    ir = load_ir(args.ir_file)
+    # instance flows into load_ir too: for a catalog schema it may select
+    # slot candidates (IR_LAYERING_PLAN §10); run-time constant overrides
+    # stay with IrInterpreter as always
+    ir = load_ir(args.ir_file, instance=args.instance)
     interp = IrInterpreter(ir, instance=args.instance, seed_salt=args.seed_salt)
 
     fixed: dict[str, float] = {}

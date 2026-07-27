@@ -26,10 +26,14 @@ reference adapter.
 CLI:
 
     python -m mdp_ir.differential plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json \
-        [--episodes 20] [--instance lost_sales] [--seed-salt 0] \
-        [--decision order=40] [--max-report 10]
+        [--episodes 20] [--instance lost_sales] [--select demand=poisson] \
+        [--all-instances] [--seed-salt 0] [--decision order=40] [--max-report 10]
 
-Exit status is non-zero if any episode diverges.
+``--instance`` / ``--select`` flow into ``load_ir`` for catalog schemas, so an
+instance that selects a different candidate (e.g. ``poisson``) resolves and
+verifies that composition. ``--all-instances`` sweeps base + every named
+instance — the covering-set run. Exit status is non-zero if any episode
+diverges.
 """
 
 from __future__ import annotations
@@ -210,6 +214,15 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--episodes", type=int, default=20)
     ap.add_argument("--first-seed", type=int, default=0)
     ap.add_argument("--instance", default=None)
+    ap.add_argument(
+        "--select", action="append", default=[], metavar="SLOT=CANDIDATE",
+        help="pick a slot's candidate (catalog schemas; overrides defaults and "
+             "the instance's selection)",
+    )
+    ap.add_argument(
+        "--all-instances", action="store_true",
+        help="run base + every named instance (the covering-set sweep)",
+    )
     ap.add_argument("--seed-salt", type=int, default=1)  # >= 1 for v2 domains (spec §6.3)
     ap.add_argument(
         "--decision", action="append", default=[], metavar="NAME=VALUE",
@@ -218,28 +231,45 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--max-report", type=int, default=10)
     args = ap.parse_args(argv)
 
-    ir = load_ir(args.ir_file)
-    try:
-        factory = load_adapter_factory(args.ir_file, ir)
-    except FileNotFoundError as exc:
-        ap.error(str(exc))
+    select: dict[str, str] = {}
+    for spec in args.select:
+        name, _, val = spec.partition("=")
+        select[name.strip()] = val.strip()
 
     fixed: dict[str, float] = {}
     for spec in args.decision:
         name, _, val = spec.partition("=")
         fixed[name.strip()] = float(val)
 
-    adapter = factory(ir, instance=args.instance, seed_salt=args.seed_salt)
-    report = run_differential(
-        ir,
-        adapter,
-        episode_seeds=list(range(args.first_seed, args.first_seed + args.episodes)),
-        decisions=fixed or None,
-        instance=args.instance,
-        seed_salt=args.seed_salt,
-    )
-    print(report.render(max_report=args.max_report))
-    return 0 if report.ok else 1
+    if args.all_instances:
+        import json
+
+        raw = json.loads(Path(args.ir_file).read_text())
+        instances = [None] + sorted(
+            ((raw.get("mdp") or {}).get("scenario") or {}).get("instances") or {}
+        )
+    else:
+        instances = [args.instance]
+
+    ok = True
+    for inst in instances:
+        ir = load_ir(args.ir_file, instance=inst, select=select or None)
+        try:
+            factory = load_adapter_factory(args.ir_file, ir)
+        except FileNotFoundError as exc:
+            ap.error(str(exc))
+        adapter = factory(ir, instance=inst, seed_salt=args.seed_salt)
+        report = run_differential(
+            ir,
+            adapter,
+            episode_seeds=list(range(args.first_seed, args.first_seed + args.episodes)),
+            decisions=fixed or None,
+            instance=inst,
+            seed_salt=args.seed_salt,
+        )
+        print(report.render(max_report=args.max_report))
+        ok = ok and report.ok
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

@@ -27,20 +27,33 @@ def make_adapter(
     if instance is not None:
         consts.update(ir.mdp.scenario.instances[instance])
 
-    # world-latent sampler applicable to this instance (spec §5.2): the domain
-    # sampler shares the IR sampler's substream, so both sides realize the
-    # same per-episode demand distribution bit-for-bit
-    ir_sampler = next(
-        (s for s in ir.mdp.scenario.samplers
-         if not s.instances or (instance or "") in s.instances),
-        None,
-    )
-    source = scen.InvSingleScenarioSampler(
+    # the demand slot's selected candidate (catalog model) maps to the
+    # latent-bearing generator that owns the world latent; both sides draw it
+    # on the meta branch at the slot's stream_id, so per-episode demand
+    # distributions match bit-for-bit
+    demand_src = next(s for s in ir.mdp.uncertainty_sources if s.name == "demand")
+    leadtime_src = next(s for s in ir.mdp.uncertainty_sources if s.name == "leadtime")
+    if demand_src.distribution.family == "poisson":
+        demand = unc.LatentPoissonDemand(
+            alpha=consts["demand_alpha"],
+            beta=consts["demand_beta"],
+            source_id=demand_src.stream_id,
+        )
+    else:
+        demand = unc.LatentDiscreteDemand(
+            support_size=consts["demand_support_size"],
+            support_low=consts["demand_support_low"],
+            support_high=consts["demand_support_high"],
+            source_id=demand_src.stream_id,
+        )
+    source = scen.InvSingleScenarioSource(scen.InvSingleScenario(
         scenario_name=f"ir_differential_{instance or 'base'}",
         horizon=ir.mdp.horizon_T(instance),
+        demand=demand,
         leadtime=unc.DiscreteLeadtime(
             values=consts["leadtime_values"],
             probabilities=consts["leadtime_probs"],
+            source_id=leadtime_src.stream_id,
         ),
         holding_cost=consts["h"],
         shortage_cost=consts["b"],
@@ -48,12 +61,8 @@ def make_adapter(
         order_cost_fixed=consts["K"],
         allow_backlog=consts["allow_backlog"],
         event_sequence=tuple(ir.mdp.dynamics.event_sequence),
-        support_size=consts["demand_support_size"],
-        support_low=consts["demand_support_low"],
-        support_high=consts["demand_support_high"],
-        substream_id=ir_sampler.substream_id,
         seed_salt=seed_salt,
-    )
+    ))
 
     def run_episode(episode_seed: int, decisions: list[dict]) -> list[dict]:
         scenario = source(episode_seed)

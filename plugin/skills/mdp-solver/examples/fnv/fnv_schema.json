@@ -21,7 +21,10 @@
         "name": "period",
         "role": "time_index",
         "type": "int",
-        "bounds": [1, 4],
+        "bounds": [
+          1,
+          4
+        ],
         "observability": "observable",
         "desc": "current ordering period n (1-indexed, 1..N); the horizon ends after the order at period N"
       },
@@ -29,7 +32,10 @@
         "name": "inventory",
         "role": "core",
         "type": "float",
-        "bounds": [0.0, 100.0],
+        "bounds": [
+          0.0,
+          100.0
+        ],
         "observability": "observable",
         "desc": "cumulative quantity ordered so far (sum of past decisions); non-decreasing, sold against realized demand at the horizon"
       },
@@ -37,7 +43,10 @@
         "name": "information",
         "role": "core",
         "type": "float",
-        "bounds": [-50.0, 50.0],
+        "bounds": [
+          -50.0,
+          50.0
+        ],
         "observability": "observable",
         "desc": "I[period]: cumulative demand-signal information revealed so far (the MMFE martingale); observed by the agent before each order"
       },
@@ -45,7 +54,10 @@
         "name": "total_cost",
         "role": "core",
         "type": "float",
-        "bounds": [0.0, 1000.0],
+        "bounds": [
+          0.0,
+          1000.0
+        ],
         "observability": "observable",
         "desc": "sum of ordering costs incurred so far; subtracted from terminal revenue to give profit"
       }
@@ -78,40 +90,29 @@
         },
         "dim": 1,
         "bounds": {
-          "value": [0.0, 3.0],
-          "suggested": [0.0, 3.0],
+          "value": [
+            0.0,
+            3.0
+          ],
+          "suggested": [
+            0.0,
+            3.0
+          ],
           "source": "derived",
           "rationale": "additive MMFE with mu=1 and stdev<=0.3: mean demand ~ 1, so an upper bound of ~3 (mu + several stdevs, spread over N orders) covers the useful action scale"
         },
-        "feasibility": ["non_negative"],
+        "feasibility": [
+          "non_negative"
+        ],
         "desc": "quantity ordered this period; adds to cumulative inventory. Consumed by the _mdp layer; the gym action_modes are agent-facing encodings."
       }
     ],
-    "uncertainty_sources": [
-      {
-        "name": "signal",
-        "generator": "NormalDemandSignal",
-        "stream_id": 0,
-        "is_discrete": false,
-        "latent": false,
-        "distribution": {
-          "family": "normal",
-          "settings": {
-            "mean": 0.0,
-            "std": "signal_stdevs[period]"
-          },
-          "note": "mean-zero MMFE increment revealed at period n; std = signal_stdevs[n], the pre-resolved per-period volatility schedule (see assumptions_log). Observed, not latent — it enters `information`."
-        },
-        "stages": [
-          {
-            "name": "increment",
-            "realization": "period"
-          }
-        ]
-      }
-    ],
     "dynamics": {
-      "event_sequence": ["O", "D", "R"],
+      "event_sequence": [
+        "O",
+        "D",
+        "R"
+      ],
       "observation_point": "pre-order",
       "transitions": [
         {
@@ -212,7 +213,12 @@
         },
         {
           "name": "signal_stdevs",
-          "value": [0.0, 0.0670820393249937, 0.0670820393249937, 0.03162277660168379],
+          "value": [
+            0.0,
+            0.0670820393249937,
+            0.0670820393249937,
+            0.03162277660168379
+          ],
           "axis": "",
           "desc": "DERIVED, pre-resolved per-period signal volatility (length N+1): signal_stdevs[n] = sqrt(tau[n+1]-tau[n]) * stdev, tau = concat([0], linspace(0, t_last, N), [1]). Baked as exact float reprs so the interpreter's normal draw matches the domain's bit-for-bit; the domain re-derives it from stdev/t_last/N (see assumptions_log)."
         }
@@ -223,7 +229,35 @@
       "inventory": 0,
       "information": 0,
       "total_cost": 0
-    }
+    },
+    "uncertainty_slots": [
+      {
+        "name": "signal",
+        "interface": "SignalGenerator",
+        "stream_id": 0,
+        "latent": false,
+        "stages": [
+          {
+            "name": "increment",
+            "realization": "period"
+          }
+        ],
+        "desc": "",
+        "default": "ammfe",
+        "candidates": {
+          "ammfe": {
+            "generator": "NormalDemandSignal",
+            "family": "normal",
+            "settings": {
+              "mean": 0.0,
+              "std": "signal_stdevs[period]"
+            },
+            "is_discrete": false,
+            "desc": "mean-zero MMFE increment revealed at period n; std = signal_stdevs[n], the pre-resolved per-period volatility schedule (see assumptions_log). Observed, not latent \u2014 it enters `information`."
+          }
+        }
+      }
+    ]
   },
   "gym": {
     "observation_modes": [
@@ -231,9 +265,16 @@
         "name": "vec",
         "default": true,
         "features": [
-          {"ref": "inventory"},
-          {"ref": "information"},
-          {"derived": "orders_to_go", "expr": "N - period + 1"}
+          {
+            "ref": "inventory"
+          },
+          {
+            "ref": "information"
+          },
+          {
+            "derived": "orders_to_go",
+            "expr": "N - period + 1"
+          }
         ]
       }
     ],
@@ -243,7 +284,10 @@
         "default": true,
         "encodes": "order",
         "type": "continuous",
-        "bounds": [0.0, 3.0],
+        "bounds": [
+          0.0,
+          3.0
+        ],
         "transform": "",
         "feasibility_strategy": "clip",
         "desc": "identity: the agent sets the order quantity directly, clipped to the non-negative box."
@@ -273,7 +317,7 @@
     "frame_stack": 1,
     "obs_normalization": {
       "enabled": true,
-      "rationale": "inventory, information, and orders_to_go sit on modestly heterogeneous scales; spec §8.3 says normalize"
+      "rationale": "inventory, information, and orders_to_go sit on modestly heterogeneous scales; spec \u00a78.3 says normalize"
     }
   },
   "assumptions_log": [
@@ -282,6 +326,6 @@
     "1-INDEXED HORIZON: the N=3 ordering periods run on a 1-indexed clock (1..N); the interpreter terminates when the post-increment clock reaches horizon.T, so the terminal clock value is N+1 = 4 (horizon.T = 4, not N). The demand-signal seed key uses period directly (1..N), matching the domain's state.period, so trajectories diff bit-exactly under seed scheme v2 ([period, source_id, 1, episode_seed, seed_salt]).",
     "TERMINAL REALIZATION: demand and sales are realized under the `period == N` guard (event R), before the period increment; they are 0 on every non-terminal row. Objective total = -cost + revenue accumulates to profit = revenue - total_cost.",
     "ADDITIVE MMFE ONLY: this IR models D = mu + I. The multiplicative case D = exp(mu + I) is a mode variant handled at the domain/grid layer (mmfe_mode), out of IR scope.",
-    "DESIGN GRIDS OUT OF IR SCOPE: the aMMFE / mMMFE parameter sweeps (stdev x t_last x lamb) are experiment-design grids (spec §5.6), consumed only by training/eval drivers. The IR formalizes one concrete scenario; grid coverage is verified structurally by the conformance harness."
+    "DESIGN GRIDS OUT OF IR SCOPE: the aMMFE / mMMFE parameter sweeps (stdev x t_last x lamb) are experiment-design grids (spec \u00a75.6), consumed only by training/eval drivers. The IR formalizes one concrete scenario; grid coverage is verified structurally by the conformance harness."
   ]
 }

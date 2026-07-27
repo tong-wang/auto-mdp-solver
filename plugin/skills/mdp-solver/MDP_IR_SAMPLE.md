@@ -64,14 +64,17 @@ change the fingerprint and needs no re-confirmation.
       },
       {
         "name": "inventory", "role": "core", "type": "int",
-        "bounds": [-400, 400],          // net inventory; negative = backlog
+        // scale-derived bounds are SYMBOLIC over the slot read-API (derived by
+        // mdp_ir.families, §7) and resolve per selected demand candidate —
+        // never freeze one candidate's scale into the structure
+        "bounds": ["-40 * demand.mean", "40 * demand.mean"],
         "observability": "observable",
         "desc": "net on-hand inventory after all period events; read by next transition"
       },
       {
         "name": "pipeline", "role": "core", "type": "int_vector",
-        "length": 6,                    // leadtime.max()+1  (max L = 5)
-        "element_bounds": [0, 400],
+        "length": 6,                    // leadtime.max()+1  (max L = 5); shapes stay literal (frozen)
+        "element_bounds": [0, "40 * demand.mean"],
         "observability": "observable",
         "desc": "pipeline[k] = quantity arriving at the k-th future R (receive) event"
       }
@@ -105,43 +108,98 @@ change the fingerprint and needs no re-confirmation.
           "rationale": "'how much to order' stated no integrality; continuous is easier for PPO"
         },
         "dim": 1,
-        // Confirmable<[lo,hi]> — the upper action scale is a codegen guess
+        // Confirmable<[lo,hi]> — the upper action scale is a codegen guess;
+        // symbolic, so it re-resolves when a different demand candidate is selected
         "bounds": {
-          "value": [0, 200], "suggested": [0, 200], "source": "derived",
-          "rationale": "~10x mean demand; caps the action scale, not a physical limit"
+          "value": [0, "20 * demand.mean"], "suggested": [0, "20 * demand.mean"],
+          "source": "derived",
+          "rationale": "20x mean demand; caps the action scale, not a physical limit"
         },
         "feasibility": ["non_negative"],
         "desc": "replenishment quantity placed at the O (order) event"
       }
     ],
 
-    // --- UNCERTAINTY: stages; `realization` DERIVES the seed key (§5.3) — never hand-written.
-    //     v2 scheme: stream_id is the per-instance source id under branch 1, may be 0.
-    "uncertainty_sources": [
+    // --- UNCERTAINTY: authored as SLOTS with a candidate pool (catalog ⊕
+    //     selection, §7 below; IR_LAYERING_PLAN §10). A slot fixes the
+    //     structural skeleton — name, interface, stream_id, stages (whose
+    //     `realization` DERIVES the seed key, §5.3 — never hand-written) —
+    //     and declares the candidate families that can fill it, the way
+    //     _uncertainty.py declares generator classes. `load_ir` resolves the
+    //     selected candidate into a plain `uncertainty_sources` entry, so
+    //     nothing downstream sees the catalog. (A file carrying
+    //     `uncertainty_sources` directly is the legacy resolved form and
+    //     still loads.)
+    "uncertainty_slots": [
       {
-        // per-period demand from a fixed categorical whose support/weights the
-        // paper_demand SAMPLER realizes once per episode into demand_vals /
-        // demand_probs (scenario.samplers below). Under v2 that episode-level
-        // draw is a world-latent sampler (§6.3), never an intrinsic stage.
-        "name": "demand", "generator": "FixedDistributionDemand", "stream_id": 0,
-        "is_discrete": true, "latent": false,
-        "distribution": {
-          "family": "categorical",
-          "settings": { "values": "demand_vals", "probabilities": "demand_probs" }
-        },
+        "name": "demand", "interface": "DemandGenerator", "stream_id": 0,
+        "latent": false,
         // one per-period stage → seed_key() = [period, source:0, 1, episode_seed, seed_salt]
-        "stages": [ { "name": "sample", "realization": "period" } ]
+        "stages": [ { "name": "sample", "realization": "period" } ],
+        "default": "discrete",
+        "candidates": {
+          "discrete": {
+            "generator": "DiscreteDemand",
+            // `family` is any explicitly-aliased family (categorical, poisson,
+            // normal, lognormal, uniform, bernoulli, choice_without_replacement,
+            // normalized_uniform_weights) OR any numpy Generator scalar
+            // distribution by name (gamma, beta, binomial, exponential, zipf, …),
+            // whose `settings` are numpy's own kwargs. See interpreter._sample_family.
+            "family": "categorical",
+            "settings": {
+              // a setting whose value is a DRAW SPEC is this slot's WORLD
+              // LATENT (spec §5.2): drawn once per episode on the meta branch
+              // at THIS SLOT's stream_id, then consumed as a plain constant.
+              // The loader desugars it into a scenario sampler + a synthesized
+              // placeholder constant ({slot}_{setting}, value = `example`).
+              // hidden: true flips the requires_memory derivation and bars the
+              // realized value from observation modes.
+              "values": {
+                "draw": { "family": "choice_without_replacement",
+                          "settings": { "low": "demand_support_low",
+                                        "high": "demand_support_high",
+                                        "size": "demand_support_size" } },
+                "example": [10, 20, 30, 40, 50], "hidden": true
+              },
+              "probabilities": {
+                "draw": { "family": "normalized_uniform_weights",
+                          "settings": { "size": "demand_support_size" } },
+                "example": [0.2, 0.2, 0.2, 0.2, 0.2], "hidden": true
+              }
+            },
+            "is_discrete": true
+          },
+          // a second candidate is ~10 lines appended HERE — selected per
+          // instance ({"demand": "poisson"}) or --select demand=poisson —
+          // never a second schema file. Symbolic bounds re-resolve to its
+          // scale automatically (derived demand.mean: 30 either way here).
+          "poisson": {
+            "generator": "PoissonDemand", "family": "poisson",
+            "settings": {
+              "rate": { "draw": { "family": "gamma",
+                                  "settings": { "shape": "demand_alpha",
+                                                "scale": "1.0 / demand_beta" } },
+                        "example": 30.0, "hidden": true }
+            },
+            "is_discrete": true
+          }
+        }
       },
       {
-        "name": "leadtime", "generator": "DiscreteLeadtime", "stream_id": 1,
-        "is_discrete": true, "latent": false,
-        "distribution": {
-          "family": "categorical",
-          "settings": { "values": "leadtime_values", "probabilities": "leadtime_probs" }
-        },
+        "name": "leadtime", "interface": "LeadtimeGenerator", "stream_id": 1,
+        "latent": false,
         // event: decision-triggered; trigger REQUIRED (validated)
         // → seed_key() = [period, source:1, 1, episode_seed, seed_salt]
-        "stages": [ { "name": "draw", "realization": "event", "trigger": "O && order>0" } ]
+        "stages": [ { "name": "draw", "realization": "event", "trigger": "O && order>0" } ],
+        "default": "discrete",
+        "candidates": {
+          "discrete": {
+            "generator": "DiscreteLeadtime", "family": "categorical",
+            // plain settings (no draw spec) = no world latent for this slot
+            "settings": { "values": "leadtime_values", "probabilities": "leadtime_probs" },
+            "is_discrete": true
+          }
+        }
       }
     ],
 
@@ -193,41 +251,28 @@ change the fingerprint and needs no re-confirmation.
         { "name": "demand_support_size", "value": 5,  "axis": "demand" },
         { "name": "demand_support_low",  "value": 10, "axis": "demand" },
         { "name": "demand_support_high", "value": 50, "axis": "demand" },
+        { "name": "demand_alpha", "value": 9.0, "axis": "demand",
+          "desc": "poisson candidate: Gamma shape of the hidden rate" },
+        { "name": "demand_beta",  "value": 0.3, "axis": "demand",
+          "desc": "poisson candidate: Gamma rate; E[lambda] = alpha/beta = 30" },
         { "name": "leadtime_values", "value": [2, 3, 4, 5], "axis": "leadtime" },
-        { "name": "leadtime_probs",  "value": [0.125, 0.375, 0.375, 0.125], "axis": "leadtime" },
-        // placeholders; the paper_demand sampler overwrites these each episode
-        { "name": "demand_vals",  "value": [10, 20, 30, 40, 50],     "axis": "",
-          "desc": "realized per episode by the paper_demand sampler" },
-        { "name": "demand_probs", "value": [0.2, 0.2, 0.2, 0.2, 0.2], "axis": "",
-          "desc": "realized per episode by the paper_demand sampler" }
+        { "name": "leadtime_probs",  "value": [0.125, 0.375, 0.375, 0.125], "axis": "leadtime" }
+        // NOTE: no hand-authored placeholders and no `samplers` node — the
+        // draw specs inside the demand candidates desugar at load time into a
+        // `demand_latent` sampler (substream = the slot's stream_id) plus
+        // synthesized placeholder constants (demand_values / demand_probabilities
+        // / demand_rate). Instances sharing a candidate share the latent stream:
+        // common random numbers across instances by construction.
       ],
+      // instances = the SCENARIOS registry: constant overrides AND slot
+      // selections compose freely — a permutation is one line, never a file.
+      // At resolution, instances inconsistent with the active selection are
+      // dropped and slot keys stripped, so the resolved IR is consistent.
       "instances": {
-        "lost_sales": { "allow_backlog": false }   // overrides validated against constant names
-      },
-      // world-latent samplers (spec §5.2): realized once per episode on the meta
-      // branch (§6.3, key [substream_id, 0, episode_seed, seed_salt]) BEFORE any
-      // period draw. `hidden` bars the drawn constants from observation modes and
-      // drives the rl.requires_memory derivation. Each sampler has a distinct
-      // substream_id; `instances` names which scenario instances it applies to
-      // ("" = the base instance).
-      "samplers": [
-        {
-          "name": "paper_demand", "substream_id": 0, "hidden": true,
-          "instances": [""],
-          "draws": [
-            { "name": "demand_vals", "distribution": {
-                "family": "choice_without_replacement",
-                "settings": { "low": "demand_support_low", "high": "demand_support_high",
-                              "size": "demand_support_size" } } },
-            { "name": "demand_probs", "distribution": {
-                "family": "normalized_uniform_weights",
-                "settings": { "size": "demand_support_size" } } }
-          ],
-          "desc": "paper per-episode demand distribution (hidden world latent)"
-        }
-        // a second sampler (substream_id 1, instances ["lost_sales"]) covers the
-        // lost_sales instance — same draws, its own meta substream.
-      ]
+        "lost_sales":         { "allow_backlog": false },
+        "poisson":            { "demand": "poisson" },
+        "poisson_lost_sales": { "demand": "poisson", "allow_backlog": false }
+      }
     },
 
     // literal or expr over constants; must cover every `core` state var (validated)
@@ -263,7 +308,7 @@ change the fingerprint and needs no re-confirmation.
     // strategy: clip (continuous), mask (discrete), reparametrize (needs transform)
     "action_modes": [
       { "name": "order", "default": true, "encodes": "order",
-        "type": "continuous", "bounds": [0, 200],
+        "type": "continuous", "bounds": [0, "20 * demand.mean"],
         "transform": "", "feasibility_strategy": "clip",
         "desc": "identity: agent emits the order quantity directly" }
     ],
@@ -288,19 +333,19 @@ change the fingerprint and needs no re-confirmation.
     // within-episode inference (memory) is needed — a worked human_override.
     "requires_memory": {
       "value": false, "suggested": true, "source": "human_override",
-      "rationale": "paper_demand is hidden ⇒ derivation suggests memory; overridden: the demand distribution is constant within an episode, nothing to infer step-to-step"
+      "rationale": "the demand slot's latent draw is hidden ⇒ derivation suggests memory; overridden: the demand distribution is constant within an episode, nothing to infer step-to-step"
     },
     "algo": "ppo",                       // ppo | maskable_ppo | recurrent_ppo
     "frame_stack": 1,                    // >1 iff requires_memory (validated)
     // the spec-§8.3 decision, explicit instead of folklore:
     "obs_normalization": {
       "enabled": true,
-      "rationale": "inventory (±400) and pipeline (0–400) are stationary features of heterogeneous magnitude"
+      "rationale": "inventory and pipeline are stationary features of heterogeneous magnitude (scale set by the selected demand candidate)"
     }
   },
 
   "assumptions_log": [
-    "Order quantity modeled as continuous (float) and clipped to [0, 200]; integrality unstated.",
+    "Order quantity modeled as continuous (float) and clipped to [0, 20*demand.mean]; integrality unstated.",
     "Initial inventory and pipeline assumed empty (0).",
     "Unmet demand backlogged; the lost-sales variant is the 'lost_sales' scenario instance.",
     "Cost components evaluated at END_OF_PERIOD on end-of-period inventory.",
@@ -535,33 +580,19 @@ with bit-identical draws.
   **forbids episode-realization stages** (treatment A): world latents must be
   `scenario.samplers`. Under v2, `stream_id` is the per-instance source id
   (may be 0) and must be distinct across sources.
-- **`mdp.scenario.samplers`** — world latents (spec §5.2). Each sampler
-  realizes existing scenario constants at episode start; draws execute in
-  order from one rng seeded by the sampler's meta key. `hidden: true` flips
-  the `requires_memory` derivation and bars the constants from observation
-  exprs; `instances` scopes applicability (`""` names the base; empty list =
-  all). From the migrated `inv_single` IR:
-
-  ```jsonc
-  "samplers": [
-    { "name": "paper_demand", "substream_id": 0, "hidden": true,
-      "instances": [""],
-      "draws": [
-        { "name": "demand_vals", "distribution": {
-            "family": "choice_without_replacement",
-            "settings": { "low": "demand_support_low",
-                          "high": "demand_support_high",
-                          "size": "demand_support_size" } } },
-        { "name": "demand_probs", "distribution": {
-            "family": "normalized_uniform_weights",
-            "settings": { "size": "demand_support_size" } } } ] }
-  ]
-  ```
-
-  The sampled constants (`demand_vals` / `demand_probs`) exist in
-  `scenario.constants` with placeholder values, so every expr and validator
-  sees one namespace; the per-period source then consumes them as a plain
-  `categorical`.
+- **`mdp.scenario.samplers`** — world latents (spec §5.2), realized once per
+  episode on the meta branch BEFORE any period draw; draws execute in order
+  from one rng seeded by the sampler's meta key. `hidden: true` flips the
+  `requires_memory` derivation and bars the realized constants from
+  observation exprs. **In the catalog form these are never authored**: a draw
+  spec inside a candidate's settings (§1) desugars at load time into one
+  sampler per slot — named `{slot}_latent`, `substream_id` = the slot's
+  `stream_id` (one stream identity per source of randomness, both branches),
+  draws in settings-declaration order, targets synthesized as
+  `{slot}_{setting}` placeholder constants carrying the spec's `example`.
+  The per-period source then consumes them as plain constants, and every
+  expr/validator sees one namespace. (A legacy resolved file may still carry
+  the node explicitly.)
 - **`mdp.scenario.mixtures`** — world mixtures (spec §5.3): weighted
   components naming instances (`""` = base), drawn once per episode on the
   mixture's own substream; a mixture name is usable anywhere an instance
@@ -574,3 +605,39 @@ with bit-identical draws.
   `seed_salt >= 1`); sampler-bearing instances diff bit-exactly — the
   adapter builds the domain's sampler on the IR sampler's substream
   (`examples/inv_single/inv_single_ir_adapter.py` is the reference).
+
+## 7. Catalog ⊕ selection (one schema file, a pool of compositions)
+
+Added 2026-07-28 (IR_LAYERING_PLAN §10). The authored IR is **one**
+`{domain}_schema.json` whose slots each carry a `candidates` pool + a
+`default` (§1 above); a file carrying `uncertainty_sources` directly is the
+legacy resolved form and still loads unchanged.
+
+- **Selection** = `{slot: candidate}`: slot defaults ⊕ the named instance's
+  slot-valued keys ⊕ an explicit `--select slot=candidate` /
+  `load_ir(path, instance=…, select=…)`. Declarations scale per slot;
+  compositions are references — the slot×family cross-product is never
+  enumerated anywhere, and `poisson × lost_sales` is the one-line instance
+  `{"demand": "poisson", "allow_backlog": false}`.
+- **Derived read-API**: symbolic bounds (`"20 * demand.mean"`) resolve
+  against `mean`/`max`/`is_discrete` computed by `mdp_ir.families` from the
+  selected candidate's family + settings, composing through the latent
+  hierarchy (a Gamma-latent Poisson gets `max = envelope(poisson,
+  envelope(gamma))`). Derivation is lazy per attribute — a slot nothing
+  references may use state-dependent settings (dynamic_pricing's
+  price-dependent rate). Escape hatch: an explicit `read_api` block on the
+  candidate.
+- **What is frozen**: `layering.structural_fingerprint()` — the structural
+  core plus the constant *names* its expressions reference (computed, never
+  hand-tagged). Constant values, candidates, instances, mixtures are free,
+  hash-tracked data: appending a candidate or editing a value never voids
+  Phase-A confirmation. `mdp_fingerprint()` still fingerprints one resolved
+  composition (`MdpIR.selection` records which).
+- **Verification**: every *composition you run* is differentially verified
+  on demand; `python -m mdp_ir.differential {schema} --all-instances` sweeps
+  base + every named instance (the covering set — each candidate exercised
+  at least once). `python -m mdp_ir {schema}` validates base + every
+  instance's resolution.
+- **Python mirror** (the layer rule): candidates ↔ `_uncertainty.py`
+  generator classes; instances ↔ `SCENARIOS` registry entries; mixtures ↔
+  the mixture combinator; slot `stream_id` ↔ generator `source_id`.

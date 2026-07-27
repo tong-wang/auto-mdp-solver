@@ -6,7 +6,7 @@ machine-checkable pydantic model of a dynamic decision problem that the user
 confirms before any code is generated. ``MDP_IR_SAMPLE.md`` is the annotated
 reference instance.
 
-Validate an IR JSON file:
+Validate an IR JSON file (catalog form: base + every instance must resolve):
 
     python -m mdp_ir plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json
 
