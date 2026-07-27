@@ -1,7 +1,9 @@
 # Agentization Plan — from skill to standalone agent
 
 *Design record, 2026-07-23; revised 2026-07-24 (solve = backbone + escalation;
-gym-gate design, §14). Captures the decisions, architecture, and roadmap for
+gym-gate design, §14); 2026-07-27: solve levels L0/L1/L2+ and the L1
+derivation table pinned in `SOLVE_LEVELS_PLAN.md` (repo root).
+Captures the decisions, architecture, and roadmap for
 turning the `mdp-solver` pipeline into a deployable agent. This is a plan, not yet
 built; nothing here is committed to code.*
 
@@ -153,6 +155,16 @@ Rules:
   - **Stopping rule** = competitive-vs-baselines (the same criterion that admits a
     domain into `examples/`) or escalation-budget exhaustion; the budget lives in the
     run-plan.
+  - **Levels naming + L1 derivation (2026-07-27).** The backbone is split into
+    **L0 (faithful-defaults control: library defaults + problem-forced settings,
+    γ=β)** and **L1 (IR-derived configuration — the
+    mandatory backbone)**; escalation rounds are **L2+**, tagged with the layers
+    opened (`L2(hp)`, `L2(arch)`, …). Invariant: level ≥ L2 ⟺ more than one
+    training configuration was tried — a tuned result is always an escalation.
+    The L1 derivation table, the derivation↔tuning center/radius contract, the
+    audit defects (episode-seed provenance, VecNormalize gamma, clip-dest
+    mismatch), and the routing of each piece to spec/schema/harness are pinned
+    in `SOLVE_LEVELS_PLAN.md` (repo root).
 - **`interpret` — deferred, underspecified (to-dos to accumulate from examples).** After
   `solve`, make sense of the winning policy: recover its *structure*, not just its score.
   Sits between `solve` and `package` (findings feed the package README's empirical-findings
