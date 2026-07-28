@@ -161,6 +161,29 @@
         }
       ]
     },
+    "invariants": [
+      {
+        "name": "inventory_accumulates_orders",
+        "expr": "close(inventory, prev.inventory + order)",
+        "desc": "the only inflow is the period's order; nothing leaves before the horizon"
+      },
+      {
+        "name": "cost_accumulates",
+        "expr": "close(total_cost, prev.total_cost + cost)",
+        "desc": "running procurement cost is the sum of per-period order costs"
+      },
+      {
+        "name": "demand_is_terminal_only",
+        "expr": "t == N or close(demand, 0)",
+        "desc": "demand realizes once, at the horizon; every earlier row reports 0"
+      },
+      {
+        "name": "sales_capped_by_stock",
+        "expr": "close(sales, min(demand, inventory))",
+        "scope": "terminal",
+        "desc": "at the horizon the firm sells the lesser of demand and what it accumulated"
+      }
+    ],
     "scenario": {
       "constants": [
         {
@@ -209,7 +232,7 @@
           "name": "mmfe_mode",
           "value": "additive",
           "axis": "variant",
-          "desc": "MMFE link selector (categorical): 'additive' -> D = mu + I, 'multiplicative' -> D = exp(mu + I). Selects the terminal link ONLY (the demand-signal family is the same normal-increment MMFE either way) — a constant-conditioned dynamics expression, not an uncertainty candidate. The base scenario is 'additive'; the 'mmmfe' instance selects 'multiplicative' (and, independently, widens stdev to 0.2). Read by the R-event demand update and passed straight through to FnvScenario.mmfe_mode by the adapter."
+          "desc": "MMFE link selector (categorical): 'additive' -> D = mu + I, 'multiplicative' -> D = exp(mu + I). Selects the terminal link ONLY (the demand-signal family is the same normal-increment MMFE either way) \u2014 a constant-conditioned dynamics expression, not an uncertainty candidate. The base scenario is 'additive'; the 'mmmfe' instance selects 'multiplicative' (and, independently, widens stdev to 0.2). Read by the R-event demand update and passed straight through to FnvScenario.mmfe_mode by the adapter."
         },
         {
           "name": "signal_stdevs",
@@ -336,7 +359,7 @@
     "DERIVED SCHEDULE BAKED AS DATA: signal_stdevs[n] = sqrt(tau[n+1]-tau[n]) * stdev with tau = concat([0], linspace(0, t_last, N), [1]) is scenario construction (domain-side). The IR carries the *resolved* schedule as exact float reprs so the interpreter's normal draw matches the domain's FnvScenario.signal bit-for-bit; instances that change stdev/t_last/N would need a re-resolved schedule (FNV's parameter variety lives in the design grids, exercised by conformance, not this differential).",
     "1-INDEXED HORIZON: the N=3 ordering periods run on a 1-indexed clock (1..N); the interpreter terminates when the post-increment clock reaches horizon.T, so the terminal clock value is N+1 = 4 (horizon.T = 4, not N). The demand-signal seed key uses period directly (1..N), matching the domain's state.period, so trajectories diff bit-exactly under seed scheme v2 ([period, source_id, 1, episode_seed, seed_salt]).",
     "TERMINAL REALIZATION: demand and sales are realized under the `period == N` guard (event R), before the period increment; they are 0 on every non-terminal row. Objective total = -cost + revenue accumulates to profit = revenue - total_cost.",
-    "MMFE LINK IS A CONSTANT SELECTION: additive (D = mu + I) and multiplicative (D = exp(mu + I)) use the same demand-signal family (the `signal` slot's generator is identical); they diverge only in the deterministic terminal link, applied once at the horizon in the R event. That link is not an uncertainty candidate but a constant-conditioned dynamics expression, keyed on the categorical `mmfe_mode` constant ('additive' | 'multiplicative'). The base scenario is 'additive'; the 'mmmfe' instance selects 'multiplicative' AND independently widens the signal (stdev 0.1 -> 0.2, with the derived signal_stdevs schedule re-baked to match) — showing both a mode selector and a derived-constant re-bake under one instance override. Both are differentially verified by the covering-set sweep (--all-instances): base = aMMFE, instance mmmfe = mMMFE.",
+    "MMFE LINK IS A CONSTANT SELECTION: additive (D = mu + I) and multiplicative (D = exp(mu + I)) use the same demand-signal family (the `signal` slot's generator is identical); they diverge only in the deterministic terminal link, applied once at the horizon in the R event. That link is not an uncertainty candidate but a constant-conditioned dynamics expression, keyed on the categorical `mmfe_mode` constant ('additive' | 'multiplicative'). The base scenario is 'additive'; the 'mmmfe' instance selects 'multiplicative' AND independently widens the signal (stdev 0.1 -> 0.2, with the derived signal_stdevs schedule re-baked to match) \u2014 showing both a mode selector and a derived-constant re-bake under one instance override. Both are differentially verified by the covering-set sweep (--all-instances): base = aMMFE, instance mmmfe = mMMFE.",
     "DESIGN GRIDS (PARAMETER SWEEPS) OUT OF IR SCOPE: the mode is now in-IR (the `additive` selector), but the aMMFE / mMMFE parameter sweeps (stdev x t_last x lamb ranges) remain experiment-design grids (spec \u00a75.6), consumed only by training/eval drivers. The IR formalizes concrete scenarios (base + instances); grid coverage is verified structurally by the conformance harness."
   ]
 }

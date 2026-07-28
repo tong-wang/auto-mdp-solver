@@ -41,12 +41,14 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Callable
 
 import numpy as np
 
 from mdp_ir.schema import (
     DecisionType,
+    InvariantScope,
     MdpIR,
     PeriodIndexing,
     Realization,
@@ -71,6 +73,10 @@ _FUNCS: dict[str, object] = {
     "phi": lambda x: 0.5 * (1.0 + math.erf(x / math.sqrt(2.0))),
     "topk": lambda values, k: sorted(values, reverse=True)[: int(k)],
     "range": range,
+    # float-tolerant equality — the balance-law idiom in `mdp.invariants`,
+    # so a conservation claim reads as one expression instead of an
+    # abs()-difference-under-epsilon dance
+    "close": lambda a, b, tol=1e-9: abs(float(a) - float(b)) <= tol,
 }
 
 # the family→numpy sampling dispatch lives in mdp_ir.runtime (shared with
@@ -184,6 +190,20 @@ def _numeric_seed_key(
 
 
 @dataclass
+class InvariantViolation:
+    """One failure of a declared ``mdp.invariants`` claim on one row."""
+
+    name: str
+    period: int
+    expr: str
+    detail: str = ""
+
+    def __str__(self) -> str:
+        tail = f" ({self.detail})" if self.detail else ""
+        return f"t={self.period} {self.name}: {self.expr}{tail}"
+
+
+@dataclass
 class Trajectory:
     episode_seed: int
     instance: str | None
@@ -191,6 +211,9 @@ class Trajectory:
     terminated_early: bool = False
     total: float = 0.0
     total_reward: float = 0.0
+    # declared-invariant failures, collected rather than raised: Phase A
+    # reports them advisory, the Stage-1 gate fails on them
+    violations: list[InvariantViolation] = field(default_factory=list)
 
     def render(self, max_rows: int | None = None) -> str:
         if not self.rows:
@@ -220,6 +243,11 @@ class Trajectory:
             f"reward total = {self.total_reward:.2f}   "
             f"periods = {len(self.rows)}{tag}"
         )
+        if self.violations:
+            out.append(f"INVARIANT VIOLATIONS ({len(self.violations)}):")
+            out += [f"  {v}" for v in self.violations[:10]]
+            if len(self.violations) > 10:
+                out.append(f"  ... ({len(self.violations) - 10} more)")
         return "\n".join(out)
 
 
@@ -227,10 +255,12 @@ class IrInterpreter:
     """Executes one IR. Stateless across episodes; all randomness flows
     through the derived seed keys, exactly as generated code must."""
 
-    def __init__(self, ir: MdpIR, instance: str | None = None, seed_salt: int = 0):
+    def __init__(self, ir: MdpIR, instance: str | None = None, seed_salt: int = 0,
+                 check_invariants: bool = True):
         self.ir = ir
         self.instance = instance
         self.seed_salt = seed_salt
+        self._invariants = list(ir.mdp.invariants) if check_invariants else []
         self._scheme = ir.seed_scheme
         self._funcs = {**_FUNCS, **_declared_funcs(ir)}
         # a mixture name is usable wherever an instance name is (spec §5.3);
@@ -394,11 +424,15 @@ class IrInterpreter:
 
     # -- episode --------------------------------------------------------------
 
-    def _initial_state(self, ns: dict) -> dict:
-        state: dict = {}
-        origin = (
+    @property
+    def _origin(self) -> int:
+        return (
             0 if self.ir.mdp.horizon.period_indexing is PeriodIndexing.zero_based else 1
         )
+
+    def _initial_state(self, ns: dict) -> dict:
+        state: dict = {}
+        origin = self._origin
         for sv in self.ir.mdp.state_variables:
             if sv.name in self.ir.mdp.initial_state:
                 v = self.ir.mdp.initial_state[sv.name]
@@ -430,6 +464,50 @@ class IrInterpreter:
             return out
 
         return policy
+
+    # -- declared invariants (spec: mdp.invariants) ---------------------------
+
+    def _seed_prev_row(self, ns: dict, comp_names: list[str]) -> dict:
+        """`prev` for the first period: the initial state, with info fields,
+        decisions and components at 0 and `t` one before the origin. Same key
+        set as a real row, so an invariant cannot KeyError only at t=0."""
+        snap = lambda v: list(v) if isinstance(v, list) else v  # noqa: E731
+        row: dict = {"t": self._origin - 1}
+        row.update({d.name: 0 for d in self.ir.mdp.decisions})
+        row.update({f: 0 for f in self._scalar_info})
+        row.update({
+            sv.name: snap(ns[sv.name])
+            for sv in self.ir.mdp.state_variables
+            if sv.role is not StateRole.time_index
+        })
+        row.update({c: 0.0 for c in comp_names})
+        row["total"] = 0.0
+        row["reward"] = 0.0
+        return row
+
+    def _check_invariants(
+        self, traj: Trajectory, ns: dict, prev_row: dict, period: int, *,
+        terminal: bool,
+    ) -> None:
+        """Evaluate the declared claims against the END_OF_PERIOD namespace
+        augmented with `prev`. Failures (and evaluation errors) are appended
+        to the trajectory, never raised — the caller decides severity."""
+        inv_ns = dict(ns)
+        inv_ns["prev"] = SimpleNamespace(**prev_row)
+        # the row's INPUT period: END_OF_PERIOD has already advanced the
+        # time-index state variable by now, so `t` is what claims should use
+        inv_ns["t"] = period
+        for inv in self._invariants:
+            if inv.scope is InvariantScope.terminal and not terminal:
+                continue
+            try:
+                ok, detail = bool(self._eval(inv.expr, inv_ns)), ""
+            except Exception as exc:  # noqa: BLE001 — reported, not raised
+                ok, detail = False, f"{type(exc).__name__}: {exc}"
+            if not ok:
+                traj.violations.append(
+                    InvariantViolation(inv.name, period, inv.expr, detail)
+                )
 
     def run(
         self,
@@ -465,6 +543,7 @@ class IrInterpreter:
         traj = Trajectory(episode_seed=episode_seed, instance=self.instance)
         limit = self.T if max_periods is None else min(self.T, max_periods)
         transitions = self._transition_order()
+        prev_row = self._seed_prev_row(ns, comp_names) if self._invariants else {}
 
         for step in range(limit):
             period = int(ns[time_var])
@@ -511,7 +590,18 @@ class IrInterpreter:
             traj.total += comps["total"]
             traj.total_reward += reward
 
-            if early and self._eval(early, ns):
+            stop_early = bool(early) and bool(self._eval(early, ns))
+            if self._invariants:
+                # `terminal` scope fires on whichever row actually ends the
+                # episode — absorbing state, horizon, or the max_periods cap
+                self._check_invariants(
+                    traj, ns, prev_row, period,
+                    terminal=stop_early or int(ns[time_var]) >= self.T
+                    or step == limit - 1,
+                )
+                prev_row = row
+
+            if stop_early:
                 traj.terminated_early = True
                 break
             if int(ns[time_var]) >= self.T:
@@ -542,11 +632,13 @@ def simulate(
     instance: str | None = None,
     seed_salt: int = 0,
     max_periods: int | None = None,
+    check_invariants: bool = True,
 ) -> Trajectory:
     """One-call convenience wrapper around ``IrInterpreter``."""
-    return IrInterpreter(ir, instance=instance, seed_salt=seed_salt).run(
-        episode_seed, decisions=decisions, max_periods=max_periods
-    )
+    return IrInterpreter(
+        ir, instance=instance, seed_salt=seed_salt,
+        check_invariants=check_invariants,
+    ).run(episode_seed, decisions=decisions, max_periods=max_periods)
 
 
 def main(argv: list[str]) -> int:
@@ -596,7 +688,7 @@ def main(argv: list[str]) -> int:
     inst = f" instance={args.instance}" if args.instance else ""
     print(f"{ir.domain.name} v{ir.ir_version}  episode_seed={args.episode_seed}{inst}")
     print(traj.render(max_rows=args.max_rows))
-    return 0
+    return 1 if traj.violations else 0
 
 
 if __name__ == "__main__":

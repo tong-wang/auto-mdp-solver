@@ -140,6 +140,11 @@ class Sense(str, Enum):
     maximize = "maximize"
 
 
+class InvariantScope(str, Enum):
+    period = "period"        # checked on every row
+    terminal = "terminal"    # checked only on the row the episode ends on
+
+
 class HorizonEnd(str, Enum):
     # Gymnasium semantics: `terminated` when T is part of the problem (no
     # bootstrapping past it — the finite-horizon default); `truncated` only
@@ -170,6 +175,9 @@ _COMMENT = re.compile(r"#.*")
 _STRLIT = re.compile(r"'[^']*'|\"[^\"]*\"")   # single/double-quoted string literals
 # an assignment `=` or draw `~`, excluding ==, !=, <=, >=, +=, -=, *=, /=
 _ASSIGN = re.compile(r"(?<![=!<>+\-*/])=(?!=)|~")
+# `prev.<name>` — the previous period's end-of-period value, legal only in
+# invariant expressions (see Invariant)
+_PREV = re.compile(r"\bprev\.([A-Za-z_]\w*)")
 
 # Core builtins usable in any IR expression. Domain-specific functions do NOT
 # belong here: a domain declares them in its IR under `mdp.expr_builtins`
@@ -181,6 +189,8 @@ _BUILTINS = frozenset({
     "exp", "log", "sqrt", "floor", "ceil", "zeros",
     "phi", "topk", "range",    # std-normal CDF, top-k largest values,
                                # comprehension index ranges
+    "close",                   # close(a, b[, tol]) — float-tolerant equality,
+                               # the balance-law idiom in `mdp.invariants`
     "T",                       # horizon length
     "True", "False", "None", "true", "false",
 })
@@ -576,6 +586,45 @@ class Objective(_Base):
         return " + ".join(c.name for c in self.per_step_components)
 
 
+class Invariant(_Base):
+    """A claim about the problem that must hold on every trajectory.
+
+    Invariants exist because the differential gate proves the interpreter and
+    the generated domain *agree*, not that either is *right*: a
+    mis-formalization (wrong sign, a dropped term) makes both sides wrong
+    identically and the gate still passes. An invariant is transcribed from
+    the user's own description at Phase A — an independent statement about
+    the problem, so it can catch the error the twin shares.
+
+    ``expr`` is a boolean over the END_OF_PERIOD namespace (state, info,
+    decomposition components, decisions, scenario constants), plus
+    ``prev.<name>`` for the previous period's end-of-period value of any
+    per-period name. On the first period ``prev`` exposes the initial state,
+    with info fields, decisions and components at 0 (and ``prev.t`` one
+    before the indexing origin).
+
+    ``t`` is the row's INPUT period — the period the decision was taken in.
+    Prefer it to the time-index state variable, which END_OF_PERIOD has
+    already advanced by the time invariants (like objective components) are
+    evaluated: on a horizon-N terminal row ``t == N`` while ``period == N+1``.
+
+    Use ``close(a, b)`` rather than ``==`` for float balance laws::
+
+        close(inventory, prev.inventory + received - demand)
+        close(sum(pipeline), sum(prev.pipeline) + order - received)
+
+    Declared invariants are STRUCTURAL: editing one moves the IR's structural
+    fingerprint and re-opens the Phase-A confirmation, exactly like editing
+    dynamics. Violations are collected onto the trajectory rather than raised,
+    so Phase A can report them advisory while the Stage-1 gate fails on them.
+    """
+
+    name: str
+    expr: str
+    scope: InvariantScope = InvariantScope.period
+    desc: str = ""
+
+
 class ExprBuiltin(_Base):
     """A domain-owned expression builtin, declared by the IR that needs it.
 
@@ -614,6 +663,10 @@ class MdpBlock(_Base):
     dynamics: Dynamics
     objective: Objective
     scenario: Scenario
+    # conservation/consistency claims checked on every trajectory (Invariant):
+    # the one artifact that can catch a mis-formalization the differential's
+    # two sides share. Every instance and every catalog candidate inherits them
+    invariants: list[Invariant] = Field(default_factory=list)
     # domain-owned expression builtins (ExprBuiltin): extra callables this
     # IR's expressions may use, implemented in modules next to the IR
     expr_builtins: list[ExprBuiltin] = Field(default_factory=list)
@@ -643,6 +696,20 @@ class MdpBlock(_Base):
         for src in self.uncertainty_sources:
             names |= {st.name for st in src.stages}
         return names
+
+    @property
+    def per_period_names(self) -> set[str]:
+        """Names whose value changes period to period, so `prev.<name>` in an
+        invariant means something: state, info (incl. decomposition
+        components), decisions. Scenario constants are excluded — they are
+        fixed for the episode, so `prev.h` would be `h`."""
+        names = {sv.name for sv in self.state_variables}
+        names |= {f.name for f in self.info_fields}
+        for f in self.info_fields:
+            if f.components:
+                names |= set(f.components)
+        names |= {d.name for d in self.decisions}
+        return names | {"t"}
 
     @property
     def latent_names(self) -> set[str]:
@@ -917,6 +984,28 @@ class MdpBlock(_Base):
 
         for c in self.objective.per_step_components:
             _check_expr(c.expr, known, f"objective component {c.name!r}")
+
+        # invariants: `prev.<name>` resolves against the per-period names, and
+        # the rest of the expression against the END_OF_PERIOD namespace. The
+        # prev-references are stripped before the general check so neither
+        # `prev` nor the attribute is read as a bare identifier.
+        seen: set[str] = set()
+        per_period = self.per_period_names
+        for inv in self.invariants:
+            if inv.name in seen:
+                raise ValueError(f"duplicate invariant name {inv.name!r}")
+            seen.add(inv.name)
+            bad = set(_PREV.findall(inv.expr)) - per_period
+            if bad:
+                raise ValueError(
+                    f"invariant {inv.name!r}: prev.{{{','.join(sorted(bad))}}} "
+                    f"names no per-period value (state, info, component or "
+                    f"decision)"
+                )
+            _check_expr(
+                _PREV.sub(" ", inv.expr), known | {"t"},
+                f"invariant {inv.name!r}",
+            )
 
         for name, v in self.initial_state.items():
             if isinstance(v, str):

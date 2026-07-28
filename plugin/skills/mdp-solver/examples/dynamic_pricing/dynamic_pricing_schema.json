@@ -143,6 +143,28 @@
         }
       ]
     },
+    "invariants": [
+      {
+        "name": "sales_capped_by_stock",
+        "expr": "close(units_sold, min(arrivals, prev.inventory))",
+        "desc": "a period sells the lesser of arrivals and the stock it opened with"
+      },
+      {
+        "name": "arrivals_split",
+        "expr": "close(lost_demand, arrivals - units_sold)",
+        "desc": "every arrival either buys or is lost \u2014 no third outcome"
+      },
+      {
+        "name": "inventory_balance",
+        "expr": "close(inventory, prev.inventory - units_sold)",
+        "desc": "stock is depleted only by sales; there is no replenishment"
+      },
+      {
+        "name": "no_backlog",
+        "expr": "inventory >= 0",
+        "desc": "unsold demand is lost, never carried as negative stock"
+      }
+    ],
     "scenario": {
       "constants": [
         {

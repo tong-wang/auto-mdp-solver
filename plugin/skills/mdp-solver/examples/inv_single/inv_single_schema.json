@@ -185,6 +185,28 @@
         }
       ]
     },
+    "invariants": [
+      {
+        "name": "inventory_balance",
+        "expr": "close(inventory, prev.inventory + received - demand + lost_sales)",
+        "desc": "on-hand changes only by receipts and demand; under lost_sales the unmet part is recorded in lost_sales rather than carried as negative inventory, so the same balance holds in both stockout modes"
+      },
+      {
+        "name": "pipeline_balance",
+        "expr": "close(sum(pipeline), sum(prev.pipeline) + order - received)",
+        "desc": "outstanding orders change only by what is placed and what arrives \u2014 holds under every event order and every lead-time candidate"
+      },
+      {
+        "name": "lost_sales_only_in_lost_sales_mode",
+        "expr": "stockout_mode == 'lost_sales' or close(lost_sales, 0)",
+        "desc": "backlog mode never records a lost sale"
+      },
+      {
+        "name": "no_negative_stock_under_lost_sales",
+        "expr": "stockout_mode != 'lost_sales' or inventory >= 0",
+        "desc": "lost-sales mode drops unmet demand instead of backlogging it"
+      }
+    ],
     "scenario": {
       "constants": [
         {

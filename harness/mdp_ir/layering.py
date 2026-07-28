@@ -586,6 +586,11 @@ def structural_fingerprint(data: dict) -> str:
         exprs += t.get("updates", [])
     for c in (core.get("objective") or {}).get("per_step_components", []):
         exprs.append(c.get("expr", ""))
+    # invariants ride along in `core` (never popped), so their name/expr/scope
+    # already move the fingerprint; collect their expressions too, so a
+    # constant referenced ONLY by a claim still freezes its name
+    for iv in core.get("invariants", []):
+        exprs.append(iv.get("expr", ""))
     exprs += [v for v in (core.get("initial_state") or {}).values() if isinstance(v, str)]
     t_ = (core.get("horizon") or {}).get("T")
     if isinstance(t_, str):

@@ -75,10 +75,14 @@ class DifferentialReport:
     periods: int = 0
     fields: list[str] = field(default_factory=list)
     divergences: list[Divergence] = field(default_factory=list)
+    # failures of the IR's declared `mdp.invariants` on the interpreter side.
+    # Distinct from a divergence: the two sides can agree perfectly and still
+    # both be wrong, which is exactly what a declared claim is there to catch
+    violations: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        return not self.divergences
+        return not self.divergences and not self.violations
 
     def render(self, max_report: int = 10) -> str:
         inst = f" instance={self.instance}" if self.instance else ""
@@ -88,10 +92,18 @@ class DifferentialReport:
         )
         if self.ok:
             return f"MATCH  {head}"
-        lines = [f"DIVERGED  {head}  ({len(self.divergences)} divergence(s))"]
-        lines += [f"  {d}" for d in self.divergences[:max_report]]
-        if len(self.divergences) > max_report:
-            lines.append(f"  ... ({len(self.divergences) - max_report} more)")
+        lines: list[str] = []
+        for tag, items in (
+            ("DIVERGED", [str(d) for d in self.divergences]),
+            ("INVARIANT", self.violations),
+        ):
+            if not items:
+                continue
+            noun = "divergence" if tag == "DIVERGED" else "violation"
+            lines.append(f"{tag}  {head}  ({len(items)} {noun}(s))")
+            lines += [f"  {x}" for x in items[:max_report]]
+            if len(items) > max_report:
+                lines.append(f"  ... ({len(items) - max_report} more)")
         return "\n".join(lines)
 
 
@@ -150,6 +162,7 @@ def run_differential(
         if domain_rows and not report.fields:
             report.fields = sorted(domain_rows[0].keys())
         report.divergences += diff_rows(traj.rows, domain_rows, seed)
+        report.violations += [f"seed={seed} {v}" for v in traj.violations]
         report.episodes += 1
         report.periods += len(traj.rows)
 
