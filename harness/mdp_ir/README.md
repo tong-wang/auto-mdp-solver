@@ -56,8 +56,10 @@ independent by construction (`mdp_ir.laws` asserts this against any IR, and
 `harness/tests/` pins the key grammars on synthetic ones; conservation is
 declared per IR under `mdp.invariants` — see below). Supported
 per-period distribution families: `categorical`, `poisson`, `normal`,
-`lognormal`, `uniform`, `bernoulli`; scenario samplers add the recipe families
-`choice_without_replacement` and `normalized_uniform_weights`.
+`lognormal`, `uniform`, `bernoulli`; scenario samplers add the list-valued
+recipe families `choice_without_replacement`, `normalized_uniform_weights`,
+and `iid` (`{of, size, ...base settings}` — `size` independent draws of any
+base family, e.g. N latent bandit arm means).
 
 ## Diff against real code (the differential runner)
 

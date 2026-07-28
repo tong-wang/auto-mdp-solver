@@ -157,6 +157,17 @@ def sample_family(
         hi = float(get(settings.get("high", 10.0)))
         raw = rng.uniform(lo, hi, size=size)
         return [float(v) for v in raw / raw.sum()]
+    if family == "iid":
+        # `size` independent draws of the `of` base family, in order from this
+        # rng — the latent-vector recipe (e.g. N bandit arm means). `of` is a
+        # structural family name like `family` itself, never resolved as an
+        # expression; the remaining settings are the base family's own.
+        of = settings["of"]
+        if not isinstance(of, str) or of == "iid":
+            raise ValueError(f"iid setting 'of' must name a base family, got {of!r}")
+        size = int(get(settings["size"]))
+        sub = {k: v for k, v in settings.items() if k not in ("of", "size")}
+        return [sample_family(rng, of, sub, resolve) for _ in range(size)]
     # any other numpy Generator scalar distribution, by name: settings map
     # straight to numpy's own parameters (see NUMPY_SCALAR_DISTS). `.item()`
     # surfaces numpy's native int/float, so discrete families coerce to int

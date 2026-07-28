@@ -81,6 +81,50 @@ def test_deterministic_envelope_is_the_value(attr):
     assert getattr(families, attr)("deterministic", {"value": 4.0}, ENVELOPE) == 4.0
 
 
+# -- the iid vector recipe ---------------------------------------------------
+
+
+def test_iid_is_size_base_draws_in_order():
+    """Bit-identical to drawing the base family `size` times from one rng —
+    the sampler contract (draws in order), so a latent vector costs no new
+    seed-grammar machinery."""
+    rng = np.random.default_rng(7)
+    want = [float(rng.beta(a=2.0, b=5.0)) for _ in range(3)]
+    assert draw("iid", {"of": "beta", "size": 3, "a": 2.0, "b": 5.0}) == want
+
+
+def test_iid_resolves_settings_but_never_of():
+    """`of` is structural, like `family` itself: with an eval-based resolver,
+    resolving it would raise NameError on the bare family name."""
+    got = sample_family(np.random.default_rng(2), "iid",
+                        {"of": "poisson", "size": "1 + 2", "rate": "2.0 * 5"},
+                        resolve=lambda v: eval(v) if isinstance(v, str) else v)
+    rng = np.random.default_rng(2)
+    assert got == [int(rng.poisson(10.0)) for _ in range(3)]
+
+
+def test_iid_components_keep_the_base_type():
+    vals = draw("iid", {"of": "bernoulli", "size": 4, "p": 0.5})
+    assert len(vals) == 4
+    assert all(isinstance(v, int) and v in (0, 1) for v in vals)
+
+
+def test_iid_requires_a_base_family_name():
+    with pytest.raises(ValueError, match="of"):
+        draw("iid", {"of": 3, "size": 2})
+    with pytest.raises(families.FamilyError, match="of"):
+        families.mean("iid", {"size": 2}, ENVELOPE)
+
+
+def test_iid_moments_are_per_component():
+    """The list-valued convention (cf. normalized_uniform_weights): mean/min/
+    max describe one component, so symbolic bounds stay scalar."""
+    settings = {"of": "beta", "size": 6, "a": 2.0, "b": 2.0}
+    assert families.mean("iid", settings, ENVELOPE) == pytest.approx(0.5)
+    assert families.min_value("iid", settings, ENVELOPE) == 0.0
+    assert families.max_value("iid", settings, ENVELOPE) == 1.0
+
+
 # -- derived envelopes -------------------------------------------------------
 
 

@@ -78,9 +78,23 @@ def _get(settings: dict, family: str, key: str, resolve: Resolver, attr: str) ->
     return _num(resolve(settings[key], attr), family, key, attr)
 
 
+def _iid_parts(settings: dict) -> tuple[str, dict]:
+    """Split an ``iid`` recipe into (base family, its settings). Moments are
+    per-component — each of the ``size`` components is one draw of the base
+    family, so ``size`` drops out — matching the per-component convention the
+    other list-valued families set (``normalized_uniform_weights.mean`` is
+    ``1/size``). ``of`` is structural, never resolved."""
+    of = settings.get("of")
+    if not isinstance(of, str) or of == "iid":
+        raise FamilyError(f"iid setting 'of' must name a base family, got {of!r}")
+    return of, {k: v for k, v in settings.items() if k not in ("of", "size")}
+
+
 def mean(family: str, settings: dict, resolve: Resolver) -> float:
     """E[X] of one draw, composed through latent settings via ``resolve``."""
     g = lambda key: _get(settings, family, key, resolve, "mean")  # noqa: E731
+    if family == "iid":
+        return mean(*_iid_parts(settings), resolve)
     if family == "deterministic":
         return g("value")
     if family == "categorical":
@@ -135,6 +149,8 @@ def min_value(family: str, settings: dict, resolve: Resolver) -> float:
     latent settings. Mirrors :func:`max_value`; leadtime-style interfaces
     read it (e.g. an R-O-D validity check needs ``leadtime.min``)."""
     g = lambda key: _get(settings, family, key, resolve, "min")  # noqa: E731
+    if family == "iid":
+        return min_value(*_iid_parts(settings), resolve)
     if family == "deterministic":
         return g("value")
     if family == "categorical":
@@ -163,6 +179,8 @@ def max_value(family: str, settings: dict, resolve: Resolver) -> float:
     """Envelope upper bound of one draw (exact support max where bounded,
     mean + 4·sd for unbounded families), composed through latent settings."""
     g = lambda key: _get(settings, family, key, resolve, "max")  # noqa: E731
+    if family == "iid":
+        return max_value(*_iid_parts(settings), resolve)
     if family == "deterministic":
         return g("value")
     if family == "categorical":

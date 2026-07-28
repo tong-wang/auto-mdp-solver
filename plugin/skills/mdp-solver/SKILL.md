@@ -86,7 +86,9 @@ Latent state is allowed (gym hides it; may need frame-stack/RecurrentPPO).
 The IR interpreter supports per-period distribution families: `categorical`,
 `poisson`, `normal`, `lognormal`, `uniform`, `bernoulli` (plus the scenario-
 sampler recipe families `choice_without_replacement`,
-`normalized_uniform_weights`); scalar `[lo,hi]` decision bounds. If the problem doesn't fit, say exactly what doesn't fit
+`normalized_uniform_weights`, and `iid` — a vector of `size` independent
+draws of any base family, the per-episode latent-vector idiom); scalar
+`[lo,hi]` decision bounds. If the problem doesn't fit, say exactly what doesn't fit
 and stop — extending `mdp_ir/` is a separate task the user must approve.
 
 ## Phase A — formalize (human in the loop)

@@ -152,6 +152,109 @@ def test_mixture_episodes_equal_a_component_verbatim(ir_doc):
     assert all(n > 0 for n in hit.values()), f"one component never drawn: {hit}"
 
 
+# -- list-valued world latents (the bandit shape) -----------------------------
+
+
+def bandit_doc() -> dict:
+    """A 3-armed Bernoulli bandit: the arm means are one `iid` sampler draw
+    (a hidden latent VECTOR realized per episode), and the per-period pull is
+    a scalar bernoulli whose `p` indexes that vector by the decision."""
+    doc = minimal_ir()
+    doc["mdp"]["scenario"]["constants"] += [
+        {"name": "n_arms", "value": 3, "axis": "sizing"},
+        {"name": "arm_means", "value": [0.5, 0.5, 0.5]},
+    ]
+    doc["mdp"]["scenario"]["samplers"] = [{
+        "name": "world", "substream_id": 7, "hidden": True,
+        "draws": [{"name": "arm_means", "distribution": {
+            "family": "iid",
+            "settings": {"of": "uniform", "size": "n_arms",
+                         "low": 0.1, "high": 0.9},
+        }}],
+    }]
+    doc["mdp"]["decisions"] = [{
+        "name": "arm",
+        "type": {"value": "discrete", "suggested": "discrete"},
+        "dim": 1,
+        "bounds": {"value": [0.0, 2.0], "suggested": [0.0, 2.0]},
+    }]
+    doc["mdp"]["uncertainty_sources"] = [{
+        "name": "pull", "generator": "PullGenerator", "stream_id": 0,
+        "distribution": {"family": "bernoulli",
+                         "settings": {"p": "arm_means[arm]"}},
+        "stages": [{"name": "sample", "realization": "period"}],
+    }]
+    doc["mdp"]["state_variables"][1] = {
+        "name": "wins", "role": "core", "type": "float"}
+    doc["mdp"]["info_fields"] = [
+        {"name": "payout", "type": "int"},
+        {"name": "econ", "type": "decomposition", "components": ["payoff", "total"]},
+    ]
+    doc["mdp"]["dynamics"] = {
+        "event_sequence": ["A"],
+        "transitions": [
+            {"event": "A", "updates": ["payout ~ pull.sample", "wins += payout"]},
+            {"event": "END_OF_PERIOD", "updates": ["period += 1"]},
+        ],
+    }
+    doc["mdp"]["objective"] = {
+        "sense": "maximize",
+        "per_step_components": [{"name": "payoff", "expr": "payout"}],
+    }
+    doc["mdp"]["initial_state"] = {"wins": 0.0}
+    doc["gym"]["observation_modes"] = [{
+        "name": "vec", "default": True,
+        "features": [{"ref": "wins"}, {"ref": "info.payout"}],
+    }]
+    doc["gym"]["action_modes"] = [{
+        "name": "arm", "encodes": "arm", "type": "discrete",
+        "bounds": [0.0, 2.0], "default": True,
+    }]
+    doc["gym"]["reward_modes"] = [{"name": "payoff", "expr": "total", "default": True}]
+    doc["rl"]["requires_memory"] = {
+        "value": True, "suggested": True, "source": "human_confirmed",
+        "rationale": "hidden arm means must be inferred from pulls",
+    }
+    doc["rl"]["frame_stack"] = 4
+    return doc
+
+
+def test_latent_vector_realizes_per_episode_and_replays():
+    ir = build(bandit_doc())
+    interp = IrInterpreter(ir)
+    first = interp.run(0, decisions={"arm": 0})
+    means = interp.constants["arm_means"]
+    assert len(means) == 3 and all(0.1 <= m <= 0.9 for m in means)
+    assert means != [0.5, 0.5, 0.5]      # the placeholder was overwritten
+    interp.run(1, decisions={"arm": 0})
+    assert interp.constants["arm_means"] != means     # a fresh world per episode
+    assert interp.run(0, decisions={"arm": 0}).rows == first.rows
+
+
+def test_pull_thresholds_one_uniform_by_the_chosen_arm():
+    """Period draws key on the period, not the action, so at one seed the
+    bernoulli thresholds the SAME uniform by each arm's mean — a higher-mean
+    arm dominates pointwise (common random numbers across arms), which is the
+    decision-path-independence contract in bandit form."""
+    interp = IrInterpreter(build(bandit_doc()))
+    interp.run(0, decisions={"arm": 0})
+    means = interp.constants["arm_means"]
+    lo = means.index(min(means))
+    hi = means.index(max(means))
+    lo_pay = [r["payout"] for r in interp.run(0, decisions={"arm": lo}).rows]
+    hi_pay = [r["payout"] for r in interp.run(0, decisions={"arm": hi}).rows]
+    assert set(lo_pay + hi_pay) <= {0, 1}
+    assert all(a <= b for a, b in zip(lo_pay, hi_pay))
+
+
+def test_hidden_latent_vector_is_barred_from_observation():
+    doc = bandit_doc()
+    doc["gym"]["observation_modes"][0]["features"].append(
+        {"derived": "cheat", "expr": "arm_means[arm]"})
+    with pytest.raises(Exception, match="latent"):
+        build(doc)
+
+
 # -- declared invariants -----------------------------------------------------
 
 

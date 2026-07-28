@@ -142,7 +142,7 @@ change the fingerprint and needs no re-confirmation.
             "generator": "DiscreteDemand",
             // `family` is any explicitly-aliased family (categorical, poisson,
             // normal, lognormal, uniform, bernoulli, choice_without_replacement,
-            // normalized_uniform_weights) OR any numpy Generator scalar
+            // normalized_uniform_weights, iid) OR any numpy Generator scalar
             // distribution by name (gamma, beta, binomial, exponential, zipf, …),
             // whose `settings` are numpy's own kwargs. See interpreter._sample_family.
             "family": "categorical",
@@ -623,7 +623,12 @@ with bit-identical draws.
   episode on the meta branch BEFORE any period draw; draws execute in order
   from one rng seeded by the sampler's meta key. `hidden: true` flips the
   `requires_memory` derivation and bars the realized constants from
-  observation exprs. **In the catalog form these are never authored**: a draw
+  observation exprs. A draw may be **list-valued** (the constant holds a
+  list): `choice_without_replacement`, `normalized_uniform_weights`, or
+  `iid` — `{of: <base family>, size: N, ...base settings}`, `size`
+  independent base-family draws. `iid` is the latent-vector idiom (e.g. N
+  bandit arm means, `iid` of `uniform` or `beta`); a per-period source then
+  consumes one component by indexing, e.g. `"p": "arm_means[arm]"`. **In the catalog form these are never authored**: a draw
   spec inside a candidate's settings (§1) desugars at load time into one
   sampler per slot — named `{slot}_latent`, `substream_id` = the slot's
   `stream_id` (one stream identity per source of randomness, both branches),
