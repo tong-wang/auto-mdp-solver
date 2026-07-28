@@ -466,6 +466,38 @@ workflow cheap.** Multi-binding is opt-in; the structure is authored once.
   `source_id`, already checked for distinctness); substream distinctness now
   binds only composition-scoped drawers.
 
+- 2026-07-28 — **§10f residuals closed** (three of four; latent salt stays
+  deferred by user call — no use case, `--seed-salt` is the coarse opt-out).
+  (1) *Generic runtime*: `mdp_ir/runtime.py` — `sample_family` becomes the
+  single family→numpy dispatch (interpreter delegates; twin sides cannot
+  drift), `FamilyGenerator` implements the spec-§4.2 shape over any
+  registered family incl. nested latent recipes on the v2 template;
+  `families.min_value` + `min` read-API added. Domain cost: one
+  `Family{Source}` bridge class per slot; `inv_single`'s adapter dispatches
+  by candidate name with the bridge as fallback — an appended uniform-rate
+  candidate passes the full differential with zero domain edits.
+  (2) *Cross-family mixtures*: per-component resolutions at the root
+  (`MdpIR.mixture_resolutions`, loader-set like `selection`, outside
+  `mdp_fingerprint`); interpreter swaps sources/samplers per episode
+  (standalone equivalence bit-exact); mixture components survive instance
+  filtering (constants-only); bounds envelope per §5.3. `mix_demand`
+  (0.5 discrete ⊕ 0.5 poisson) ships in `inv_single` — catalog mixture +
+  `source_mix_demand` registry twin — and joins the `--all-instances`
+  covering set (7 differentials MATCH at 40 episodes). Conformance's
+  registry-name check now reads the *source*'s name (a mixture resolves to
+  a component scenario that rightly keeps the component's name).
+  (3) *`event_sequence` as a constant*: `Dynamics.event_sequence:
+  list|str` + `MdpBlock.event_sequence(instance)` (the `horizon_T`
+  precedent); the interpreter sorts transitions by the resolved order per
+  episode, so `test_rdo/rod/ord`-style variants are instances (R-D-O
+  differential MATCHes the domain bit-exact). Literal sequences now require
+  transitions declared in order (loud error, not silent reorder — the one
+  behavior-affecting edge for downstream IRs). The event-order constant
+  name freezes into `structural_fingerprint` (§10d control position).
+  All three examples' structural fingerprints unmoved; suite: 82
+  interpreter checks, 3×conformance green, 7 differentials MATCH.
+  Plugin 0.4.0 → 0.5.0.
+
 ## 10. The design that shipped: **catalog ⊕ selection**
 
 The binding artifact solved duplication by *moving* the enumeration; the
@@ -550,14 +582,33 @@ A referenced-but-underivable attribute is a load error naming the fix
   meta branch at their own `source_id`), `_scenarios.py` reduced to
   composition (`{Domain}Scenario` ⊕ the one generic `{Domain}ScenarioSource`
   ⊕ mixtures), per-family sampler subclasses and `FamilyDemandBounds`
-  deleted, spec §5.2 rewritten. Remaining for a *new family with zero domain
-  Python*: a harness-side generic generator runtime (domain generators
-  delegating sampling/moments to `mdp_ir.families`) — codegen still authors
-  a thin `Latent{...}` class per family for now.
-- **Cross-family mixtures:** expressible in the catalog, but the interpreter
-  must re-select sources per episode; v1 validates mixture components are
-  selection-agnostic. Unlock when a domain needs it.
-- **`dynamics.event_sequence` as a constant** (the `horizon.T` precedent) to
-  make event-order variants instances; with it, per-instance validity checks
-  (R before D; R-O-D ⇒ leadtime.min ≥ 1 stays domain-side).
-- **Per-instance latent salt** as the CRN opt-out, if a use case appears.
+  deleted, spec §5.2 rewritten.
+- **Generic generator runtime — DONE 2026-07-28** (decision log): new
+  `mdp_ir/runtime.py` — the one family→numpy sampling dispatch (interpreter
+  delegates to it) + `FamilyGenerator`, a spec-§4.2 generator over any
+  registered family with nested latent recipes, both seed branches, and
+  moments derived via `mdp_ir.families` (`min_value` added; `min` joined
+  the read-API). Domains bridge it once per slot
+  (`FamilyDemand(FamilyGenerator, DemandGenerator)`); adapters fall back to
+  `from_parts`/`from_ir` for candidates no hand-written class implements —
+  **a new family needs zero new domain Python** (proven in
+  `interpreter_test`: an appended uniform-rate candidate passes the full
+  differential with zero domain edits).
+- **Cross-family mixtures — DONE 2026-07-28** (decision log): the loader
+  resolves each selection-divergent component separately
+  (`MdpIR.mixture_resolutions`, root-level like `selection`); the
+  interpreter re-selects sources/samplers per episode; bounds under a
+  mixture load resolve against the §5.3 envelope (weighted mean of means,
+  max of maxes). `inv_single` ships `mix_demand` (discrete ⊕ poisson) as
+  the reference; `--all-instances` and `python -m mdp_ir` sweep mixtures.
+- **`dynamics.event_sequence` as a constant — DONE 2026-07-28** (decision
+  log): literal list or constant name (the `horizon.T` precedent); the
+  interpreter executes transitions in the resolved order, so event-order
+  variants are instances. Literal form: transitions must be declared in
+  sequence order (validated). Per-instance validity (R before D; R-O-D ⇒
+  leadtime.min ≥ 1) stays domain-side as planned.
+- **Per-instance latent salt** as the CRN opt-out — **stays deferred**
+  (2026-07-28, user call): no use case has appeared, and a differing
+  `--seed-salt` per run already provides a coarse decorrelation. Revisit
+  only if an analysis needs latents decorrelated while intrinsic draws stay
+  paired.

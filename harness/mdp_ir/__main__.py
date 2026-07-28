@@ -30,9 +30,13 @@ def main(argv: list[str]) -> int:
             raw = json.loads(Path(path).read_text())
             catalog = layering.is_catalog(raw)
             if catalog:
-                inst_names = sorted((raw["mdp"].get("scenario") or {}).get("instances") or {})
+                scenario_raw = (raw["mdp"].get("scenario") or {})
+                inst_names = sorted(scenario_raw.get("instances") or {})
+                inst_names += sorted(
+                    m["name"] for m in scenario_raw.get("mixtures") or []
+                )
                 ir = load_ir(path)                      # base selection
-                for inst in inst_names:                 # every instance resolves
+                for inst in inst_names:                 # every instance + mixture resolves
                     load_ir(path, instance=inst)
             else:
                 inst_names = []

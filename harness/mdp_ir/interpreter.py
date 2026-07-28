@@ -73,24 +73,11 @@ _FUNCS: dict[str, object] = {
     "range": range,
 }
 
-# numpy Generator scalar-distribution methods callable by name: a family not
-# handled explicitly in `_sample_family` is dispatched to `rng.<family>(...)`
-# with its `settings` passed straight through as numpy's own keyword arguments
-# (e.g. gamma -> {shape, scale}; binomial -> {n, p}; beta -> {a, b}). Curated
-# once from numpy's univariate distributions, so a new distribution needs no
-# code here — just name it in the IR. Array-valued draws (dirichlet,
-# multinomial, multivariate_*) are intentionally excluded: this samples one
-# scalar. Families with friendlier aliases (poisson.rate, normal.mean/std) are
-# handled explicitly above and take precedence over this generic path.
-_NUMPY_SCALAR_DISTS: frozenset[str] = frozenset({
-    "beta", "binomial", "chisquare", "exponential", "f", "gamma",
-    "geometric", "gumbel", "hypergeometric", "laplace", "logistic",
-    "lognormal", "logseries", "negative_binomial", "noncentral_chisquare",
-    "noncentral_f", "normal", "pareto", "poisson", "power", "rayleigh",
-    "standard_cauchy", "standard_exponential", "standard_gamma",
-    "standard_normal", "standard_t", "triangular", "uniform", "vonmises",
-    "wald", "weibull", "zipf",
-})
+# the family→numpy sampling dispatch lives in mdp_ir.runtime (shared with
+# domain-side FamilyGenerator delegation, so the twin's two sides cannot
+# drift); the allowlist is re-exported here for its historical import path
+from mdp_ir.runtime import NUMPY_SCALAR_DISTS as _NUMPY_SCALAR_DISTS  # noqa: F401
+from mdp_ir.runtime import sample_family as _runtime_sample_family
 
 
 def _domain_builtin(domain: str, module: str, func: str):
@@ -267,6 +254,9 @@ class IrInterpreter:
         self._base_constants = dict(self.constants)
         self.T = ir.mdp.horizon_T(base_instance)
         self._sources = {s.name: s for s in ir.mdp.uncertainty_sources}
+        # per-episode view: a cross-family mixture component swaps in its own
+        # resolved sources/samplers (ir.mixture_resolutions) at episode setup
+        self._episode_sources = self._sources
         self._decomposition = next(
             (f for f in ir.mdp.info_fields if f.type == "decomposition"), None
         )
@@ -316,26 +306,43 @@ class IrInterpreter:
     # -- episode setup: world-layer meta draws (spec §5.2, §5.3) --------------
 
     def _episode_setup(self, episode_seed: int) -> None:
-        """Resolve this episode's constants and horizon: draw the mixture
-        component (if the target is a mixture), then run every applicable
-        sampler's draws in declaration order from its meta-keyed rng."""
+        """Resolve this episode's constants, sources and horizon: draw the
+        mixture component (if the target is a mixture), swap in that
+        component's resolution when it re-selects slot candidates
+        (cross-family mixtures, IR_LAYERING_PLAN §10f), then run every
+        applicable sampler's draws in declaration order from its meta-keyed
+        rng."""
         scenario = self.ir.mdp.scenario
+        self._episode_sources = self._sources
         if self._mixture is None and not scenario.samplers:
             return
         consts = dict(self._base_constants)
         inst = self.instance
+        samplers = scenario.samplers
         if self._mixture is not None:
             m = self._mixture
             weights = np.asarray([w for w, _ in m.components], dtype=float)
+            # the component pick is composition-level: never latent-salted
             rng = np.random.default_rng(np.random.SeedSequence(
                 _meta_seed_key(self._scheme, m.substream_id,
                                episode_seed, self.seed_salt)))
             k = int(rng.choice(len(m.components), p=weights / weights.sum()))
-            inst = m.components[k][1] or None
+            comp = m.components[k][1]
+            inst = comp or None
+            res = ((self.ir.mixture_resolutions or {}).get(m.name) or {}).get(comp)
+            if res is not None:
+                # component re-selects slot candidates: its resolved sources,
+                # samplers, and synthesized latent placeholders replace the
+                # load-time selection's for this episode (standalone
+                # equivalence: the episode runs exactly as the component
+                # would standalone)
+                self._episode_sources = {s.name: s for s in res.sources}
+                samplers = res.samplers
+                consts.update(res.constants)
             if inst:
                 consts.update(scenario.instances[inst])
         ns: dict = {"__builtins__": {}, **self._funcs, **consts}
-        for smp in scenario.samplers:
+        for smp in samplers:
             if smp.instances and (inst or "") not in smp.instances:
                 continue
             # one rng per sampler; draws execute in order (multi-draw recipes
@@ -352,6 +359,22 @@ class IrInterpreter:
         t = self.ir.mdp.horizon.T
         self.T = int(consts[t]) if isinstance(t, str) else int(t)
 
+    def _transition_order(self) -> list:
+        """Transitions in execution order: the resolved ``event_sequence``
+        (a literal list, or this episode's value of the constant it names —
+        event-order variants are instances, §10f) fixes event positions;
+        transitions sort stably by position, END_OF_PERIOD last. For literal
+        sequences the schema requires declaration order to already agree, so
+        this is the identity there."""
+        seq = self.ir.mdp.dynamics.event_sequence
+        if isinstance(seq, str):
+            seq = self.constants[seq]
+        pos = {e: i for i, e in enumerate(seq)}
+        return sorted(
+            self.ir.mdp.dynamics.transitions,
+            key=lambda t: pos.get(t.event, len(pos)),
+        )
+
     def _draw(self, source: UncertaintySource, stage: UncertaintyStage,
               ns: dict, period: int, episode_seed: int) -> object:
         rng = self._rng(source, stage, period, episode_seed, ns)
@@ -361,50 +384,13 @@ class IrInterpreter:
     def _sample_family(self, rng: np.random.Generator, fam: str,
                        settings: dict, ns: dict) -> object:
         """Sample one value of a distribution family from ``rng``. Shared by
-        per-period/event draws and scenario-sampler draws (spec §5.2)."""
-        if fam == "categorical":
-            vals = self._setting(settings["values"], ns)
-            probs = self._setting(settings["probabilities"], ns)
-            return int(rng.choice(np.asarray(vals), p=np.asarray(probs, dtype=float)))
-        if fam == "poisson":
-            return int(rng.poisson(float(self._setting(settings["rate"], ns))))
-        if fam == "normal":
-            return float(rng.normal(float(self._setting(settings["mean"], ns)),
-                                    float(self._setting(settings["std"], ns))))
-        if fam == "lognormal":
-            # settings are the underlying normal's (mean, sigma)
-            return float(rng.lognormal(float(self._setting(settings["mean"], ns)),
-                                       float(self._setting(settings["sigma"], ns))))
-        if fam == "uniform":
-            return float(rng.uniform(float(self._setting(settings["low"], ns)),
-                                     float(self._setting(settings["high"], ns))))
-        if fam == "bernoulli":
-            # single-parameter family; accept any single setting key (p, p_high, …)
-            (p,) = [self._setting(v, ns) for v in settings.values()]
-            return int(rng.random() < float(p))
-        # sampler-recipe families (scenario samplers, spec §5.2): list-valued
-        if fam == "choice_without_replacement":
-            lo = int(self._setting(settings["low"], ns))
-            hi = int(self._setting(settings["high"], ns))
-            size = int(self._setting(settings["size"], ns))
-            return [int(v) for v in
-                    rng.choice(np.arange(lo, hi + 1), size=size, replace=False)]
-        if fam == "normalized_uniform_weights":
-            size = int(self._setting(settings["size"], ns))
-            lo = float(self._setting(settings.get("low", 1.0), ns))
-            hi = float(self._setting(settings.get("high", 10.0), ns))
-            raw = rng.uniform(lo, hi, size=size)
-            return [float(v) for v in raw / raw.sum()]
-        # any other numpy Generator scalar distribution, by name: settings map
-        # straight to numpy's own parameters. New distributions need no code
-        # here (see _NUMPY_SCALAR_DISTS). `.item()` surfaces numpy's native
-        # int/float, so discrete families coerce to int and continuous to float.
-        if fam in _NUMPY_SCALAR_DISTS:
-            draw = getattr(rng, fam)(
-                **{k: self._setting(v, ns) for k, v in settings.items()}
-            )
-            return draw.item() if hasattr(draw, "item") else draw
-        raise NotImplementedError(f"distribution family {fam!r}")
+        per-period/event draws and scenario-sampler draws (spec §5.2); the
+        dispatch itself lives in ``mdp_ir.runtime.sample_family`` (one
+        family→numpy mapping for both twin sides), with settings resolved as
+        exprs over this interpreter's namespace."""
+        return _runtime_sample_family(
+            rng, fam, settings, resolve=lambda v: self._setting(v, ns)
+        )
 
     # -- episode --------------------------------------------------------------
 
@@ -478,6 +464,7 @@ class IrInterpreter:
         ns.update(self._initial_state(ns))
         traj = Trajectory(episode_seed=episode_seed, instance=self.instance)
         limit = self.T if max_periods is None else min(self.T, max_periods)
+        transitions = self._transition_order()
 
         for step in range(limit):
             period = int(ns[time_var])
@@ -487,14 +474,14 @@ class IrInterpreter:
             acts = policy(ns)
             ns.update(acts)
 
-            for t in ir.mdp.dynamics.transitions:
+            for t in transitions:
                 if t.guard and not self._eval(t.guard, ns):
                     continue
                 for u in t.updates:
                     m = _DRAW.match(u)
                     if m:
                         target, src_name, stage_name = m.groups()
-                        src = self._sources[src_name]
+                        src = self._episode_sources[src_name]
                         stage = next(s for s in src.stages if s.name == stage_name)
                         ns[target] = self._draw(src, stage, ns, period, episode_seed)
                     else:

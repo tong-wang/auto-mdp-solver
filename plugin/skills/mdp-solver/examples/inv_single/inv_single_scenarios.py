@@ -350,6 +350,18 @@ source_poisson = InvSingleScenarioSource(InvSingleScenario(
     **_shared_costs,
 ))
 
+# cross-family mixture (spec §5.3): nature picks the demand regime per
+# episode — the components differ in demand FAMILY (discrete vs poisson),
+# which the generator-owned-latent design makes free: each component's
+# generators realize on their own slot streams, the mixture only picks.
+# Twin of the IR's `mix_demand` mixture (substream_id = N_SOURCE_IDS).
+source_mix_demand = InvSingleMixtureSampler(
+    scenario_name="mix_demand",
+    desc="50/50 demand-regime pick per episode: discrete_stochastic vs poisson",
+    components=[(0.5, source_discrete_stochastic), (0.5, source_poisson)],
+    substream_id=N_SOURCE_IDS,
+)
+
 
 # ---------------------------------------------------------------------------
 # Test scenarios
@@ -407,6 +419,7 @@ SCENARIOS: dict[str, ScenarioSource] = {
         source_discrete_stochastic,
         source_discrete_lost_sales,
         source_poisson,
+        source_mix_demand,
     ]
 }
 
@@ -427,9 +440,15 @@ _check_registry()
 if __name__ == "__main__":
     for name, s in SCENARIOS.items():
         kind = "source  " if callable(s) else "scenario"
+        # cost attrs are per-component on a mixture — print them only where
+        # the entry exposes them (scenario / source; mixture shows components)
+        costs = (
+            f"h={s.holding_cost}  b={s.shortage_cost}  K={s.order_cost_fixed}"
+            if hasattr(s, "holding_cost")
+            else f"components={len(s.components)}"
+        )
         print(
             f"{name:20s} [{kind}]  horizon={s.horizon}  "
             f"lt=[{s.leadtime.min()}..{s.leadtime.max()}]  "
-            f"h={s.holding_cost}  b={s.shortage_cost}  "
-            f"K={s.order_cost_fixed}  backlog={s.allow_backlog}"
+            f"{costs}  backlog={s.allow_backlog}"
         )

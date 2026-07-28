@@ -221,7 +221,7 @@ def main(argv: list[str]) -> int:
     )
     ap.add_argument(
         "--all-instances", action="store_true",
-        help="run base + every named instance (the covering-set sweep)",
+        help="run base + every named instance + every mixture (the covering-set sweep)",
     )
     ap.add_argument("--seed-salt", type=int, default=1)  # >= 1 for v2 domains (spec §6.3)
     ap.add_argument(
@@ -245,8 +245,9 @@ def main(argv: list[str]) -> int:
         import json
 
         raw = json.loads(Path(args.ir_file).read_text())
-        instances = [None] + sorted(
-            ((raw.get("mdp") or {}).get("scenario") or {}).get("instances") or {}
+        scenario = (raw.get("mdp") or {}).get("scenario") or {}
+        instances = [None] + sorted(scenario.get("instances") or {}) + sorted(
+            m["name"] for m in scenario.get("mixtures") or []
         )
     else:
         instances = [args.instance]

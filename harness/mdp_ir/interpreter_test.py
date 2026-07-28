@@ -302,6 +302,9 @@ def main() -> None:
         "name": "mix", "substream_id": 3,
         "components": [[0.5, ""], [0.5, "lost_sales"]],
     }]
+    # replacing the mixture list orphans the loader's resolutions for the
+    # shipped mix_demand — drop them (loader-set data, mixture-list-coupled)
+    mx["mixture_resolutions"] = None
     mx_ir = MdpIR.model_validate(mx)
     pure = {
         comp: {e: IrInterpreter(mx_ir, instance=comp or None)
@@ -442,11 +445,17 @@ def main() -> None:
     sel = load_ir(inv_path, select={"demand": "poisson"})
     check(sel.mdp_fingerprint() == poi.mdp_fingerprint(),
           "--select demand=poisson resolves identically to instance 'poisson'")
-    check(sorted(inv.mdp.scenario.instances) == ["lost_sales"]
+    # "poisson" is selection-inconsistent under the base load but survives as
+    # a mixture component (constants-only after stripping) — the interpreter
+    # needs its overrides when mix_demand draws it; "poisson_lost_sales" is
+    # no component, so it drops
+    check(sorted(inv.mdp.scenario.instances) == ["lost_sales", "poisson"]
+          and inv.mdp.scenario.instances["poisson"] == {}
           and sorted(poi.mdp.scenario.instances)
           == ["lost_sales", "poisson", "poisson_lost_sales"]
           and poi.mdp.scenario.instances["poisson"] == {},
-          "instances inconsistent with the selection drop; slot keys strip from survivors")
+          "instances inconsistent with the selection drop unless mixture "
+          "components; slot keys strip from survivors")
 
     # every declared composition passes the differential (the covering set)
     for inst in ("poisson", "poisson_lost_sales"):
@@ -492,6 +501,133 @@ def main() -> None:
           and load_ir(ROOT / "examples" / "dynamic_pricing" / "vanryzin_pricing_schema.json")
           .selection == {"demand": "poisson"},
           "state-dependent settings are legal while nothing references the slot's read-API")
+
+    # =====================================================================
+    # §10f increments (2026-07-28): generic family runtime, cross-family
+    # mixtures, event_sequence as a constant
+    # =====================================================================
+    from mdp_ir import runtime
+
+    import inv_single_uncertainty as unc  # dir on sys.path via adapter load
+
+    class _Ctx:
+        """Minimal SamplingContext for direct generator draws."""
+
+        def __init__(self, period: int, episode_seed: int, seed_salt: int):
+            self.period = period
+            self.episode_seed = episode_seed
+            self.seed_salt = seed_salt
+
+    # -- generic runtime ≡ hand-written latent generators, bit-for-bit -------
+    gd = runtime.FamilyGenerator.from_ir(inv, "demand")
+    hd = unc.LatentDiscreteDemand(
+        support_size=3, support_low=8, support_high=12, source_id=0)
+    same = True
+    for e in (0, 3, 11):
+        rg, rh = gd.realize(e, 1), hd.realize(e, 1)
+        same &= rg.settings["values"] == rh.vals.tolist()
+        same &= all(abs(a - b) < 1e-12 for a, b in
+                    zip(rg.settings["probabilities"], rh.probs.tolist()))
+        same &= all(rg.sample(_Ctx(p, e, 1)) == rh.sample(_Ctx(p, e, 1))
+                    for p in range(5))
+    check(same, "FamilyGenerator(from_ir) ≡ LatentDiscreteDemand: latents + samples bit-exact")
+    check(gd.min() == 8.0 and gd.max() == 12.0 and gd.mean() == 10.0,
+          "derived min/mean/max envelope over the discrete latent (support bounds)")
+
+    gp = runtime.FamilyGenerator.from_ir(poi, "demand", instance="poisson")
+    hp = unc.LatentPoissonDemand(alpha=9.0, beta=0.3, source_id=0)
+    same = True
+    for e in (0, 4):
+        rg, rh = gp.realize(e, 1), hp.realize(e, 1)
+        same &= rg.settings["rate"] == rh.rate
+        same &= all(rg.sample(_Ctx(p, e, 1)) == rh.sample(_Ctx(p, e, 1))
+                    for p in range(4))
+    check(same, "FamilyGenerator(from_ir) ≡ LatentPoissonDemand: rate + samples bit-exact")
+    check(abs(gp.mean() - hp.mean()) < 1e-9 and abs(gp.max() - hp.max()) < 1e-9,
+          "FamilyGenerator envelopes reproduce the hand-written mean/max formulas")
+
+    # -- appended candidate: full differential with ZERO domain edits --------
+    # poisson_u (uniform-rate latent) exists in no hand-written class; the
+    # adapter falls back to the FamilyDemand bridge (the zero-code path)
+    ir_u = MdpIR.model_validate(
+        layering.resolve_catalog(tweaked, select={"demand": "poisson_u"}))
+    rep = run_differential(ir_u, make_inv_single_adapter(ir_u, seed_salt=1),
+                           episode_seeds=[0, 1, 2], seed_salt=1)
+    check(rep.ok,
+          "appended candidate (uniform-rate poisson): differential MATCH, zero domain code")
+
+    # -- shipped cross-family mixture: resolution + envelope + differential --
+    mix_ir = load_ir(inv_path, instance="mix_demand")
+    mres = (mix_ir.mixture_resolutions or {}).get("mix_demand") or {}
+    check(set(mres) == {"poisson"}
+          and mres["poisson"].selection["demand"] == "poisson"
+          and any(s.distribution.family == "poisson" for s in mres["poisson"].sources),
+          "mixture load: divergent component carries its own resolution")
+    check(mix_ir.mdp.decision_bounds("order") == (0.0, 400.0),
+          "mixture bounds envelope: 20 * weighted demand mean (0.5*10 + 0.5*30)")
+    rep = run_differential(
+        mix_ir, make_inv_single_adapter(mix_ir, instance="mix_demand", seed_salt=1),
+        episode_seeds=list(range(8)), instance="mix_demand", seed_salt=1)
+    check(rep.ok, "differential[mix_demand]: cross-family mixture matches, bit-exact")
+
+    # standalone equivalence across families: every mixture episode equals
+    # the drawn component's standalone run verbatim, and both regimes occur
+    pure_by_comp = {
+        "": {e: IrInterpreter(inv).run(e, decisions={"order": 0.0}).rows
+             for e in range(12)},
+        "poisson": {e: IrInterpreter(poi, instance="poisson")
+                    .run(e, decisions={"order": 0.0}).rows for e in range(12)},
+    }
+    hit = {"": 0, "poisson": 0}
+    mix_interp = IrInterpreter(mix_ir, instance="mix_demand")
+    for e in range(12):
+        rows = mix_interp.run(e, decisions={"order": 0.0}).rows
+        matched = [c for c in hit if rows == pure_by_comp[c][e]]
+        assert len(matched) == 1, f"mixture episode {e} matches {matched}"
+        hit[matched[0]] += 1
+    check(all(v > 0 for v in hit.values()),
+          f"cross-family mixture: every episode ≡ one component verbatim; both hit {hit}")
+
+    # -- event_sequence as a constant (event-order variants are instances) ---
+    ev = inv.model_dump(mode="json")
+    ev["mdp"]["scenario"]["constants"].append(
+        {"name": "evt_order", "value": ["O", "R", "D"], "axis": "variant",
+         "desc": "event order — a structural parameter (§10d)"})
+    ev["mdp"]["dynamics"]["event_sequence"] = "evt_order"
+    ev["mdp"]["scenario"]["instances"]["rdo"] = {"evt_order": ["R", "D", "O"]}
+    ev_ir = MdpIR.model_validate(ev)
+    check(ev_ir.mdp.event_sequence() == ["O", "R", "D"]
+          and ev_ir.mdp.event_sequence("rdo") == ["R", "D", "O"],
+          "event_sequence names a constant; instance overrides the order")
+    check(simulate(ev_ir, episode_seed=7, decisions={"order": 40.0}).rows
+          == simulate(inv, episode_seed=7, decisions={"order": 40.0}).rows,
+          "constant event order == literal order: base trajectories identical")
+    rep = run_differential(ev_ir, make_inv_single_adapter(ev_ir, instance="rdo", seed_salt=1),
+                           episode_seeds=[0, 1, 2], instance="rdo", seed_salt=1)
+    check(rep.ok, "differential[rdo]: R-D-O event-order instance matches the domain, bit-exact")
+
+    bad_seq = _copy.deepcopy(ev)
+    bad_seq["mdp"]["dynamics"]["event_sequence"] = "no_such_const"
+    try:
+        MdpIR.model_validate(bad_seq)
+        check(False, "event_sequence naming an unknown constant must fail")
+    except ValueError:
+        check(True, "event_sequence naming an unknown constant fails validation")
+    bad_seq = _copy.deepcopy(ev)
+    bad_seq["mdp"]["scenario"]["instances"]["rdo"] = {"evt_order": ["R", "D"]}
+    try:
+        MdpIR.model_validate(bad_seq)
+        check(False, "an instance order missing a transition event must fail")
+    except ValueError:
+        check(True, "an instance order missing a transition event fails validation")
+    bad_seq = inv.model_dump(mode="json")
+    ts = bad_seq["mdp"]["dynamics"]["transitions"]
+    ts[0], ts[1] = ts[1], ts[0]
+    try:
+        MdpIR.model_validate(bad_seq)
+        check(False, "literal sequence with out-of-order transitions must fail")
+    except ValueError:
+        check(True, "literal event_sequence: out-of-order transition declaration fails")
 
     print(f"\nall {_checks} checks passed")
 

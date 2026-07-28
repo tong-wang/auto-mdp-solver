@@ -299,7 +299,12 @@ def check_scenarios_valid(h: DomainHandle) -> CheckResult:
         except Exception as e:
             problems.append(f"{key}: construct failed ({type(e).__name__}: {e})")
             continue
-        name = getattr(sc, "scenario_name", None)
+        # the key names the SOURCE: check the registry value's own name when
+        # it carries one — a mixture resolves to a *component* scenario that
+        # rightly keeps the component's name (standalone equivalence)
+        name = getattr(value, "scenario_name", None)
+        if name is None:
+            name = getattr(sc, "scenario_name", None)
         if name is not None and name != key:
             problems.append(f"{key}: scenario_name={name!r} != registry key")
     if problems:

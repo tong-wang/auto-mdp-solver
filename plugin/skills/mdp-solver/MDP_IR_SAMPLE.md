@@ -204,6 +204,14 @@ change the fingerprint and needs no re-confirmation.
     ],
 
     "dynamics": {
+      // a literal list, or the NAME of a scenario constant whose value is
+      // the list (the horizon.T precedent): event order is then a scenario
+      // dimension — event-order variants (R-D-O vs O-R-D) become instances
+      // overriding that constant, and the interpreter executes transitions
+      // in the resolved order. A constant here is in control position
+      // (§10d): a structural parameter — each used setting needs
+      // differential coverage. Literal form: transitions must be declared
+      // in sequence order (validated), so the IR reads as it runs.
       "event_sequence": ["O", "R", "D"],    // order → receive → demand
       "observation_point": "pre-order",
       // every identifier in updates/guards must resolve (state ∪ info ∪ decisions
@@ -597,6 +605,14 @@ with bit-identical draws.
   components naming instances (`""` = base), drawn once per episode on the
   mixture's own substream; a mixture name is usable anywhere an instance
   name is (`--instance`, gates). Weights are a modeling commitment.
+  **Components may select different candidates** (cross-family mixtures,
+  §10f): a component whose selection differs from the loaded one gets its
+  own resolution stashed in the root `mixture_resolutions` (loader-set,
+  like `selection`), and the interpreter swaps in that component's
+  sources/samplers for the episodes that draw it — an episode through the
+  mixture is bit-identical to the component run standalone (standalone
+  equivalence). Symbolic bounds under a mixture load resolve against the
+  §5.3 component envelope: weighted mean of means, max of maxes.
 - **`grids`** (root, design layer — spec §5.5/§5.6): generality targets for
   generalist training, `{ name, base_instance, axes: {constant: [values]} }`;
   `ScenarioGrid.cells()` yields `(cell_id, overrides)` row-major with
@@ -620,9 +636,9 @@ legacy resolved form and still loads unchanged.
   enumerated anywhere, and `poisson × lost_sales` is the one-line instance
   `{"demand": "poisson", "allow_backlog": false}`.
 - **Derived read-API**: symbolic bounds (`"20 * demand.mean"`) resolve
-  against `mean`/`max`/`is_discrete` computed by `mdp_ir.families` from the
-  selected candidate's family + settings, composing through the latent
-  hierarchy (a Gamma-latent Poisson gets `max = envelope(poisson,
+  against `mean`/`max`/`min`/`is_discrete` computed by `mdp_ir.families`
+  from the selected candidate's family + settings, composing through the
+  latent hierarchy (a Gamma-latent Poisson gets `max = envelope(poisson,
   envelope(gamma))`). Derivation is lazy per attribute — a slot nothing
   references may use state-dependent settings (dynamic_pricing's
   price-dependent rate). Escape hatch: an explicit `read_api` block on the
@@ -635,9 +651,19 @@ legacy resolved form and still loads unchanged.
   composition (`MdpIR.selection` records which).
 - **Verification**: every *composition you run* is differentially verified
   on demand; `python -m mdp_ir.differential {schema} --all-instances` sweeps
-  base + every named instance (the covering set — each candidate exercised
-  at least once). `python -m mdp_ir {schema}` validates base + every
-  instance's resolution.
+  base + every named instance + every mixture (the covering set — each
+  candidate exercised at least once). `python -m mdp_ir {schema}` validates
+  base + every instance's and mixture's resolution.
 - **Python mirror** (the layer rule): candidates ↔ `_uncertainty.py`
   generator classes; instances ↔ `SCENARIOS` registry entries; mixtures ↔
   the mixture combinator; slot `stream_id` ↔ generator `source_id`.
+- **Zero-code candidates** (§10f): `mdp_ir.runtime.FamilyGenerator` is a
+  spec-§4.2 generator over any registered family, latent recipes included,
+  keying the same v2 seed template; a domain bridges it once per slot
+  (`class FamilyDemand(FamilyGenerator, DemandGenerator)`) and its adapter
+  falls back to `FamilyGenerator.from_parts/from_ir` for candidates no
+  hand-written class implements. Net effect: **appending a candidate with a
+  new family needs zero new domain Python** — it resolves, trains, and
+  differentially verifies through the bridge (`inv_single` is the
+  reference). Hand-written generator classes remain where they add domain
+  value: exact `phi()` for DP benchmarks, state-dependent settings.

@@ -219,6 +219,24 @@ class Normal{Source}({Source}Generator):
 - **`max()`** returns a practical upper bound (e.g. mean + 4σ); used by the gym wrapper to set action/observation space bounds without isinstance checks. Leadtime generators additionally expose **`min()`**.
 - **`is_discrete`** (class attribute) records whether samples are integer-valued, so consumers can pick integer vs. float spaces without isinstance checks.
 - The generator instance is stored as a field on `{Domain}Scenario` (e.g. `scenario.demand`, `scenario.rt_leadtimes[i]`).
+- **Family-generic bridge (one per slot, catalog model §10f).** The harness
+  ships `mdp_ir.runtime.FamilyGenerator` — this same generator shape over
+  *any* registered distribution family (latent recipes included, same v2
+  seed template, moments derived from `mdp_ir.families`). Declare one bridge
+  per slot after the hand-written classes:
+
+  ```python
+  from mdp_ir.runtime import FamilyGenerator
+
+  class Family{Source}(FamilyGenerator, {Source}Generator):
+      """Any registered family as {source} — the zero-code path."""
+  ```
+
+  A catalog candidate no hand-written class implements is then constructed
+  as `Family{Source}.from_ir(ir, "{slot}")` (or `from_parts`) — **a new
+  family needs zero new domain code**. Keep hand-written classes where they
+  add domain value: an exact `phi()` (DP benchmarks), state-dependent
+  settings, domain-named constructor arguments.
 
 ### 4.3 Intrinsic vs. meta-level randomness — the boundary
 
@@ -526,6 +544,15 @@ class {Domain}MixtureSampler:
   a mixture is one. Nesting adds structure, not expressive power (weights
   multiply through to a flat mixture); its value is reuse — embed a named
   world object as one branch without hand-flattening weight products.
+- **Components may differ in distribution family** (cross-family mixtures,
+  IR_LAYERING_PLAN §10f): the generator-owned-latent design makes this free
+  on the Python side — each component's generators realize on their own slot
+  streams; the mixture only picks. The IR mirror: mixture components may
+  carry different candidate *selections*; the loader resolves each divergent
+  component separately (`MdpIR.mixture_resolutions`) and the interpreter
+  swaps in its sources per episode, preserving standalone equivalence
+  bit-for-bit (`inv_single`'s `mix_demand` — discrete vs poisson demand —
+  is the shipped reference).
 
 ### 5.4 Instances and registry
 

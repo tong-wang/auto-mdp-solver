@@ -494,18 +494,39 @@ class TransitionStep(_Base):
 
 
 class Dynamics(_Base):
-    event_sequence: list[str]
+    # event_sequence: a literal list of event names, or the *name of a
+    # scenario constant* whose value is such a list — the event order is then
+    # a scenario dimension like horizon.T, overridable per instance
+    # (event-order variants are instances, IR_LAYERING_PLAN §10f). Resolve
+    # with `MdpBlock.event_sequence(instance)`; the interpreter executes
+    # transitions in the resolved order. A constant referenced here is in
+    # control position (§10d): a structural parameter whose used settings
+    # each need differential coverage.
+    event_sequence: list[str] | str
     observation_point: str = ""
     transitions: list[TransitionStep]
 
     @model_validator(mode="after")
     def _check_events(self) -> "Dynamics":
+        if isinstance(self.event_sequence, str):
+            return self  # resolved + validated at the MdpBlock level
         known = set(self.event_sequence) | {"END_OF_PERIOD"}
+        pos = {e: i for i, e in enumerate(self.event_sequence)}
+        last = -1
         for t in self.transitions:
             if t.event not in known:
                 raise ValueError(
                     f"transition event {t.event!r} not in event_sequence {self.event_sequence}"
                 )
+            # execution follows the event order; require declaration order to
+            # agree so a literal-sequence IR reads exactly as it runs
+            p = pos.get(t.event, len(pos))
+            if p < last:
+                raise ValueError(
+                    f"transitions must be declared in event_sequence order "
+                    f"{self.event_sequence}; {t.event!r} appears after a later event"
+                )
+            last = p
         return self
 
 
@@ -652,6 +673,18 @@ class MdpBlock(_Base):
             raise TypeError(f"horizon.T constant {t!r} resolved to non-int {v!r}")
         return v
 
+    def event_sequence(self, instance: str | None = None) -> list[str]:
+        """Effective event order: `dynamics.event_sequence` is a literal list
+        or the name of a scenario constant, overridable per instance like
+        `horizon.T`. The interpreter executes transitions in this order."""
+        seq = self.dynamics.event_sequence
+        if not isinstance(seq, str):
+            return list(seq)
+        consts = {c.name: c.value for c in self.scenario.constants}
+        if instance is not None:
+            consts.update(self.scenario.instances[instance])
+        return list(consts[seq])
+
     # -- layer-local invariants ------------------------------------------
 
     @model_validator(mode="after")
@@ -693,6 +726,51 @@ class MdpBlock(_Base):
                 raise ValueError(
                     f"horizon.T constant {t!r} must be an int >= 1 everywhere; "
                     f"{where} has {v!r}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _check_event_sequence(self) -> "MdpBlock":
+        """`dynamics.event_sequence` naming a constant (event-order variants
+        as instances, §10d structural parameter): the constant must exist and
+        resolve — in the base scenario and every instance — to a list of
+        unique event-name strings (END_OF_PERIOD is implicit, never listed)
+        covering every non-END transition event."""
+        seq = self.dynamics.event_sequence
+        if not isinstance(seq, str):
+            return self
+        consts = {c.name: c.value for c in self.scenario.constants}
+        if seq not in consts:
+            raise ValueError(
+                f"dynamics.event_sequence {seq!r} must be a literal list or "
+                "name a scenario constant"
+            )
+        needed = {t.event for t in self.dynamics.transitions} - {"END_OF_PERIOD"}
+        values = {"base": consts[seq]}
+        for inst, overrides in self.scenario.instances.items():
+            if seq in overrides:
+                values[f"instance {inst!r}"] = overrides[seq]
+        for where, v in values.items():
+            if (not isinstance(v, list) or not v
+                    or any(not isinstance(e, str) for e in v)):
+                raise ValueError(
+                    f"event_sequence constant {seq!r} must be a non-empty "
+                    f"list of event names everywhere; {where} has {v!r}"
+                )
+            if len(v) != len(set(v)):
+                raise ValueError(
+                    f"event_sequence constant {seq!r} repeats an event in {where}: {v}"
+                )
+            if "END_OF_PERIOD" in v:
+                raise ValueError(
+                    f"event_sequence constant {seq!r} must not list "
+                    f"END_OF_PERIOD (implicit, always last); {where} has {v}"
+                )
+            missing = needed - set(v)
+            if missing:
+                raise ValueError(
+                    f"event_sequence constant {seq!r} in {where} is missing "
+                    f"transition event(s) {sorted(missing)}: {v}"
                 )
         return self
 
@@ -789,7 +867,10 @@ class MdpBlock(_Base):
     @model_validator(mode="after")
     def _check_expressions(self) -> "MdpBlock":
         known = self.value_names | self.builtin_names
-        events = set(self.dynamics.event_sequence) | {"END_OF_PERIOD"}
+        # base event order (resolved if event_sequence names a constant);
+        # instances only permute it (_check_event_sequence), so the base set
+        # is the canonical event namespace for triggers
+        events = set(self.event_sequence()) | {"END_OF_PERIOD"}
 
         # dynamics: locals defined by `x ~ ...` / `x = ...` extend the namespace
         local: set[str] = set()
@@ -1056,6 +1137,23 @@ class ScenarioGrid(_Base):
         return out
 
 
+class ComponentResolution(_Base):
+    """A mixture component's own catalog resolution (cross-family mixtures,
+    IR_LAYERING_PLAN §10f): when a component's selection differs from the
+    selection the IR was loaded under, the loader resolves the component
+    separately and stashes its sources, samplers, and synthesized-constant
+    delta here; the interpreter swaps them in for episodes that draw this
+    component, so the episode runs exactly as the component would standalone
+    (standalone equivalence). Set by ``load_ir``, never hand-authored."""
+
+    selection: dict[str, str]
+    sources: list[UncertaintySource]
+    samplers: list[ScenarioSampler] = Field(default_factory=list)
+    # constants the component's resolution synthesizes beyond the loaded
+    # IR's (its own candidates' latent placeholders), name -> value
+    constants: dict[str, float | int | bool | list] = Field(default_factory=dict)
+
+
 class MdpIR(_Base):
     ir_version: str
     # seed-key grammar (spec §6.3): "v1" frozen legacy (default — every
@@ -1072,6 +1170,11 @@ class MdpIR(_Base):
     # selection, IR_LAYERING_PLAN §10); None for a legacy resolved single
     # file. Set by ``load_ir``, never hand-authored.
     selection: dict[str, str] | None = None
+    # cross-family mixtures: {mixture name: {component: resolution}} for
+    # components whose selection differs from `selection` (loader-set,
+    # like `selection`; sits outside the mdp block, so mdp_fingerprint is
+    # unaffected by the mechanism)
+    mixture_resolutions: dict[str, dict[str, ComponentResolution]] | None = None
 
     @model_validator(mode="after")
     def _seed_scheme_rules(self) -> "MdpIR":
@@ -1105,6 +1208,36 @@ class MdpIR(_Base):
             dupes = {k: v for k, v in ids.items() if len(v) > 1}
             if dupes:
                 raise ValueError(f"v2 scheme: source ids shared: {dupes}")
+        return self
+
+    @model_validator(mode="after")
+    def _mixture_resolutions_consistent(self) -> "MdpIR":
+        """Resolution keys must name declared mixtures and their components;
+        a resolution's sources must cover exactly the loaded IR's source
+        names (same slots, different candidates)."""
+        if not self.mixture_resolutions:
+            return self
+        mixtures = {m.name: m for m in self.mdp.scenario.mixtures}
+        source_names = {s.name for s in self.mdp.uncertainty_sources}
+        for mname, comps in self.mixture_resolutions.items():
+            if mname not in mixtures:
+                raise ValueError(
+                    f"mixture_resolutions names unknown mixture {mname!r}"
+                )
+            declared = {c for _w, c in mixtures[mname].components}
+            bad = set(comps) - declared
+            if bad:
+                raise ValueError(
+                    f"mixture_resolutions[{mname!r}] names non-component(s) "
+                    f"{sorted(bad)}; components: {sorted(declared)}"
+                )
+            for comp, res in comps.items():
+                got = {s.name for s in res.sources}
+                if got != source_names:
+                    raise ValueError(
+                        f"mixture_resolutions[{mname!r}][{comp!r}] sources "
+                        f"{sorted(got)} must cover the IR's slots {sorted(source_names)}"
+                    )
         return self
 
     @model_validator(mode="after")
@@ -1236,7 +1369,12 @@ class MdpIR(_Base):
                 st.realization is Realization.episode for st in src.stages
             )
             for src in self.mdp.uncertainty_sources
-        ) or any(s.hidden for s in self.mdp.scenario.samplers)
+        ) or any(s.hidden for s in self.mdp.scenario.samplers) or any(
+            s.hidden
+            for comps in (self.mixture_resolutions or {}).values()
+            for res in comps.values()
+            for s in res.samplers
+        )
         if self.rl.requires_memory.suggested != derived:
             raise ValueError(
                 f"rl.requires_memory.suggested={self.rl.requires_memory.suggested} "

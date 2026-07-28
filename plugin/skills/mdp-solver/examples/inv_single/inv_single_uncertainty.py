@@ -12,6 +12,15 @@ seed_salt)`` on the meta branch and returns the realized concrete generator;
 a concrete generator's ``realize`` returns itself. The scenario layer only
 *composes* generators — it owns no sampling.
 
+The per-slot ``Family{Source}`` bridges at the bottom expose the harness's
+generic family runtime (``mdp_ir.runtime.FamilyGenerator``) under this
+domain's generator interfaces: any registered distribution family — with its
+latent recipe — becomes a demand/leadtime generator with **zero new domain
+code**, keying the same v2 seed template as the hand-written classes. The
+hand-written classes stay for the shipped candidates (exact ``phi()``,
+domain-named settings); a freshly appended catalog candidate needs only the
+bridge.
+
 Seed scheme v2 (spec §6.3): one tree
 seed_salt -> episode_seed -> branch -> ..., encoded leaf-first (root last).
 Intrinsic draws (branch 1) key on
@@ -40,6 +49,8 @@ import math
 from typing import Protocol
 
 import numpy as np
+
+from mdp_ir.runtime import FamilyGenerator
 
 SEED_SCHEME = "v2"
 
@@ -436,3 +447,25 @@ class DiscreteLeadtime(LeadtimeGenerator):
         return (
             f"DiscreteLeadtime(values={self.values}, prob={self.probabilities})"
         )
+
+
+# ---------------------------------------------------------------------------
+# Family-generic bridges (harness runtime; IR_LAYERING_PLAN §10f)
+#
+# One bridge per uncertainty slot: mdp_ir.runtime.FamilyGenerator supplies
+# sample()/realize()/mean()/max()/min() over ANY registered distribution
+# family (latent recipes included, same v2 seed template), and the domain
+# base class supplies the interface identity the scenario asserts. A new
+# catalog candidate — a family none of the classes above implement — is
+# constructed as e.g. FamilyDemand.from_ir(ir, "demand") with no new code.
+# ---------------------------------------------------------------------------
+
+
+class FamilyDemand(FamilyGenerator, DemandGenerator):
+    """Any registered distribution family as demand — the zero-code path.
+    ``phi()`` stays NotImplemented (hand-written generators provide exact
+    PMFs; DP benchmarks require one of those)."""
+
+
+class FamilyLeadtime(FamilyGenerator, LeadtimeGenerator):
+    """Any registered distribution family as lead time — the zero-code path."""

@@ -63,7 +63,11 @@ from mdp_ir import families
 
 # read-API a slot exposes to symbolic bounds; derived via mdp_ir.families,
 # overridable per candidate via its `read_api` block
-READ_API = ("max", "mean", "is_discrete")
+READ_API = ("max", "mean", "min", "is_discrete")
+
+# moment/envelope derivations per read-API attribute
+_FAMILY_FNS = {"mean": families.mean, "max": families.max_value,
+               "min": families.min_value}
 
 _CANDIDATE_KEYS = {"generator", "family", "settings", "is_discrete", "read_api", "desc"}
 _DRAW_KEYS = {"draw", "example", "hidden"}
@@ -125,10 +129,7 @@ def _make_resolver(const_values: dict, where: str):
     def resolve(raw: Any, attr: str) -> Any:
         if _is_draw(raw):
             d = raw["draw"]
-            fam, st = d.get("family"), d.get("settings", {})
-            if attr == "mean":
-                return families.mean(fam, st, resolve)
-            return families.max_value(fam, st, resolve)
+            return _FAMILY_FNS[attr](d.get("family"), d.get("settings", {}), resolve)
         if isinstance(raw, str):
             try:
                 return _eval_expr(raw, dict(const_values), where)
@@ -163,10 +164,8 @@ def _slot_namespace(slot: dict, cand: dict, const_values: dict, where: str):
                     if isinstance(raw, str) else raw
                 )
             try:
-                if item == "mean":
-                    return families.mean(family, settings, resolve)
-                if item == "max":
-                    return families.max_value(family, settings, resolve)
+                if item in _FAMILY_FNS:
+                    return _FAMILY_FNS[item](family, settings, resolve)
                 if "is_discrete" in cand:
                     return cand["is_discrete"]
                 derived = families.is_discrete(family)
@@ -180,6 +179,43 @@ def _slot_namespace(slot: dict, cand: dict, const_values: dict, where: str):
                 ) from exc
 
     return _Slot()
+
+
+def _mixture_namespace(slot: dict, comp_infos: list, where: str):
+    """Envelope read-API for one slot under a mixture (spec §5.3): weighted
+    mean of means, max of maxes, min of mins over the components' selected
+    candidates (each with its own constant overrides); ``is_discrete`` must
+    agree across components. Lazy like ``_slot_namespace``: an unreferenced
+    attribute never derives."""
+    slot_name = slot["name"]
+
+    class _Mix:
+        def __getattr__(self, item: str) -> Any:
+            if item not in READ_API:
+                raise LayeringError(
+                    f"{where}: slot {slot_name!r} has no read-API attribute "
+                    f"{item!r}; available: {list(READ_API)}"
+                )
+            weights, vals = [], []
+            for w, comp_sel, cvals in comp_infos:
+                cand = slot["candidates"][comp_sel[slot_name]]
+                sub = _slot_namespace(slot, cand, cvals, where)
+                weights.append(float(w))
+                vals.append(getattr(sub, item))
+            if item == "mean":
+                return sum(w * v for w, v in zip(weights, vals)) / sum(weights)
+            if item == "max":
+                return max(vals)
+            if item == "min":
+                return min(vals)
+            if len(set(vals)) > 1:      # is_discrete
+                raise LayeringError(
+                    f"{where}: mixture components disagree on "
+                    f"{slot_name}.is_discrete: {vals}"
+                )
+            return vals[0]
+
+    return _Mix()
 
 
 def _resolve_bounds(
@@ -317,9 +353,18 @@ def _build_selection(
 
 
 def resolve_catalog(
-    data: dict, instance: str | None = None, select: dict[str, str] | None = None
+    data: dict, instance: str | None = None, select: dict[str, str] | None = None,
+    _expand_mixtures: bool = True,
 ) -> dict:
-    """Resolve a catalog document under a selection into a full IR dict."""
+    """Resolve a catalog document under a selection into a full IR dict.
+
+    ``instance`` may also name a mixture: the document resolves under the
+    default selection (⊕ ``select``), components whose own selection differs
+    get a per-component resolution stashed in ``mixture_resolutions`` (the
+    interpreter swaps it in per episode — cross-family mixtures, §10f), and
+    symbolic bounds resolve against the §5.3 component envelope (weighted
+    mean of means, max of maxes). ``_expand_mixtures`` is internal recursion
+    control: component resolutions never expand their own mixtures."""
     merged = copy.deepcopy(data)
     mdp = merged.get("mdp") or {}
     where = (merged.get("domain") or {}).get("name") or "catalog"
@@ -410,42 +455,92 @@ def resolve_catalog(
     scenario["samplers"] = samplers
 
     # --- instances: drop those inconsistent with the selection, strip keys --
+    # a mixture component is kept regardless: its divergent selection gets a
+    # per-component resolution below, and the interpreter still needs its
+    # constant overrides when the mixture draws it
+    mixtures = scenario.get("mixtures") or []
+    mixture_comps = {
+        comp for m in mixtures for _w, comp in m.get("components", []) if comp
+    }
     kept: dict[str, dict] = {}
     for iname, overrides in instances_raw.items():
         sel_keys = {k: v for k, v in overrides.items() if k in slot_names}
-        if any(selection[k] != v for k, v in sel_keys.items()):
+        if any(selection[k] != v for k, v in sel_keys.items()) \
+                and iname not in mixture_comps:
             continue
         kept[iname] = {k: v for k, v in overrides.items() if k not in slot_names}
     scenario["instances"] = kept
 
-    # --- mixtures: composition-scoped drawers ------------------------------
+    # --- mixtures: composition-scoped drawers; component resolutions -------
     slot_ids = {s["stream_id"] for s in slots}
-    for m in scenario.get("mixtures", []) or []:
+    for m in mixtures:
         if m.get("substream_id", 0) in slot_ids:
             raise LayeringError(
                 f"{where}: mixture {m.get('name')!r} substream_id "
                 f"{m.get('substream_id', 0)} collides with a slot stream_id; "
                 "mixtures allocate above the slot range"
             )
-        for _w, comp in m.get("components", []):
-            if comp and comp in instances_raw and any(
-                k in slot_names for k in instances_raw[comp]
-            ):
-                raise LayeringError(
-                    f"{where}: mixture {m.get('name')!r} component {comp!r} "
-                    "carries a candidate selection — cross-family mixtures need "
-                    "per-episode source re-selection and are not supported yet"
+    if _expand_mixtures:
+        # cross-family mixtures (§10f): a component whose own selection
+        # (defaults ⊕ its slot-valued keys — its standalone load, no --select)
+        # differs from the active one is resolved separately; the interpreter
+        # swaps in its sources/samplers per episode (standalone equivalence)
+        top_const_names = {c["name"] for c in consts}
+        resolutions: dict[str, dict[str, dict]] = {}
+        for m in mixtures:
+            comp_res: dict[str, dict] = {}
+            for _w, comp in m.get("components", []):
+                comp_sel = _build_selection(
+                    slots, instances_raw, comp or None, None, where
                 )
+                if comp_sel == selection:
+                    continue
+                resolved = resolve_catalog(
+                    data, instance=comp or None, _expand_mixtures=False
+                )
+                comp_res[comp] = {
+                    "selection": resolved["selection"],
+                    "sources": resolved["mdp"]["uncertainty_sources"],
+                    "samplers": resolved["mdp"]["scenario"]["samplers"],
+                    "constants": {
+                        c["name"]: c["value"]
+                        for c in resolved["mdp"]["scenario"]["constants"]
+                        if c["name"] not in top_const_names
+                    },
+                }
+            if comp_res:
+                resolutions[m["name"]] = comp_res
+        if resolutions:
+            merged["mixture_resolutions"] = resolutions
 
     # --- symbolic bounds ----------------------------------------------------
     const_values = {c["name"]: c["value"] for c in consts}
     ns: dict[str, Any] = dict(const_values)
     by_name = {s["name"]: s for s in slots}
-    for slot in slots:
-        ns[slot["name"]] = _slot_namespace(
-            slot, by_name[slot["name"]]["candidates"][selection[slot["name"]]],
-            const_values, where,
-        )
+    active_mixture = next(
+        (m for m in mixtures if m.get("name") == instance), None
+    )
+    if active_mixture is not None:
+        # loading a mixture: bounds resolve against the §5.3 component
+        # envelope — weighted mean of means, max of maxes, min of mins
+        comp_infos = []
+        for w, comp in active_mixture.get("components", []):
+            comp_sel = _build_selection(
+                slots, instances_raw, comp or None, None, where
+            )
+            over = {
+                k: v for k, v in (instances_raw.get(comp) or {}).items()
+                if k not in slot_names
+            }
+            comp_infos.append((w, comp_sel, {**const_values, **over}))
+        for slot in slots:
+            ns[slot["name"]] = _mixture_namespace(slot, comp_infos, where)
+    else:
+        for slot in slots:
+            ns[slot["name"]] = _slot_namespace(
+                slot, by_name[slot["name"]]["candidates"][selection[slot["name"]]],
+                const_values, where,
+            )
     # constants any instance overrides must stay symbolic (per-instance bounds);
     # union over the RAW pool so a dropped instance cannot collapse a bound
     instance_consts = {
@@ -495,6 +590,10 @@ def structural_fingerprint(data: dict) -> str:
     t_ = (core.get("horizon") or {}).get("T")
     if isinstance(t_, str):
         exprs.append(t_)
+    es = (core.get("dynamics") or {}).get("event_sequence")
+    if isinstance(es, str):
+        # event order in control position (§10d): the constant NAME freezes
+        exprs.append(es)
     for d in core.get("decisions", []):
         b = d.get("bounds") or {}
         entries = b.get("value", []) + b.get("suggested", []) if isinstance(b, dict) else list(b)

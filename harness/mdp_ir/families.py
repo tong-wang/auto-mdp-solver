@@ -127,6 +127,34 @@ def mean(family: str, settings: dict, resolve: Resolver) -> float:
     raise FamilyError(f"no mean derivation for family {family!r}")
 
 
+def min_value(family: str, settings: dict, resolve: Resolver) -> float:
+    """Envelope lower bound of one draw (exact support min where bounded
+    below, mean − 4·sd for unbounded-below families), composed through
+    latent settings. Mirrors :func:`max_value`; leadtime-style interfaces
+    read it (e.g. an R-O-D validity check needs ``leadtime.min``)."""
+    g = lambda key: _get(settings, family, key, resolve, "min")  # noqa: E731
+    if family == "categorical":
+        vals = resolve(settings.get("values"), "min")
+        if isinstance(vals, list):
+            return float(min(float(v) for v in vals))
+        return _num(vals, family, "values", "min")
+    if family in ("poisson", "binomial", "bernoulli", "hypergeometric",
+                  "negative_binomial", "beta", "gamma", "exponential",
+                  "lognormal", "chisquare", "f", "rayleigh", "power", "wald",
+                  "weibull", "standard_exponential", "standard_gamma",
+                  "normalized_uniform_weights"):
+        return 0.0  # support bounded below at 0
+    if family in ("geometric", "logseries", "zipf"):
+        return 1.0  # support starts at 1
+    if family == "normal":
+        return g("mean") - _SIGMAS * g("std")
+    if family == "uniform":
+        return g("low")
+    if family == "choice_without_replacement":
+        return g("low")
+    raise FamilyError(f"no min derivation for family {family!r}")
+
+
 def max_value(family: str, settings: dict, resolve: Resolver) -> float:
     """Envelope upper bound of one draw (exact support max where bounded,
     mean + 4·sd for unbounded families), composed through latent settings."""

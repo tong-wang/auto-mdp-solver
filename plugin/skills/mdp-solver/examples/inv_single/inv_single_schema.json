@@ -283,7 +283,24 @@
           "demand": "poisson",
           "allow_backlog": false
         }
-      }
+      },
+      "mixtures": [
+        {
+          "name": "mix_demand",
+          "substream_id": 2,
+          "components": [
+            [
+              0.5,
+              ""
+            ],
+            [
+              0.5,
+              "poisson"
+            ]
+          ],
+          "desc": "nature's 50/50 pick of the demand regime per episode: the base discrete candidate vs the poisson candidate — a cross-family mixture; the component's own candidate selection applies for its episodes (standalone equivalence)"
+        }
+      ]
     },
     "initial_state": {
       "inventory": 0,

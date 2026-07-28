@@ -30,7 +30,8 @@ subtrees, plus root-level material for public browsers:
 | `harness/` | **the PyPI package** `auto-mdp-solver` (its own `pyproject.toml`) |
 | `harness/mdp_ir/` | IR schema (pydantic), interpreter, differential runner |
 | `harness/mdp_ir/layering.py` | catalog ⊕ selection resolution + symbolic bounds (one `{domain}_schema.json`; each uncertainty slot declares a `candidates` pool + `default`, instances select candidates and override constants; `load_ir(path, instance=, select=)` resolves, so nothing downstream sees the catalog) |
-| `harness/mdp_ir/families.py` | distribution-family registry: derived `mean`/`max`/`is_discrete` (with latent composition) that symbolic bounds resolve against — never hand-authored per domain |
+| `harness/mdp_ir/families.py` | distribution-family registry: derived `mean`/`max`/`min`/`is_discrete` (with latent composition) that symbolic bounds resolve against — never hand-authored per domain |
+| `harness/mdp_ir/runtime.py` | generic generator runtime: the one family→numpy sampling dispatch (shared with the interpreter) + `FamilyGenerator`, a spec-§4.2 generator over any registered family; domains bridge it once per slot, so a new catalog candidate needs zero new domain Python |
 | `harness/mdp_conformance/` | spec-conformance harness (`python -m mdp_conformance <domain-dir>`) |
 | `harness/mdp_gates/` | eval-gate comparison (`python -m mdp_gates`) |
 | `harness/mdp_tuning/` | Optuna tuning driver (`python -m mdp_tuning <domain-dir> ...`) |
