@@ -125,6 +125,37 @@ def test_iid_moments_are_per_component():
     assert families.max_value("iid", settings, ENVELOPE) == 1.0
 
 
+# -- parameters are read BY KEY, so a latent may sit beside them -------------
+
+
+def test_a_family_reads_its_parameter_beside_a_latent_setting():
+    """A candidate that owns a world latent carries it as an extra settings key
+    (a draw spec desugars to ``{slot}_{setting}``), which is how an ``iid``
+    latent is consumed: ``p: "payout_arm_p[int(arm)]"`` sits next to the
+    resolved ``arm_p`` list. A family that inferred its parameter from
+    "whichever setting is the only one" broke on exactly that shape."""
+    latent = {"arm_p": [0.5] * 10}          # the desugared iid latent key
+    assert draw("bernoulli", {"p": 1.0, **latent}, seed=3) == 1
+    assert draw("bernoulli", {"p": 0.0, **latent}, seed=3) == 0
+    # the value used is `p`, not the other key that happens to be present
+    assert draw("bernoulli", {"p": 1.0}, seed=3) == \
+        draw("bernoulli", {"p": 1.0, **latent}, seed=3)
+
+
+def test_bernoulli_without_its_parameter_key_raises():
+    """Strict: the parameter is named `p`. A missing one is a broken IR, not a
+    silent fall back to whichever setting is present."""
+    with pytest.raises(KeyError):
+        draw("bernoulli", {"prob": 0.5})
+
+
+def test_bernoulli_mean_ignores_a_latent_setting():
+    """``families.mean`` carried the same inference, so symbolic bounds over a
+    latent-bearing bernoulli candidate broke the same way."""
+    assert families.mean(
+        "bernoulli", {"p": 0.25, "arm_p": [0.5] * 10}, ENVELOPE) == 0.25
+
+
 # -- derived envelopes -------------------------------------------------------
 
 

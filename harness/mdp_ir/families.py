@@ -127,8 +127,7 @@ def mean(family: str, settings: dict, resolve: Resolver) -> float:
         a, b = g("a"), g("b")
         return a / (a + b)
     if family == "bernoulli":
-        (p,) = [resolve(v, "mean") for v in settings.values()]
-        return _num(p, family, "p", "mean")
+        return g("p")
     if family == "binomial":
         return g("n") * g("p")
     if family == "geometric":

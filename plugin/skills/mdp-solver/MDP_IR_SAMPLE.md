@@ -495,7 +495,7 @@ directly observed. Only these deltas from §1:
   /* ...demand, leadtime... */
   {
     "name": "regime", "generator": "RegimeSampler", "stream_id": 3, "latent": true,
-    "distribution": { "family": "bernoulli", "settings": { "p_high": 0.5 } },
+    "distribution": { "family": "bernoulli", "settings": { "p": 0.5 } },
     "stages": [ { "name": "draw", "realization": "episode" } ]
     // seed_key() = [stream:3, episode_seed, seed_salt] — period-free, derived
   }

@@ -136,9 +136,12 @@ def sample_family(
         return float(rng.uniform(float(get(settings["low"])),
                                  float(get(settings["high"]))))
     if family == "bernoulli":
-        # single-parameter family; accept any single setting key (p, p_high, …)
-        (p,) = [get(v) for v in settings.values()]
-        return int(rng.random() < float(p))
+        # keyed on `p` like every other aliased family. It cannot infer the
+        # parameter from "whichever setting is the only one": a candidate that
+        # owns a world latent carries it as an extra settings key (a draw spec
+        # desugars to `{slot}_{setting}`), which is how a per-component `iid`
+        # latent is consumed — `p: "payout_arm_p[int(arm)]"`.
+        return int(rng.random() < float(get(settings["p"])))
     if family == "deterministic":
         # degenerate (Dirac): always the constant `value`, no rng draw —
         # mirrors a fixed generator (e.g. DeterministicLeadtime.sample returns
