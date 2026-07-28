@@ -80,24 +80,43 @@ they exist for the public GitHub repo.
 
 ## Regression suite
 
-From the repo root, with the harness installed (`pip install -e ./harness`);
-`E` shortens the examples path (see `$E/MANIFEST.md` for the authoritative list):
+Install with the test extra (`pip install -e "./harness[dev]"`), then from the
+repo root:
+
+```bash
+pytest                    # everything: harness/tests + every domain's own tests
+```
+
+`pytest.ini` at the root sets the paths, so a bare run covers all three kinds
+of test. They are deliberately separate:
+
+| what | where | why there |
+|---|---|---|
+| engine tests | `harness/tests/` | synthetic IRs only (`conftest.py` builds them) — the harness's suite must not depend on `plugin/`, since the two published artifacts are disjoint |
+| per-domain tests | `{domain}_test.py` **inside** the domain folder | a claim about *that* world is only checkable once the domain exists, and the folder must stay portable — so the helpers come from `mdp_ir.testing`, never a repo conftest |
+| case tests | `cases/*/{case}_test.py` | same contract as an example |
+
+Two things follow from the layout. Domain folders must never contain
+same-named unprefixed modules (pytest's `prepend` import mode would silently
+share the first one) — the spec's `{domain}_*` naming rule is what keeps that
+true. And each `{domain}_test.py` stays runnable on its own
+(`python inv_single_test.py`), which is what the portable-domain contract
+requires.
+
+The CLI gates below are the same checks in tool form — what the skill runs
+between stages, and what `$E/MANIFEST.md` lists per example:
 
 ```bash
 E=plugin/skills/mdp-solver/examples
-python -m mdp_ir.interpreter_test
-python -m mdp_gates.compare_test
-python -m mdp_tuning.resolve_metric_test
-python -m mdp_conformance $E/inv_single $E/dynamic_pricing $E/fnv
+python -m mdp_conformance $E/inv_single $E/dynamic_pricing $E/fnv   # generated-code shape
+python -m mdp_ir.laws     $E/inv_single $E/dynamic_pricing $E/fnv   # IR execution semantics
 python -m mdp_ir $E/inv_single/inv_single_schema.json \
                  $E/dynamic_pricing/dynamic_pricing_schema.json \
-                 $E/fnv/fnv_schema.json
+                 $E/fnv/fnv_schema.json                             # IR validation
 python -m mdp_ir.differential $E/inv_single/inv_single_schema.json --all-instances --episodes 40
-python -m mdp_ir.differential $E/dynamic_pricing/dynamic_pricing_schema.json --episodes 40
-python -m mdp_ir.differential $E/fnv/fnv_schema.json --all-instances --episodes 40
 ```
 
-Run these after any change to `harness/` or an example.
+Run `pytest` after any change to `harness/` or an example.
 Domains in downstream research repos also depend on these packages —
 breaking changes to the IR schema, seed-key construction, or adapter
 discovery need a coordinated check there before release.

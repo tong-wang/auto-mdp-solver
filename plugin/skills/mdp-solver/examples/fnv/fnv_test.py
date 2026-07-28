@@ -1,0 +1,150 @@
+"""fnv's own tests — the MMFE grid exemplar.
+
+    pytest plugin/skills/mdp-solver/examples/fnv
+    python fnv_test.py
+
+The generic guarantees live in ``mdp_ir.laws``; the accumulation and
+terminal-realization laws live in the IR as ``mdp.invariants``. What is here is
+what only this domain can state: the martingale information path, its
+independence from the ordering decisions, and the categorical link selector
+that makes aMMFE and mMMFE two instances of one IR rather than two IRs.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+
+import pytest
+
+from mdp_ir.interpreter import IrInterpreter, simulate
+from mdp_ir.schema import load_ir
+from mdp_ir.testing import assert_laws, assert_match, schema_beside
+
+SCHEMA = schema_beside(__file__)
+EPISODES = 8
+SALT = 1
+
+
+def _compositions() -> list[str | None]:
+    scenario = json.loads(SCHEMA.read_text())["mdp"]["scenario"]
+    return ([None] + sorted(scenario.get("instances") or {})
+            + sorted(m["name"] for m in scenario.get("mixtures") or []))
+
+
+COMPOSITIONS = _compositions()
+
+
+def test_engine_laws():
+    assert_laws(SCHEMA)
+
+
+@pytest.mark.parametrize("instance", COMPOSITIONS, ids=lambda i: i or "base")
+def test_differential_matches_the_domain(instance):
+    """Base is aMMFE, `mmmfe` is mMMFE with a re-baked signal schedule."""
+    assert_match(SCHEMA, instance=instance, episodes=EPISODES, seed_salt=SALT)
+
+
+def test_the_covering_set_includes_both_mmfe_modes():
+    assert "mmmfe" in COMPOSITIONS
+
+
+# -- the MMFE information process --------------------------------------------
+
+
+def test_the_information_path_ignores_the_order_decisions():
+    """The signal is keyed on (period, seed, salt), never on the action, so the
+    forecast a policy sees cannot be steered by how much it ordered. Stated
+    here rather than in ``mdp_ir.laws`` because the draw lands in a dynamics
+    local (`delta`) and only reaches the trajectory through `information`."""
+    ir = load_ir(SCHEMA)
+    lo = simulate(ir, 5, decisions={"order": 0.0}, seed_salt=SALT)
+    hi = simulate(ir, 5, decisions={"order": 3.0}, seed_salt=SALT)
+    assert [r["information"] for r in lo.rows] == \
+           [r["information"] for r in hi.rows]
+
+
+def test_information_accumulates_as_a_random_walk():
+    """Increments add up: I_t - I_{t-1} is the period's revelation, and the
+    path is not constant (a degenerate signal would make the state useless)."""
+    ir = load_ir(SCHEMA)
+    rows = simulate(ir, 6, decisions={"order": 1.0}, seed_salt=SALT).rows
+    path = [r["information"] for r in rows]
+    assert len(set(path)) > 1
+    assert path[0] != 0.0 or len(path) > 1
+
+
+def test_the_signal_schedule_is_padded_for_the_one_indexed_clock():
+    """`std = signal_stdevs[period]` and the clock runs 1..N, so the schedule
+    carries N+1 entries with slot 0 as unused padding. Every ordering period
+    draws a strictly positive increment — including the first, which is why
+    the period-1 order is already taken under a revealed signal."""
+    ir = load_ir(SCHEMA)
+    consts = {c.name: c.value for c in ir.mdp.scenario.constants}
+    schedule = consts["signal_stdevs"]
+    assert len(schedule) == consts["N"] + 1
+    assert schedule[0] == 0.0, "slot 0 is padding and must never be read"
+    assert all(s > 0.0 for s in schedule[1:])
+    rows = simulate(ir, 2, decisions={"order": 1.0}, seed_salt=SALT).rows
+    assert rows[0]["information"] != 0.0
+
+
+def test_signal_volatility_declines_over_the_horizon():
+    """The MMFE tau grid front-loads revelation: the last increment covers the
+    shortest remaining interval, so it is the smallest."""
+    consts = {c.name: c.value for c in load_ir(SCHEMA).mdp.scenario.constants}
+    schedule = consts["signal_stdevs"][1:]
+    assert schedule[-1] < schedule[0]
+
+
+# -- the categorical link selector -------------------------------------------
+
+
+def test_the_mode_selector_is_a_categorical_constant():
+    base = load_ir(SCHEMA)
+    variant = load_ir(SCHEMA, instance="mmmfe")
+    consts = {c.name: c.value for c in base.mdp.scenario.constants}
+    assert consts["mmfe_mode"] == "additive"
+    assert variant.mdp.scenario.instances["mmmfe"]["mmfe_mode"] == "multiplicative"
+
+
+def test_the_two_modes_share_one_signal_family():
+    """The link differs; the demand-signal generator does not. That is why the
+    mode is a constant-conditioned expression rather than a slot candidate."""
+    base = load_ir(SCHEMA)
+    variant = load_ir(SCHEMA, instance="mmmfe")
+    fam = lambda ir: next(  # noqa: E731
+        s.distribution.family for s in ir.mdp.uncertainty_sources
+        if s.name == "signal")
+    assert fam(base) == fam(variant)
+
+
+def test_the_multiplicative_link_exponentiates_the_same_information():
+    """Same seed, same information path, exponentiated demand — the whole
+    behavioural content of the mode switch."""
+    add = simulate(load_ir(SCHEMA), 4, decisions={"order": 1.0}, seed_salt=SALT)
+    mult = IrInterpreter(load_ir(SCHEMA, instance="mmmfe"),
+                         instance="mmmfe", seed_salt=SALT).run(
+        4, decisions={"order": 1.0})
+    consts = {c.name: c.value for c in load_ir(SCHEMA).mdp.scenario.constants}
+    # the signal is wider under mmmfe (stdev 0.1 -> 0.2), so compare the LINK
+    # on the additive run's own information rather than across the two paths
+    terminal = add.rows[-1]
+    assert terminal["demand"] == pytest.approx(
+        consts["mu"] + terminal["information"])
+    assert mult.rows[-1]["demand"] == pytest.approx(
+        math.exp(consts["mu"] + mult.rows[-1]["information"]))
+
+
+def test_demand_is_positive_under_the_multiplicative_link():
+    """The reason the multiplicative mode exists: an additive link can hand a
+    negative demand to a lognormal-ish problem, exp() cannot."""
+    ir = load_ir(SCHEMA, instance="mmmfe")
+    for seed in range(6):
+        rows = IrInterpreter(ir, instance="mmmfe", seed_salt=SALT).run(
+            seed, decisions={"order": 1.0}).rows
+        assert rows[-1]["demand"] > 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__]))

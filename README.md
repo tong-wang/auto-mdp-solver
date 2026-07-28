@@ -89,18 +89,26 @@ pip install -e ./harness
 
 ## Verify (regression suite)
 
-From the repo root, with the harness installed (`pip install -e ./harness`):
+From the repo root, with the test extra installed
+(`pip install -e "./harness[dev]"`):
+
+```bash
+pytest        # harness engine tests + every example domain's own {domain}_test.py
+```
+
+The same checks are also available as CLI gates — what the skill runs between
+stages:
 
 ```bash
 E=plugin/skills/mdp-solver/examples
-python -m mdp_ir.interpreter_test
-python -m mdp_conformance $E/inv_single $E/dynamic_pricing
-python -m mdp_ir.differential $E/inv_single/inv_single_schema.json --episodes 40
-python -m mdp_ir.differential $E/dynamic_pricing/dynamic_pricing_schema.json --episodes 40
+python -m mdp_conformance $E/inv_single $E/dynamic_pricing $E/fnv   # generated-code shape
+python -m mdp_ir.laws     $E/inv_single $E/dynamic_pricing $E/fnv   # IR execution semantics
+python -m mdp_ir.differential $E/inv_single/inv_single_schema.json --all-instances --episodes 40
 ```
 
-All gates must pass: interpreter invariants green, conformance green (SKIPs only
-for inapplicable checks), differential bit-exact MATCH.
+All gates must pass: engine laws green, conformance green (SKIPs only for
+inapplicable checks), differential bit-exact MATCH with no declared-invariant
+violation.
 
 ## Example domains
 

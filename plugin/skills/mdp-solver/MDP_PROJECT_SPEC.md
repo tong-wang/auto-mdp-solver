@@ -32,6 +32,52 @@ Each domain lives in its own subfolder `{domain}/`. Every file is prefixed with 
 | `{domain}_benchmark_{method}.py` | Non-RL benchmark solver — `{method}` names the method (`lp`, `dp`, `myopic`, `greedy`, `fluid`, or a domain-custom heuristic). One per method; a solver may expose several related policies via `--policy` (§9.8) |
 | `{domain}_benchmark_{method}_eval.py` | Evaluate a benchmark over the full parameter grid, same TSV format as the RL eval |
 | `{domain}_policy.py` | Deployable policy wrapper over the trained artifact (§12) |
+| `{domain}_test.py` | The domain's own tests: the engine laws + the differential parametrized over the covering set, plus the claims only this domain can state. **Required for a new domain**; see §1.2 |
+
+### 1.2 `{domain}_test.py`
+
+Each domain owns its tests, in its own folder, beside the code they describe —
+a domain-specific claim is only checkable once the domain exists, and a domain
+folder must stay portable. Helpers come from `mdp_ir.testing` (never a repo
+conftest), so the file works wherever the folder lives:
+
+```python
+from mdp_ir.testing import assert_laws, assert_match, schema_beside
+SCHEMA = schema_beside(__file__)
+
+def test_engine_laws():
+    assert_laws(SCHEMA)                       # every law in mdp_ir.laws
+
+@pytest.mark.parametrize("instance", COMPOSITIONS, ids=lambda i: i or "base")
+def test_differential_matches_the_domain(instance):
+    assert_match(SCHEMA, instance=instance, episodes=8)
+```
+
+Rules:
+
+- **Derive the covering set, never list it.** Read `mdp.scenario.instances` +
+  `mixtures` from the schema at collection time, so adding a candidate or an
+  instance extends the sweep with no edit to the test. Add one guard that the
+  derived list is not silently empty — otherwise every parametrized case
+  "passes" by not existing.
+- **Put what generalizes in the IR, not here.** A conservation law belongs in
+  `mdp.invariants` (every instance and every appended candidate inherits it,
+  and both the laws gate and the differential enforce it). Reach for Python
+  only where an expression cannot say it: an equivalence against a hand-written
+  class, a cross-episode statistic, a claim about a dynamics local.
+- **Carry a negative control.** At least one test must corrupt the IR and
+  assert the gate *fails* (`assert_diverges`, or a mis-stated claim that
+  produces violations). A gate never observed failing is not known to gate.
+- **Stay runnable standalone**: end with
+  `if __name__ == "__main__": raise SystemExit(pytest.main([__file__]))`.
+- **Never add an unprefixed module** to a domain folder. pytest's `prepend`
+  import mode puts each test file's directory on `sys.path`, so two folders
+  holding the same unprefixed name silently share whichever loaded first. The
+  `{domain}_*` prefix rule above is what prevents it.
+
+Requires the test extra: `pip install -e "./harness[dev]"` (or
+`auto-mdp-solver[domain,dev]`). It is deliberately separate from `[domain]` — a
+deployed policy should not pull a test framework.
 
 ### 1.1 Dependency chain
 

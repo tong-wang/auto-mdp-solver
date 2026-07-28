@@ -35,7 +35,7 @@ trajectories on shared `(instance, episode_seed, decisions)`.
 python -m mdp_ir.interpreter plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json --decision order=40
 python -m mdp_ir.interpreter plugin/skills/mdp-solver/examples/dynamic_pricing/dynamic_pricing_schema.json \
     --decision price=1.0 --instance ample_stock --episode-seed 3
-python -m mdp_ir.interpreter_test        # invariant checks on both examples
+python -m mdp_ir.laws plugin/skills/mdp-solver/examples/inv_single   # execution-semantics gate
 ```
 
 ```python
@@ -52,8 +52,9 @@ seed keys (`UncertaintyStage.seed_key`), whose slot order depends on
 source with a branch word. Generated code must match its own scheme — the
 differential runner proves the interpreter reproduces each bit-exactly — so
 trajectories are reproducible and realized uncertainty is decision-path
-independent by construction (`interpreter_test.py` asserts this, plus
-conservation and termination properties, on both examples). Supported
+independent by construction (`mdp_ir.laws` asserts this against any IR, and
+`harness/tests/` pins the key grammars on synthetic ones; conservation is
+declared per IR under `mdp.invariants` — see below). Supported
 per-period distribution families: `categorical`, `poisson`, `normal`,
 `lognormal`, `uniform`, `bernoulli`; scenario samplers add the recipe families
 `choice_without_replacement` and `normalized_uniform_weights`.
@@ -83,6 +84,53 @@ constant transcription, since both sides read the same constants. The shipped
 `inv_single` adapter matches the handwritten domain **bit-exactly** across
 base and `lost_sales` instances under random policies; that exactness is what
 makes the gate meaningful for generated `_mdp` code.
+
+## Declared claims (`mdp.invariants`) and the laws gate
+
+The differential proves the two sides **agree**; it cannot prove either is
+**right**. A mis-formalization — a wrong sign, a dropped term — makes the
+interpreter and the generated domain wrong identically, and the gate stays
+green. `mdp.invariants` is the artifact that catches that class of error: a
+claim transcribed from the user's own words at Phase A, independent of the
+model both sides were built from.
+
+```json
+"invariants": [
+  { "name": "inventory_balance",
+    "expr": "close(inventory, prev.inventory + received - demand + lost_sales)",
+    "desc": "on-hand changes only by receipts and demand" },
+  { "name": "sales_capped", "expr": "close(sales, min(demand, inventory))",
+    "scope": "terminal" }
+]
+```
+
+`expr` is a boolean over the END_OF_PERIOD namespace, plus `prev.<name>` for
+the previous period's value (the initial state on the first period) and `t` for
+the row's **input** period — prefer `t` to the time-index variable, which
+END_OF_PERIOD has already advanced by the time claims are evaluated. Use
+`close(a, b[, tol])` for float balances. Violations are collected on the
+trajectory rather than raised, so Phase A can print them advisory while the
+differential and the CLI exit non-zero. Invariants are **structural**: editing
+one moves `structural_fingerprint` and re-opens the Phase-A confirmation.
+
+`laws.py` is the execution-semantics gate — the counterpart to
+`mdp_conformance`, which checks generated-code *shape*. Its nine laws are
+derived from the IR alone (determinism, seed sensitivity, decision-path
+independence, declared invariants, termination, finite reward, observation
+modes, instances, mixture standalone equivalence), so it knows no domain and
+gates a freshly generated case as readily as a shipped example:
+
+```bash
+python -m mdp_ir.laws plugin/skills/mdp-solver/examples/inv_single
+# [PASS] path_independence   exogenous: ['demand']
+# [PASS] invariants          4 claim(s) over 4 policies: [...]
+# 9/9 passed
+```
+
+Laws that do not apply report SKIP **with the reason** — a domain with no
+mixture cannot fail the mixture law, and the report says so rather than
+counting a silent pass. `mdp_ir.testing` wraps both gates for a domain's own
+`{domain}_test.py` (`assert_laws`, `assert_match`, `assert_diverges`).
 
 ## The three layers
 

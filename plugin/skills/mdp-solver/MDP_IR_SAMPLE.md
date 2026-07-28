@@ -247,6 +247,32 @@ change the fingerprint and needs no re-confirmation.
       ]
     },
 
+    // --- INVARIANTS: what the user said must ALWAYS be true, transcribed at
+    //     Phase A. The differential gate proves the interpreter and the
+    //     generated domain AGREE; it cannot prove either is RIGHT — a wrong
+    //     sign both sides share passes it. A claim taken from the problem
+    //     statement is independent of the model, so it does not.
+    //     `expr` is a boolean over the END_OF_PERIOD namespace, plus
+    //     `prev.<name>` (previous period's value; the initial state at t=0) and
+    //     `t` (the row's INPUT period — prefer it to the time-index variable,
+    //     which END_OF_PERIOD has already advanced). Use `close(a, b[, tol])`
+    //     for float balances, not `==`. `scope` is "period" (default) or
+    //     "terminal". Violations are collected, not raised: advisory at Phase
+    //     A, fatal at the Stage-1 gate.
+    //     STRUCTURAL: editing a claim moves the structural fingerprint and
+    //     re-opens the Phase-A confirmation, exactly like editing dynamics.
+    "invariants": [
+      { "name": "inventory_balance",
+        "expr": "close(inventory, prev.inventory + received - demand + lost_sales)",
+        "desc": "on-hand changes only by what arrives and what demand takes; under lost_sales the unmet part lands in lost_sales instead of negative inventory — so one claim covers both stockout modes" },
+      { "name": "pipeline_balance",
+        "expr": "close(sum(pipeline), sum(prev.pipeline) + order - received)",
+        "desc": "outstanding orders change only by what is placed and what arrives — holds under every event order and lead-time candidate" },
+      { "name": "no_negative_stock_under_lost_sales",
+        "expr": "stockout_mode != 'lost_sales' or inventory >= 0",
+        "desc": "lost-sales mode drops unmet demand rather than backlogging it" }
+    ],
+
     // --- SCENARIO: the single home for every number (or categorical selector). Exprs reference constants by
     //     name; `axis` tags scenario dimensions; `instances` → the SCENARIOS registry.
     "scenario": {

@@ -310,6 +310,18 @@ continuous decision?" gates the bounds/masking question.)
       `python -m mdp_ir.interpreter {name}/{name}_schema.json
       --decision <name>=<value> --episode-seed 3` and append one annotated
       trajectory to that file.
+   c. Transcribe the user's **invariants** into `mdp.invariants` — the things
+      they said must always be true ("stock only changes by what arrives and
+      what sells", "every arrival either buys or is lost"). Write them as
+      boolean exprs over the end-of-period namespace, using `prev.<name>` for
+      the previous period and `close(a, b)` for float balances; put the claim
+      in the user's own words in `desc`. This is the only artifact that can
+      catch a mis-formalization the Stage-1 differential cannot see: the
+      differential proves the interpreter and the generated domain *agree*, so
+      a wrong sign that both sides share passes it. A claim taken from the
+      problem statement is independent of the model and does not.
+      Show the claims in the sign-off summary and report any violation the
+      interpreter reports — advisory here, fatal at the Stage-1 gate.
 8. **Final presentation & sign-off — the last thing before the gate.** In a
    single message: re-post the status board with everything now in *Settled*;
    print the full restatement and the annotated trajectory; and add a compact
@@ -393,12 +405,17 @@ Write in dependency order: `{domain}_exceptions.py` (optional) →
   row keys named exactly like interpreter rows; pass `seed_salt` through.
 - Give `{domain}_mdp.py` a `__main__` smoke episode and run it.
 
-**GATE:** both must exit 0 —
-`python -m mdp_conformance {domain}` and
-`python -m mdp_ir.differential {name}/{name}_schema.json --episodes 40`
-(repeat with `--instance <x>` for every instance). The differential must be
-MATCH (bit-exact). Also re-run `python -m mdp_ir.interpreter_test` to prove
-no regression to the shipped examples.
+- Write `{domain}_test.py` in the domain folder (spec §1.2): the engine laws,
+  the differential parametrized over the covering set derived from the schema,
+  at least one negative control, and any claim an IR expression cannot state.
+
+**GATE:** all three must exit 0 —
+`python -m mdp_conformance {domain}` (generated-code shape),
+`python -m mdp_ir.laws {domain}` (IR execution semantics), and
+`python -m mdp_ir.differential {name}/{name}_schema.json --all-instances --episodes 40`.
+The differential must be MATCH (bit-exact) with **no invariant violation**.
+Then run `pytest {domain}` for the domain's own tests, and `pytest` at the repo
+root to prove no regression to the shipped examples.
 
 **Why bit-exact, and not just "tests pass":** formalization has no oracle —
 dynamics can be modeled plausibly but wrongly, and a generated domain that

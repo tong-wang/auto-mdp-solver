@@ -32,6 +32,14 @@ domain = [
     "pandas>=2.2,<3",
 ]
 
+# Test runtime = what the harness's own suite and each domain's
+# `{domain}_test.py` need. Separate from `domain` on purpose: a deployed
+# policy should not pull a test framework, but anyone running a case's gates
+# installs "auto-mdp-solver[domain,dev]" once.
+dev = [
+    "pytest>=8,<10",
+]
+
 [project.urls]
 Repository = "https://github.com/tong-wang/auto-mdp-solver"
 Issues = "https://github.com/tong-wang/auto-mdp-solver/issues"

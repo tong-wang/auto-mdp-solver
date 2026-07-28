@@ -592,7 +592,7 @@ A referenced-but-underivable attribute is a load error naming the fix
   (`FamilyDemand(FamilyGenerator, DemandGenerator)`); adapters fall back to
   `from_parts`/`from_ir` for candidates no hand-written class implements —
   **a new family needs zero new domain Python** (proven in
-  `interpreter_test`: an appended uniform-rate candidate passes the full
+  `inv_single_test.py`: an appended uniform-rate candidate passes the full
   differential with zero domain edits).
 - **Cross-family mixtures — DONE 2026-07-28** (decision log): the loader
   resolves each selection-divergent component separately

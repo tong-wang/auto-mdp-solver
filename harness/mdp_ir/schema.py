@@ -173,6 +173,10 @@ class Algo(str, Enum):
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _COMMENT = re.compile(r"#.*")
 _STRLIT = re.compile(r"'[^']*'|\"[^\"]*\"")   # single/double-quoted string literals
+# numeric literals, INCLUDING the exponent form: `1e-9` would otherwise
+# tokenize as the identifier `e` and `1e6` as `e6`. The lookbehind keeps this
+# from biting into a name like `x1e5`.
+_NUMLIT = re.compile(r"(?<![A-Za-z_0-9.])(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
 # an assignment `=` or draw `~`, excluding ==, !=, <=, >=, +=, -=, *=, /=
 _ASSIGN = re.compile(r"(?<![=!<>+\-*/])=(?!=)|~")
 # `prev.<name>` — the previous period's end-of-period value, legal only in
@@ -198,11 +202,15 @@ _BUILTINS = frozenset({
 
 def _identifiers(expr: str) -> set[str]:
     # Strip string literals before comments (so a `#` inside a string is not
-    # mistaken for a comment start), then extract identifiers. A string's
-    # CONTENTS are data, never names — this lets expressions compare a
-    # categorical constant against a literal, e.g. `mmfe_mode == 'additive'`,
-    # without the literal's characters being flagged as unresolved identifiers.
-    return set(_IDENT.findall(_COMMENT.sub("", _STRLIT.sub(" ", expr))))
+    # mistaken for a comment start), then numeric literals, then extract
+    # identifiers. A string's CONTENTS are data, never names — this lets
+    # expressions compare a categorical constant against a literal, e.g.
+    # `mmfe_mode == 'additive'`, without the literal's characters being
+    # flagged as unresolved identifiers. Numeric literals are stripped for the
+    # exponent form's sake: `1e-9` is one number, not the name `e`.
+    return set(_IDENT.findall(
+        _NUMLIT.sub(" ", _COMMENT.sub("", _STRLIT.sub(" ", expr)))
+    ))
 
 
 def _check_expr(expr: str, known: set[str], where: str) -> None:

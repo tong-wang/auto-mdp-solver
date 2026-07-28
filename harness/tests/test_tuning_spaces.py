@@ -1,7 +1,8 @@
-"""Tests for the PPO search space: tiers, β-aware gamma, rollout-aware
-bounds, and the encode (warm-start) inverse.
+"""PPO search space: tiers, β-aware gamma, rollout-aware bounds, and the
+encode (warm-start) inverse.
 
-    python -m mdp_tuning.spaces_test
+Self-contained (optuna's FixedTrial is the only input), so it lives with the
+other engine tests rather than inside the shipped package.
 """
 
 from __future__ import annotations
@@ -94,15 +95,3 @@ def test_encode_skips_unrepresentable() -> None:
     # a default below a raised n_steps floor is skipped, not enqueued stale
     params, skipped = encode_ppo({"n_steps": 2048}, min_n_steps=2500)
     assert skipped == ["n_steps"] and not params
-
-
-def main() -> None:
-    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
-    for fn in tests:
-        fn()
-        print(f"  {fn.__name__} OK")
-    print(f"all {len(tests)} spaces tests passed")
-
-
-if __name__ == "__main__":
-    main()

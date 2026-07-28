@@ -3,7 +3,9 @@ name: case-gates
 # Runs the executable gates on every case directory touched by a PR:
 #   1. IR schema validation      (python -m mdp_ir <schema>)
 #   2. spec conformance          (python -m mdp_conformance <case-dir>)
-#   3. differential IR-vs-domain (python -m mdp_ir.differential <schema>)
+#   3. IR execution semantics    (python -m mdp_ir.laws <case-dir>)
+#   4. differential IR-vs-domain (python -m mdp_ir.differential <schema>)
+#   5. the case's own tests      (pytest <case-dir>)
 # This is what makes case-contribution review mechanical (AGENT_PLAN §4,
 # mdp-contribute tier 1): a green run means the case honors the portable-domain
 # contract and its simulator matches its frozen IR bit-exactly.
@@ -25,8 +27,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install harness (torch-free bare install)
-        run: python -m pip install -e ./harness
+      - name: Install harness (torch-free, plus the pytest test extra)
+        run: python -m pip install -e "./harness[dev]"
 
       - name: Run gates on changed case dirs
         run: |
@@ -48,11 +50,20 @@ jobs:
             fi
             echo "=== $d ==="
             python -m mdp_conformance "$d"
+            python -m mdp_ir.laws "$d"
             for s in "${schemas[@]}"; do
               echo "--- schema: $(basename "$s") ---"
               python -m mdp_ir "$s"
               python -m mdp_ir.differential "$s" --all-instances --episodes 40
             done
+            # the case's own {case}_test.py (spec §1.2): the covering-set
+            # differential parametrized per composition, plus its domain claims
+            if compgen -G "$d/*_test.py" > /dev/null; then
+              pytest "$d"
+            else
+              echo "::error::$d has no {case}_test.py — required by spec §1.2"
+              exit 1
+            fi
             ran=1
           done
           if [ "$ran" -eq 0 ]; then
