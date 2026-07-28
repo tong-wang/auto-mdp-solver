@@ -31,9 +31,11 @@ def make_adapter(
         consts.update(ir.mdp.scenario.instances[instance])
 
     # The IR carries `t_last` for the paper's epoch time T (renamed to avoid the
-    # reserved horizon symbol) and models the additive MMFE case; the domain
-    # re-derives signal_stdevs from stdev/t_last/N so the baked IR schedule and
-    # the scenario's schedule agree bit-for-bit.
+    # reserved horizon symbol); the domain re-derives signal_stdevs from
+    # stdev/t_last/N so the baked IR schedule and the scenario's schedule agree
+    # bit-for-bit. The categorical `mmfe_mode` constant ('additive' |
+    # 'multiplicative') selects the terminal link and passes straight through
+    # to FnvScenario (base = additive; the 'mmmfe' instance = multiplicative).
     scenario = scen.FnvScenario(
         scenario_name=f"ir_differential_{instance or 'base'}",
         stdev=consts["stdev"],
@@ -43,7 +45,7 @@ def make_adapter(
         r=consts["r"],
         c1=consts["c1"],
         mu=consts["mu"],
-        mmfe_mode="additive",
+        mmfe_mode=consts["mmfe_mode"],
         seed_salt=seed_salt,
     )
 

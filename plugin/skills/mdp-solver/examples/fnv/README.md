@@ -19,7 +19,7 @@ generalist policy — not a world latent. It is the only shipped example with a
 | `fnv_grids.py` | **design (§5.6)** | `FnvScenarioGrid`, `GRIDS = {FNV-aMMFE, FNV-mMMFE}` — driver-only |
 | `fnv_mdp.py` | core | `FnvState`, `init_state`, `advance` (Gym-free simulator) |
 | `fnv_gym.py` | gym | Gymnasium wrapper; accepts a scenario **or** a grid-derived sampler |
-| `fnv_schema.json` | IR | the MDP-IR (seed scheme v2, additive MMFE) |
+| `fnv_schema.json` | IR | the MDP-IR (seed scheme v2; additive + multiplicative MMFE via the `mmfe_mode` selector) |
 | `fnv_ir_adapter.py` | IR | differential adapter (portable-domain contract) |
 
 ## The MMFE process
@@ -102,21 +102,33 @@ Run from the repo root (harness installed via `pip install -e ./harness`):
 E=plugin/skills/mdp-solver/examples
 python -m mdp_conformance $E/fnv
 python -m mdp_ir $E/fnv/fnv_schema.json
-python -m mdp_ir.differential $E/fnv/fnv_schema.json --episodes 40
+python -m mdp_ir.differential $E/fnv/fnv_schema.json --all-instances --episodes 40
 ```
 
 The differential vouches for `t, order, cost, inventory, information,
-total_cost` every period, plus terminal `demand, sales, revenue`. The IR bakes
-the per-period signal-volatility schedule as exact float constants so the
-interpreter's normal draw matches the domain's `FnvScenario.signal`
-bit-for-bit; the domain re-derives the same schedule from `stdev/T/N`.
+total_cost` every period, plus terminal `demand, sales, revenue`. `--all-instances`
+sweeps the base scenario (additive MMFE, `D = mu + I`) **and** the `mmmfe`
+instance (multiplicative, `D = exp(mu + I)`), so both terminal links are
+verified against the domain. The IR bakes the per-period signal-volatility
+schedule as exact float constants so the interpreter's normal draw matches the
+domain's `FnvScenario.signal` bit-for-bit; the domain re-derives the same
+schedule from `stdev/T/N`.
 
 ## Modeling notes
 
 - **1-indexed clock**: periods run `1..N`; the interpreter terminates when the
   post-increment clock reaches `horizon.T`, so `horizon.T = N+1` (see the IR's
   `assumptions_log`).
-- **Additive MMFE only** in the IR (`D = mu + I`). The multiplicative mode is a
-  domain/grid-layer variant (`mmfe_mode`), out of IR scope.
-- The design grids are **out of IR scope** — the IR formalizes one concrete
-  scenario; grid coverage is verified structurally by `mdp_conformance`.
+- **Both MMFE links live in the IR.** additive (`D = mu + I`) and multiplicative
+  (`D = exp(mu + I)`) use the same demand-signal family and differ only in the
+  terminal link — a deterministic transform applied once at the horizon, *not*
+  an uncertainty candidate. So the mode is carried by the categorical
+  `mmfe_mode` constant (`'additive'` | `'multiplicative'`) conditioning the
+  R-event demand update, selected per instance (base = additive; the `mmmfe`
+  instance = multiplicative), the catalog ⊕ selection way to carry a dynamics
+  variant in one schema. The `mmmfe` instance also widens `stdev` (0.1 → 0.2)
+  with its derived `signal_stdevs` schedule re-baked to match — an ordinary
+  per-instance constant override alongside the mode selection.
+- The design grids' **parameter sweeps** (`stdev × T × lamb` ranges) stay out of
+  IR scope — the IR formalizes concrete scenarios (base + instances); grid
+  coverage is verified structurally by `mdp_conformance`.

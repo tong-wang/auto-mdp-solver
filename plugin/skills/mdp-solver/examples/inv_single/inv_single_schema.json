@@ -43,7 +43,7 @@
         "name": "pipeline",
         "role": "core",
         "type": "int_vector",
-        "length": 6,
+        "length": "pipeline_len",
         "element_bounds": [
           0,
           "40 * demand.mean"
@@ -77,7 +77,7 @@
       {
         "name": "lost_sales",
         "type": "int",
-        "desc": "unmet demand dropped (only if allow_backlog=false)"
+        "desc": "unmet demand dropped (only when stockout_mode='lost_sales')"
       },
       {
         "name": "action_period",
@@ -125,11 +125,7 @@
       }
     ],
     "dynamics": {
-      "event_sequence": [
-        "O",
-        "R",
-        "D"
-      ],
+      "event_sequence": "event_order",
       "observation_point": "pre-order",
       "transitions": [
         {
@@ -154,7 +150,7 @@
           "updates": [
             "demand ~ demand.sample",
             "inventory -= demand",
-            "if not allow_backlog: lost_sales = max(0, -inventory); inventory = max(0, inventory)"
+            "if stockout_mode == 'lost_sales': lost_sales = max(0, -inventory); inventory = max(0, inventory)"
           ]
         },
         {
@@ -176,7 +172,7 @@
         },
         {
           "name": "shortage",
-          "expr": "b * max(0, -inventory) if allow_backlog else b * lost_sales",
+          "expr": "b * max(0, -inventory) if stockout_mode == 'backlog' else b * lost_sales",
           "desc": "evaluated at END_OF_PERIOD: on end-of-period backlog, or on this period's lost sales in the lost-sales variant"
         },
         {
@@ -193,33 +189,61 @@
       "constants": [
         {
           "name": "h",
-          "value": 0.2,
+          "value": 1.0,
           "axis": "cost",
           "desc": "holding cost per unit of positive end-of-period stock"
         },
         {
           "name": "b",
-          "value": 2.0,
+          "value": 9.0,
           "axis": "cost",
           "desc": "shortage cost per unit of backlog"
         },
         {
           "name": "K",
-          "value": 25.0,
+          "value": 0.0,
           "axis": "cost",
-          "desc": "fixed cost per order placed"
+          "desc": "fixed cost per order placed (0 in the simple base)"
         },
         {
           "name": "c",
-          "value": 1.0,
+          "value": 0.0,
           "axis": "cost",
-          "desc": "variable cost per unit ordered"
+          "desc": "variable cost per unit ordered (0 in the simple base: ordering is free)"
         },
         {
-          "name": "allow_backlog",
-          "value": true,
+          "name": "simple_rate",
+          "value": 10.0,
+          "axis": "demand",
+          "desc": "simple candidate: fixed Poisson demand rate (scenario_simple's Poisson(10))"
+        },
+        {
+          "name": "leadtime_value",
+          "value": 0,
+          "axis": "leadtime",
+          "desc": "deterministic candidate: fixed lead time (0 in the simple base; instances raise it)"
+        },
+        {
+          "name": "pipeline_len",
+          "value": 1,
+          "axis": "leadtime",
+          "desc": "pipeline vector length = max lead time + 1 for the active leadtime candidate; per-instance (base det-0 -> 1, lt-2 -> 3, slt{2..5} -> 6)"
+        },
+        {
+          "name": "stockout_mode",
+          "value": "backlog",
           "axis": "variant",
-          "desc": "unmet demand accumulates as negative inventory (vs lost sales)"
+          "desc": "unmet-demand handling (categorical): 'backlog' = accumulates as negative inventory; 'lost_sales' = dropped each period. Read by the D-event update and the shortage objective; mirrors InvSingleScenario.stockout_mode."
+        },
+        {
+          "name": "event_order",
+          "value": [
+            "O",
+            "R",
+            "D"
+          ],
+          "axis": "variant",
+          "desc": "within-period event order: a permutation of O (place order), R (receive), D (demand), with R before D. Named constant in control position (\u00a710d) so instances select an order variant and the interpreter runs transitions in the resolved order; the 'R','O','D' order needs leadtime.min() >= 1."
         },
         {
           "name": "demand_support_size",
@@ -273,15 +297,55 @@
         }
       ],
       "instances": {
+        "simple_k": {
+          "K": 20.0
+        },
+        "lt": {
+          "leadtime_value": 2,
+          "pipeline_len": 3
+        },
+        "rdo": {
+          "leadtime_value": 2,
+          "pipeline_len": 3,
+          "event_order": [
+            "R",
+            "D",
+            "O"
+          ]
+        },
+        "rod": {
+          "leadtime_value": 2,
+          "pipeline_len": 3,
+          "event_order": [
+            "R",
+            "O",
+            "D"
+          ]
+        },
         "lost_sales": {
-          "allow_backlog": false
+          "stockout_mode": "lost_sales"
+        },
+        "discrete": {
+          "demand": "discrete",
+          "leadtime": "slt",
+          "pipeline_len": 6
         },
         "poisson": {
-          "demand": "poisson"
+          "demand": "poisson",
+          "leadtime": "slt",
+          "pipeline_len": 6
+        },
+        "discrete_lost_sales": {
+          "demand": "discrete",
+          "leadtime": "slt",
+          "pipeline_len": 6,
+          "stockout_mode": "lost_sales"
         },
         "poisson_lost_sales": {
           "demand": "poisson",
-          "allow_backlog": false
+          "leadtime": "slt",
+          "pipeline_len": 6,
+          "stockout_mode": "lost_sales"
         }
       },
       "mixtures": [
@@ -291,20 +355,20 @@
           "components": [
             [
               0.5,
-              ""
+              "discrete"
             ],
             [
               0.5,
               "poisson"
             ]
           ],
-          "desc": "nature's 50/50 pick of the demand regime per episode: the base discrete candidate vs the poisson candidate — a cross-family mixture; the component's own candidate selection applies for its episodes (standalone equivalence)"
+          "desc": "nature's 50/50 pick of the demand regime per episode: the discrete instance vs the poisson instance (both on slt lead, pipeline_len 6) \u2014 a cross-family mixture; the component's own selection applies for its episodes (standalone equivalence)"
         }
       ]
     },
     "initial_state": {
       "inventory": 0,
-      "pipeline": "zeros(6)"
+      "pipeline": "zeros(pipeline_len)"
     },
     "uncertainty_slots": [
       {
@@ -319,8 +383,17 @@
             "sub_stream": null
           }
         ],
-        "default": "discrete",
+        "default": "simple",
         "candidates": {
+          "simple": {
+            "generator": "PoissonDemand",
+            "family": "poisson",
+            "settings": {
+              "rate": "simple_rate"
+            },
+            "is_discrete": true,
+            "desc": "fixed-rate Poisson demand (rate=demand_rate); the scenario_simple base \u2014 non-latent"
+          },
           "discrete": {
             "generator": "DiscreteDemand",
             "family": "categorical",
@@ -393,9 +466,18 @@
             "trigger": "O && order>0"
           }
         ],
-        "default": "discrete",
+        "default": "deterministic",
         "candidates": {
-          "discrete": {
+          "deterministic": {
+            "generator": "DeterministicLeadtime",
+            "family": "deterministic",
+            "settings": {
+              "value": "leadtime_value"
+            },
+            "is_discrete": true,
+            "desc": "fixed lead time (value=leadtime_value); the scenario_simple base"
+          },
+          "slt": {
             "generator": "DiscreteLeadtime",
             "family": "categorical",
             "settings": {
@@ -403,7 +485,7 @@
               "probabilities": "leadtime_probs"
             },
             "is_discrete": true,
-            "desc": "stochastic lead time on a fixed discrete support"
+            "desc": "stochastic lead time on a fixed discrete support {2,3,4,5}"
           }
         },
         "desc": ""
@@ -487,17 +569,17 @@
     "frame_stack": 1,
     "obs_normalization": {
       "enabled": true,
-      "rationale": "inventory and pipeline entries are stationary features of heterogeneous magnitude (scale set by the selected demand candidate); spec §8.3 says normalize"
+      "rationale": "inventory and pipeline entries are stationary features of heterogeneous magnitude (scale set by the selected demand candidate); spec \u00a78.3 says normalize"
     }
   },
   "assumptions_log": [
     "Order quantity modeled as continuous (float) and clipped to [0, 20*demand.mean]; the source description said 'how much to order' without specifying integrality.",
     "Initial inventory and pipeline assumed empty (0).",
-    "Unmet demand is backlogged (allow_backlog=true); the lost-sales variant is the 'lost_sales' scenario instance (allow_backlog=false).",
+    "Unmet demand is backlogged (stockout_mode='backlog'); the lost-sales variant is the 'lost_sales' scenario instance (stockout_mode='lost_sales'). Event order is the `event_order` constant (default O,R,D); the 'rdo' and 'rod' instances select R,D,O and R,O,D (\u00a710d event-order-as-mode).",
     "Cost components are evaluated at END_OF_PERIOD on end-of-period inventory.",
     "`demand` placed in info (not state): no later transition reads it; it is exposed to the agent only via the vec_d observation mode.",
     "Period indexing is 0-based; horizon T=30; reaching T is `terminated` (T is part of the problem, no bootstrapping past it), not `truncated`.",
     "DEMAND CANDIDATES (catalog): 'discrete' (default) draws a hidden per-episode 3-point distribution; 'poisson' draws a hidden per-episode rate lambda ~ Gamma(9, 0.3). Selected per instance ('poisson', 'poisson_lost_sales') or via --select demand=poisson; scale-derived bounds resolve per selection from the derived demand.mean (10 vs 30).",
-    "Seed scheme v2 (spec §6.3): intrinsic draws key [period, slot_stream_id, 1, episode_seed, seed_salt]; each slot's world latents draw on the meta branch at the SAME slot stream_id ([stream_id, 0, episode_seed, seed_salt]), so instances sharing a candidate share latent draws (common random numbers across instances)."
+    "Seed scheme v2 (spec \u00a76.3): intrinsic draws key [period, slot_stream_id, 1, episode_seed, seed_salt]; each slot's world latents draw on the meta branch at the SAME slot stream_id ([stream_id, 0, episode_seed, seed_salt]), so instances sharing a candidate share latent draws (common random numbers across instances)."
   ]
 }

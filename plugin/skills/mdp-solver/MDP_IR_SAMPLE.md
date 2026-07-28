@@ -247,7 +247,7 @@ change the fingerprint and needs no re-confirmation.
       ]
     },
 
-    // --- SCENARIO: the single home for every number. Exprs reference constants by
+    // --- SCENARIO: the single home for every number (or categorical selector). Exprs reference constants by
     //     name; `axis` tags scenario dimensions; `instances` → the SCENARIOS registry.
     "scenario": {
       "constants": [
@@ -256,6 +256,11 @@ change the fingerprint and needs no re-confirmation.
         { "name": "K", "value": 25.0, "axis": "cost", "desc": "fixed cost / order" },
         { "name": "c", "value": 1.0,  "axis": "cost", "desc": "variable cost / unit" },
         { "name": "allow_backlog", "value": true, "axis": "variant" },
+        // a `variant` constant may be a bool OR a categorical STRING enum (the
+        // IR mirror of a `_scenarios.py` scenario mode): this toggle could
+        // instead read { "value": "backlog" } and be tested in a guard/update
+        // by string equality — `stockout_mode == 'lost_sales'`. String literals
+        // in exprs are fine; their contents are data, never identifiers.
         { "name": "demand_support_size", "value": 5,  "axis": "demand" },
         { "name": "demand_support_low",  "value": 10, "axis": "demand" },
         { "name": "demand_support_high", "value": 50, "axis": "demand" },

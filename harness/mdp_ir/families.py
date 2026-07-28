@@ -81,6 +81,8 @@ def _get(settings: dict, family: str, key: str, resolve: Resolver, attr: str) ->
 def mean(family: str, settings: dict, resolve: Resolver) -> float:
     """E[X] of one draw, composed through latent settings via ``resolve``."""
     g = lambda key: _get(settings, family, key, resolve, "mean")  # noqa: E731
+    if family == "deterministic":
+        return g("value")
     if family == "categorical":
         vals = resolve(settings.get("values"), "mean")
         probs = resolve(settings.get("probabilities"), "mean")
@@ -133,6 +135,8 @@ def min_value(family: str, settings: dict, resolve: Resolver) -> float:
     latent settings. Mirrors :func:`max_value`; leadtime-style interfaces
     read it (e.g. an R-O-D validity check needs ``leadtime.min``)."""
     g = lambda key: _get(settings, family, key, resolve, "min")  # noqa: E731
+    if family == "deterministic":
+        return g("value")
     if family == "categorical":
         vals = resolve(settings.get("values"), "min")
         if isinstance(vals, list):
@@ -159,6 +163,8 @@ def max_value(family: str, settings: dict, resolve: Resolver) -> float:
     """Envelope upper bound of one draw (exact support max where bounded,
     mean + 4·sd for unbounded families), composed through latent settings."""
     g = lambda key: _get(settings, family, key, resolve, "max")  # noqa: E731
+    if family == "deterministic":
+        return g("value")
     if family == "categorical":
         vals = resolve(settings.get("values"), "max")
         if isinstance(vals, list):

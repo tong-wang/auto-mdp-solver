@@ -76,9 +76,12 @@ def main() -> None:
         "dynamic_pricing: arrivals independent of the past price path",
     )
 
-    # -- episode-level realization ---------------------------------------------
-    demands = {r["demand"] for r in simulate(inv, episode_seed=2, decisions={"order": 0.0}).rows}
-    check(len(demands) <= 5, "inv_single: per-episode demand support has <= 5 values")
+    # -- episode-level realization: the discrete candidate's per-episode support
+    # (the simple base is fixed-Poisson; the ≤5-value latent lives on 'discrete')
+    _di = load_ir(ROOT / "examples" / "inv_single" / "inv_single_schema.json", instance="discrete")
+    demands = {r["demand"] for r in
+               IrInterpreter(_di, instance="discrete").run(2, decisions={"order": 0.0}).rows}
+    check(len(demands) <= 5, "inv_single[discrete]: per-episode demand support has <= 5 values")
 
     # -- conservation (IR-derived property checks) ------------------------------
     t = simulate(inv, episode_seed=9, decisions={"order": 30.0})
@@ -236,13 +239,15 @@ def main() -> None:
     # samplers/mixtures, design-layer grids, seed scheme v2
     # =====================================================================
 
-    # inv_single is natively seed_scheme v2; the demand slot's latent draws
-    # desugar to ONE hidden sampler at the slot's stream id (catalog model:
-    # instances share it — common random numbers across instances)
-    check(inv.seed_scheme == "v2" and len(inv.mdp.scenario.samplers) == 1
-          and inv.mdp.scenario.samplers[0].substream_id == 0
-          and inv.mdp.scenario.samplers[0].hidden,
-          "inv_single IR: v2 scheme, one hidden demand-latent sampler at the slot's stream id")
+    # inv_single is natively seed_scheme v2; the simple base is non-latent, and
+    # the discrete/poisson candidates' draws desugar to ONE hidden sampler at
+    # the slot's stream id (catalog model: instances share it — CRN)
+    _dl = load_ir(ROOT / "examples" / "inv_single" / "inv_single_schema.json", instance="discrete")
+    check(inv.seed_scheme == "v2" and len(inv.mdp.scenario.samplers) == 0
+          and len(_dl.mdp.scenario.samplers) == 1
+          and _dl.mdp.scenario.samplers[0].substream_id == 0
+          and _dl.mdp.scenario.samplers[0].hidden,
+          "inv_single IR: v2; simple base non-latent, discrete desugars one hidden sampler at the slot stream")
 
     # -- v2 forbids treatment A (episode-realization stages) -----------------
     ta = inv.model_dump(mode="json")
@@ -255,15 +260,15 @@ def main() -> None:
         check(True, "v2 scheme rejects episode-realization stages (treatment A)")
 
     # -- hidden latent wiring: derivation tracked, constants unobservable ----
-    rm = inv.model_dump(mode="json")
+    rm = _dl.model_dump(mode="json")
     rm["rl"]["requires_memory"]["suggested"] = False
     try:
         MdpIR.model_validate(rm)
         check(False, "hidden sampler must flip the requires_memory derivation")
     except ValueError:
         check(True, "hidden sampler flips requires_memory derivation (validator catches)")
-    d4 = {r["demand"] for r in simulate(inv, episode_seed=4, decisions={"order": 0.0}).rows}
-    d5 = {r["demand"] for r in simulate(inv, episode_seed=5, decisions={"order": 0.0}).rows}
+    d4 = {r["demand"] for r in IrInterpreter(_dl, instance="discrete").run(4, decisions={"order": 0.0}).rows}
+    d5 = {r["demand"] for r in IrInterpreter(_dl, instance="discrete").run(5, decisions={"order": 0.0}).rows}
     check(len(d4) <= 5 and d4 != d5,
           "v2 sampler: <=5-value support per episode, varying across seeds")
 
@@ -285,7 +290,7 @@ def main() -> None:
           "meta keys: v2 [sub, 0, e, salt]; v1 legacy [0, e, salt]")
 
     # -- duplicate meta substream ids fail -----------------------------------
-    dup = inv.model_dump(mode="json")
+    dup = _dl.model_dump(mode="json")
     dup["mdp"]["scenario"]["samplers"].append(
         {"name": "second", "substream_id": 0,
          "draws": [{"name": "demand_probabilities", "distribution": {
@@ -305,6 +310,13 @@ def main() -> None:
     # replacing the mixture list orphans the loader's resolutions for the
     # shipped mix_demand — drop them (loader-set data, mixture-list-coupled)
     mx["mixture_resolutions"] = None
+    # these components are the non-latent simple base + lost_sales, so this
+    # composition has no hidden latent — align the memory derivation (the
+    # shipped schema's suggested=True comes from mix_demand's latent components)
+    mx["rl"]["requires_memory"] = {
+        "value": False, "suggested": False, "source": "derived",
+        "rationale": "no hidden latent in the base+lost_sales composition",
+    }
     mx_ir = MdpIR.model_validate(mx)
     pure = {
         comp: {e: IrInterpreter(mx_ir, instance=comp or None)
@@ -431,7 +443,7 @@ def main() -> None:
     inv_path = ROOT / "examples" / "inv_single" / "inv_single_schema.json"
     raw = json.loads(inv_path.read_text())
     check(layering.is_catalog(raw), "inv_single schema is a catalog document")
-    check(inv.selection == {"demand": "discrete", "leadtime": "discrete"},
+    check(inv.selection == {"demand": "simple", "leadtime": "deterministic"},
           "base load records the default selection")
 
     poi = load_ir(inv_path, instance="poisson")
@@ -442,18 +454,23 @@ def main() -> None:
     check(inv.mdp.decision_bounds("order") == (0.0, 200.0)
           and poi.mdp.decision_bounds("order") == (0.0, 600.0),
           "symbolic bounds resolve per selection from derived demand.mean (10 vs 30)")
-    sel = load_ir(inv_path, select={"demand": "poisson"})
+    sel = load_ir(inv_path, select={"demand": "poisson", "leadtime": "slt"})
     check(sel.mdp_fingerprint() == poi.mdp_fingerprint(),
-          "--select demand=poisson resolves identically to instance 'poisson'")
-    # "poisson" is selection-inconsistent under the base load but survives as
-    # a mixture component (constants-only after stripping) — the interpreter
-    # needs its overrides when mix_demand draws it; "poisson_lost_sales" is
-    # no component, so it drops
-    check(sorted(inv.mdp.scenario.instances) == ["lost_sales", "poisson"]
-          and inv.mdp.scenario.instances["poisson"] == {}
+          "--select {demand=poisson, leadtime=slt} resolves identically to instance 'poisson'")
+    # "discrete"/"poisson" are selection-inconsistent under the base load (they
+    # re-select demand+leadtime) but survive as mixture components, constants-
+    # only after their slot keys strip (leaving {pipeline_len: 6}); the
+    # interpreter needs those when mix_demand draws them. "discrete_lost_sales"/
+    # "poisson_lost_sales" are no components, so they drop under the base — but
+    # "poisson_lost_sales" is consistent under the poisson selection and stays.
+    # "simple_k"/"lt"/"lost_sales"/"rdo"/"rod" override only constants (no slot
+    # key), so they are selection-agnostic and always kept.
+    check(sorted(inv.mdp.scenario.instances)
+          == ["discrete", "lost_sales", "lt", "poisson", "rdo", "rod", "simple_k"]
+          and inv.mdp.scenario.instances["poisson"] == {"pipeline_len": 6}
           and sorted(poi.mdp.scenario.instances)
-          == ["lost_sales", "poisson", "poisson_lost_sales"]
-          and poi.mdp.scenario.instances["poisson"] == {},
+          == ["discrete", "lost_sales", "lt", "poisson", "poisson_lost_sales", "rdo", "rod", "simple_k"]
+          and poi.mdp.scenario.instances["poisson_lost_sales"] == {"pipeline_len": 6, "stockout_mode": "lost_sales"},
           "instances inconsistent with the selection drop unless mixture "
           "components; slot keys strip from survivors")
 
@@ -519,7 +536,8 @@ def main() -> None:
             self.seed_salt = seed_salt
 
     # -- generic runtime ≡ hand-written latent generators, bit-for-bit -------
-    gd = runtime.FamilyGenerator.from_ir(inv, "demand")
+    gd = runtime.FamilyGenerator.from_ir(
+        load_ir(inv_path, instance="discrete"), "demand", instance="discrete")
     hd = unc.LatentDiscreteDemand(
         support_size=3, support_low=8, support_high=12, source_id=0)
     same = True
@@ -559,10 +577,11 @@ def main() -> None:
     # -- shipped cross-family mixture: resolution + envelope + differential --
     mix_ir = load_ir(inv_path, instance="mix_demand")
     mres = (mix_ir.mixture_resolutions or {}).get("mix_demand") or {}
-    check(set(mres) == {"poisson"}
+    check(set(mres) == {"discrete", "poisson"}
           and mres["poisson"].selection["demand"] == "poisson"
+          and mres["discrete"].selection["demand"] == "discrete"
           and any(s.distribution.family == "poisson" for s in mres["poisson"].sources),
-          "mixture load: divergent component carries its own resolution")
+          "mixture load: divergent components each carry their own resolution")
     check(mix_ir.mdp.decision_bounds("order") == (0.0, 400.0),
           "mixture bounds envelope: 20 * weighted demand mean (0.5*10 + 0.5*30)")
     rep = run_differential(
@@ -572,13 +591,14 @@ def main() -> None:
 
     # standalone equivalence across families: every mixture episode equals
     # the drawn component's standalone run verbatim, and both regimes occur
+    dis = load_ir(inv_path, instance="discrete")
     pure_by_comp = {
-        "": {e: IrInterpreter(inv).run(e, decisions={"order": 0.0}).rows
-             for e in range(12)},
+        "discrete": {e: IrInterpreter(dis, instance="discrete")
+                     .run(e, decisions={"order": 0.0}).rows for e in range(12)},
         "poisson": {e: IrInterpreter(poi, instance="poisson")
                     .run(e, decisions={"order": 0.0}).rows for e in range(12)},
     }
-    hit = {"": 0, "poisson": 0}
+    hit = {"discrete": 0, "poisson": 0}
     mix_interp = IrInterpreter(mix_ir, instance="mix_demand")
     for e in range(12):
         rows = mix_interp.run(e, decisions={"order": 0.0}).rows
@@ -621,6 +641,9 @@ def main() -> None:
     except ValueError:
         check(True, "an instance order missing a transition event fails validation")
     bad_seq = inv.model_dump(mode="json")
+    # inv's event_sequence is now a constant; force the literal form to
+    # exercise the declaration-order check for literal sequences.
+    bad_seq["mdp"]["dynamics"]["event_sequence"] = ["O", "R", "D"]
     ts = bad_seq["mdp"]["dynamics"]["transitions"]
     ts[0], ts[1] = ts[1], ts[0]
     try:

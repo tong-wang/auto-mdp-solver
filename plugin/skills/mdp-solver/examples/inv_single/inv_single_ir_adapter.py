@@ -34,8 +34,13 @@ def _build_scenario(
     hand-written generators; unknown candidates use the family bridges."""
     demand_src = next(s for s in sources if s.name == "demand")
     leadtime_src = next(s for s in sources if s.name == "leadtime")
-    sel = (selection or {}).get("demand", "discrete")
-    if sel == "discrete":
+    sel = (selection or {}).get("demand", "simple")
+    if sel == "simple":
+        demand = unc.PoissonDemand(
+            rate=consts["simple_rate"],
+            source_id=demand_src.stream_id,
+        )
+    elif sel == "discrete":
         demand = unc.LatentDiscreteDemand(
             support_size=consts["demand_support_size"],
             support_low=consts["demand_support_low"],
@@ -52,7 +57,13 @@ def _build_scenario(
         demand = unc.FamilyDemand.from_parts(
             demand_src, _sampler_for(samplers, demand_src), consts
         )
-    if (selection or {}).get("leadtime", "discrete") == "discrete":
+    lt_sel = (selection or {}).get("leadtime", "deterministic")
+    if lt_sel == "deterministic":
+        leadtime = unc.DeterministicLeadtime(
+            value=consts["leadtime_value"],
+            source_id=leadtime_src.stream_id,
+        )
+    elif lt_sel == "slt":
         leadtime = unc.DiscreteLeadtime(
             values=consts["leadtime_values"],
             probabilities=consts["leadtime_probs"],
@@ -71,7 +82,7 @@ def _build_scenario(
         shortage_cost=consts["b"],
         order_cost_linear=consts["c"],
         order_cost_fixed=consts["K"],
-        allow_backlog=consts["allow_backlog"],
+        stockout_mode=consts["stockout_mode"],
         event_sequence=tuple(event_sequence),
         seed_salt=seed_salt,
     )

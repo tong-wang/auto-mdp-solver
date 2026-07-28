@@ -84,9 +84,9 @@ class InvSingleScenario:
         float  # K: fixed cost per order placed (0 = no fixed cost)
     )
 
-    # True = unfulfilled demand accumulates as backlog;
-    # False = lost-sales (excess demand dropped each period)
-    allow_backlog: bool = True
+    # "backlog"    = unfulfilled demand accumulates as negative inventory;
+    # "lost_sales" = excess demand is dropped each period
+    stockout_mode: str = "backlog"
 
     # event sequence: permutation of R, O, D with R before D
     # O-R-D (default), R-D-O, R-O-D
@@ -108,6 +108,10 @@ class InvSingleScenario:
         assert self.shortage_cost >= 0, "shortage_cost must be >= 0."
         assert self.order_cost_linear >= 0, "order_cost_linear must be >= 0."
         assert self.order_cost_fixed >= 0, "order_cost_fixed must be >= 0."
+        assert self.stockout_mode in {"backlog", "lost_sales"}, (
+            f"stockout_mode must be 'backlog' or 'lost_sales', got "
+            f"'{self.stockout_mode}'."
+        )
         assert isinstance(
             self.demand, DemandGenerator
         ), "demand must be a DemandGenerator."
@@ -148,7 +152,7 @@ class InvSingleScenarioSource:
     generator realizes itself on the meta branch at its own ``source_id``
     (``generator.realize``); concrete generators pass through. All other
     attribute access (family-level bounds ``demand.max()``, ``horizon``,
-    ``allow_backlog``, ``seed_salt``, ``scenario_name``, ...) delegates to the
+    ``stockout_mode``, ``seed_salt``, ``scenario_name``, ...) delegates to the
     template, so gym wrappers and eval scripts read a source and a concrete
     scenario uniformly (spec §5.2 family-level attributes).
     """
@@ -215,15 +219,15 @@ class InvSingleMixtureSampler:
         )
         # family agreement: components must pose comparable problems for one gym
         horizons = {self._family_of(c).horizon for _, c in self.components}
-        backlogs = {
-            self._family_of(c).allow_backlog for _, c in self.components
+        modes = {
+            self._family_of(c).stockout_mode for _, c in self.components
         }
         assert (
             len(horizons) == 1
         ), f"components disagree on horizon: {horizons}."
         assert (
-            len(backlogs) == 1
-        ), f"components disagree on allow_backlog: {backlogs}."
+            len(modes) == 1
+        ), f"components disagree on stockout_mode: {modes}."
 
     @staticmethod
     def _family_of(component: "ScenarioSource"):
@@ -235,8 +239,8 @@ class InvSingleMixtureSampler:
         return self._family_of(self.components[0][1]).horizon
 
     @property
-    def allow_backlog(self) -> bool:
-        return self._family_of(self.components[0][1]).allow_backlog
+    def stockout_mode(self) -> str:
+        return self._family_of(self.components[0][1]).stockout_mode
 
     @property
     def leadtime(self) -> LeadtimeGenerator:
@@ -284,7 +288,7 @@ scenario_simple = InvSingleScenario(
     shortage_cost=9.0,
     order_cost_linear=0.0,
     order_cost_fixed=0.0,
-    allow_backlog=True,
+    stockout_mode="backlog",
     event_sequence=("O", "R", "D"),
 )
 
@@ -298,56 +302,84 @@ scenario_simple_k = InvSingleScenario(
     shortage_cost=9.0,
     order_cost_linear=0.0,
     order_cost_fixed=20.0,
-    allow_backlog=True,
+    stockout_mode="backlog",
     event_sequence=("O", "R", "D"),
 )
 
 
+# Every named scenario is scenario_simple + overrides (one base, everything
+# layered on top — the twin of the IR's base ⊕ instances). The simple base is
+# a fixed Poisson(10) demand with deterministic lead time 0; variants swap in a
+# lead time, an event order, a stockout mode, or a latent demand family.
+
+# lead-time family: a positive deterministic lead time, then its two non-default
+# event-order variants. lt=2 (>= 1) makes R-O-D well-posed (an order placed
+# after R is received at the next R, next period).
+scenario_lt = dataclasses.replace(
+    scenario_simple,
+    scenario_name="lt",
+    desc="simple with deterministic lead time L=2 (O-R-D)",
+    leadtime=DeterministicLeadtime(value=2),
+)
+
+scenario_rdo = dataclasses.replace(
+    scenario_lt,
+    scenario_name="rdo",
+    desc="lt with R-D-O event sequence (receive, demand, then order)",
+    event_sequence=("R", "D", "O"),
+)
+
+scenario_rod = dataclasses.replace(
+    scenario_lt,
+    scenario_name="rod",
+    desc="lt with R-O-D event sequence (receive, then order, then demand)",
+    event_sequence=("R", "O", "D"),
+)
+
+scenario_lost_sales = dataclasses.replace(
+    scenario_simple,
+    scenario_name="lost_sales",
+    desc="simple with lost sales: unmet demand dropped, not backordered",
+    stockout_mode="lost_sales",
+)
+
+
 # ---------------------------------------------------------------------------
-# Scenario family: per-episode demand distribution (generator-owned latents)
+# Demand-latent family: scenario_simple with a per-episode latent demand
+# distribution and a stochastic lead time (generator-owned latents).
 #   - discrete: a 3-point support drawn from {8..12} with random weights
 #   - poisson : a Poisson rate drawn from a Gamma(alpha, beta) prior
-# All demand latents share the demand slot's stream (source_id 0): instances
+# Same economics as simple; twins of the IR's `discrete`/`poisson` instances.
+# The demand generators share the demand slot's stream (source_id 0): scenarios
 # sharing a latent recipe see identical draws per episode_seed (CRN).
 # ---------------------------------------------------------------------------
 
-_shared_costs = dict(
-    holding_cost=0.2,
-    shortage_cost=2.0,
-    order_cost_linear=1.0,
-)
-_shared_slt = dict(values=[2, 3, 4, 5], probabilities=[1, 3, 3, 1])
+_discrete_demand = LatentDiscreteDemand(support_size=3, support_low=8, support_high=12)
+_poisson_demand = LatentPoissonDemand(alpha=9.0, beta=0.3)
+_slt = DiscreteLeadtime(values=[2, 3, 4, 5], probabilities=[1, 3, 3, 1])
 
-source_discrete_stochastic = InvSingleScenarioSource(InvSingleScenario(
-    scenario_name="discrete_stochastic",
-    desc="3-point discrete demand, stochastic lead time L~{2,3,4,5} (mean ≈ 3.5)",
-    horizon=30,
-    demand=LatentDiscreteDemand(support_size=3, support_low=8, support_high=12),
-    leadtime=DiscreteLeadtime(**_shared_slt),
-    order_cost_fixed=25.0,
-    **_shared_costs,
+source_discrete = InvSingleScenarioSource(dataclasses.replace(
+    scenario_simple, scenario_name="discrete",
+    desc="3-point discrete demand, stochastic lead time L~{2,3,4,5}",
+    demand=_discrete_demand, leadtime=_slt,
 ))
 
-source_discrete_lost_sales = InvSingleScenarioSource(InvSingleScenario(
-    scenario_name="discrete_lost_sales",
-    desc="lost-sales variant: unmet demand dropped, not backordered",
-    horizon=30,
-    demand=LatentDiscreteDemand(support_size=3, support_low=8, support_high=12),
-    leadtime=DiscreteLeadtime(**_shared_slt),
-    order_cost_fixed=25.0,
-    allow_backlog=False,
-    **_shared_costs,
+source_poisson = InvSingleScenarioSource(dataclasses.replace(
+    scenario_simple, scenario_name="poisson",
+    desc="Poisson demand, hidden rate lambda ~ Gamma(9, 0.3) (mean 30); stochastic lead time",
+    demand=_poisson_demand, leadtime=_slt,
 ))
 
-source_poisson = InvSingleScenarioSource(InvSingleScenario(
-    scenario_name="poisson",
-    desc="Poisson demand, hidden rate lambda ~ Gamma(9, 0.3) (mean 30); "
-    "stochastic lead time L~{2,3,4,5}",
-    horizon=30,
-    demand=LatentPoissonDemand(alpha=9.0, beta=0.3),
-    leadtime=DiscreteLeadtime(**_shared_slt),
-    order_cost_fixed=25.0,
-    **_shared_costs,
+source_discrete_lost_sales = InvSingleScenarioSource(dataclasses.replace(
+    scenario_simple, scenario_name="discrete_lost_sales",
+    desc="discrete demand, stochastic lead time, lost sales",
+    demand=_discrete_demand, leadtime=_slt, stockout_mode="lost_sales",
+))
+
+source_poisson_lost_sales = InvSingleScenarioSource(dataclasses.replace(
+    scenario_simple, scenario_name="poisson_lost_sales",
+    desc="Poisson demand, stochastic lead time, lost sales",
+    demand=_poisson_demand, leadtime=_slt, stockout_mode="lost_sales",
 ))
 
 # cross-family mixture (spec §5.3): nature picks the demand regime per
@@ -357,8 +389,8 @@ source_poisson = InvSingleScenarioSource(InvSingleScenario(
 # Twin of the IR's `mix_demand` mixture (substream_id = N_SOURCE_IDS).
 source_mix_demand = InvSingleMixtureSampler(
     scenario_name="mix_demand",
-    desc="50/50 demand-regime pick per episode: discrete_stochastic vs poisson",
-    components=[(0.5, source_discrete_stochastic), (0.5, source_poisson)],
+    desc="50/50 demand-regime pick per episode: discrete vs poisson",
+    components=[(0.5, source_discrete), (0.5, source_poisson)],
     substream_id=N_SOURCE_IDS,
 )
 
@@ -416,9 +448,14 @@ SCENARIOS: dict[str, ScenarioSource] = {
     for s in [
         scenario_simple,
         scenario_simple_k,
-        source_discrete_stochastic,
-        source_discrete_lost_sales,
+        scenario_lt,
+        scenario_rdo,
+        scenario_rod,
+        scenario_lost_sales,
+        source_discrete,
         source_poisson,
+        source_discrete_lost_sales,
+        source_poisson_lost_sales,
         source_mix_demand,
     ]
 }
@@ -450,5 +487,5 @@ if __name__ == "__main__":
         print(
             f"{name:20s} [{kind}]  horizon={s.horizon}  "
             f"lt=[{s.leadtime.min()}..{s.leadtime.max()}]  "
-            f"{costs}  backlog={s.allow_backlog}"
+            f"{costs}  stockout={s.stockout_mode}"
         )

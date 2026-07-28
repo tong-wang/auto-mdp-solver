@@ -139,6 +139,11 @@ def sample_family(
         # single-parameter family; accept any single setting key (p, p_high, …)
         (p,) = [get(v) for v in settings.values()]
         return int(rng.random() < float(p))
+    if family == "deterministic":
+        # degenerate (Dirac): always the constant `value`, no rng draw —
+        # mirrors a fixed generator (e.g. DeterministicLeadtime.sample returns
+        # its value without consuming the stream)
+        return get(settings["value"])
     # sampler-recipe families (scenario samplers, spec §5.2): list-valued
     if family == "choice_without_replacement":
         lo = int(get(settings["low"]))

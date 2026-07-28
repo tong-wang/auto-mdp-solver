@@ -167,6 +167,7 @@ class Algo(str, Enum):
 
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _COMMENT = re.compile(r"#.*")
+_STRLIT = re.compile(r"'[^']*'|\"[^\"]*\"")   # single/double-quoted string literals
 # an assignment `=` or draw `~`, excluding ==, !=, <=, >=, +=, -=, *=, /=
 _ASSIGN = re.compile(r"(?<![=!<>+\-*/])=(?!=)|~")
 
@@ -186,7 +187,12 @@ _BUILTINS = frozenset({
 
 
 def _identifiers(expr: str) -> set[str]:
-    return set(_IDENT.findall(_COMMENT.sub("", expr)))
+    # Strip string literals before comments (so a `#` inside a string is not
+    # mistaken for a comment start), then extract identifiers. A string's
+    # CONTENTS are data, never names — this lets expressions compare a
+    # categorical constant against a literal, e.g. `mmfe_mode == 'additive'`,
+    # without the literal's characters being flagged as unresolved identifiers.
+    return set(_IDENT.findall(_COMMENT.sub("", _STRLIT.sub(" ", expr))))
 
 
 def _check_expr(expr: str, known: set[str], where: str) -> None:
@@ -243,7 +249,11 @@ class StateVariable(_Base):
     type: str
     observability: Observability = Observability.observable
     bounds: list[float] | None = None
-    length: int | None = None
+    # a literal length, or the name of a scenario constant (overridable per
+    # instance, like horizon.T) — e.g. a pipeline whose length tracks the
+    # selected lead time. Metadata only: the runtime vector comes from
+    # initial_state (`zeros(<len>)`), so nothing downstream must resolve it.
+    length: int | str | None = None
     element_bounds: list[float] | None = None
     categories: list[str] | None = None
     desc: str = ""
@@ -292,7 +302,11 @@ class ScenarioConstant(_Base):
     (other instances vary it); "" marks a structural constant."""
 
     name: str
-    value: float | int | bool | list
+    # a literal value merged into the expression namespace as-is (never
+    # re-evaluated as an expression). `str` supports categorical constants —
+    # a mode/link selector compared in a guard/update, e.g. `mmfe_mode`
+    # tested by `mmfe_mode == 'additive'`.
+    value: float | int | bool | str | list
     axis: str = ""
     desc: str = ""
 
@@ -342,7 +356,9 @@ class ScenarioMixture(_Base):
 class Scenario(_Base):
     constants: list[ScenarioConstant]
     # named alternative instances: overrides of constants by name -> _scenarios.py
-    instances: dict[str, dict[str, float | int | bool | list]] = Field(default_factory=dict)
+    # (slot-valued keys select a candidate; the rest override constant values,
+    # `str` included for categorical selectors like mmfe_mode='multiplicative')
+    instances: dict[str, dict[str, float | int | bool | str | list]] = Field(default_factory=dict)
     # world layer (spec §5.2, §5.3): samplers and mixtures; design-layer grids
     # live OUTSIDE this node (MdpIR.grids), mirroring the two-layer split
     samplers: list[ScenarioSampler] = Field(default_factory=list)
@@ -1151,7 +1167,7 @@ class ComponentResolution(_Base):
     samplers: list[ScenarioSampler] = Field(default_factory=list)
     # constants the component's resolution synthesizes beyond the loaded
     # IR's (its own candidates' latent placeholders), name -> value
-    constants: dict[str, float | int | bool | list] = Field(default_factory=dict)
+    constants: dict[str, float | int | bool | str | list] = Field(default_factory=dict)
 
 
 class MdpIR(_Base):

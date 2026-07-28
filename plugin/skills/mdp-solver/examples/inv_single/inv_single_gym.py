@@ -74,7 +74,7 @@ class InvSingleEnv(gym.Env):
 
         # scenario source: a fixed scenario, or a sampler resolved per episode
         # in reset(). Space building below reads only family-level attributes
-        # (horizon, leadtime, allow_backlog, demand bounds), which samplers
+        # (horizon, leadtime, stockout_mode, demand bounds), which samplers
         # expose under the same names as a concrete scenario.
         self.scenario = scenario
         self._scenario_ep: InvSingleScenario | None = None
@@ -132,7 +132,7 @@ class InvSingleEnv(gym.Env):
         )
 
     def _build_observation_space(self) -> gym.spaces.Box:
-        inv_low = 0.0 if not self.scenario.allow_backlog else -np.inf
+        inv_low = 0.0 if self.scenario.stockout_mode == "lost_sales" else -np.inf
 
         if self.observation_mode == "vec_d_ip":
             low  = [0.0, inv_low, 0.0]

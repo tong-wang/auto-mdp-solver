@@ -71,7 +71,7 @@
       {
         "name": "demand",
         "type": "float",
-        "desc": "realized demand at the horizon = mu + information (additive MMFE); 0 until the terminal period"
+        "desc": "realized demand at the horizon: mu + information (mmfe_mode='additive') or exp(mu + information) (mmfe_mode='multiplicative'); 0 until the terminal period"
       },
       {
         "name": "sales",
@@ -134,7 +134,7 @@
           "event": "R",
           "guard": "period == N",
           "updates": [
-            "demand = mu + information",
+            "demand = (mu + information) if mmfe_mode == 'additive' else exp(mu + information)",
             "sales = min(demand, inventory)"
           ]
         },
@@ -207,9 +207,9 @@
         },
         {
           "name": "mmfe_mode",
-          "value": true,
-          "axis": "",
-          "desc": "structural marker: this IR models the additive MMFE case (D = mu + I). The multiplicative case (D = exp(mu + I)) is a mode variant handled at the domain/grid layer, out of this IR's scope. Carried as a bool so the adapter reconstructs the scenario's mmfe_mode='additive'."
+          "value": "additive",
+          "axis": "variant",
+          "desc": "MMFE link selector (categorical): 'additive' -> D = mu + I, 'multiplicative' -> D = exp(mu + I). Selects the terminal link ONLY (the demand-signal family is the same normal-increment MMFE either way) — a constant-conditioned dynamics expression, not an uncertainty candidate. The base scenario is 'additive'; the 'mmmfe' instance selects 'multiplicative' (and, independently, widens stdev to 0.2). Read by the R-event demand update and passed straight through to FnvScenario.mmfe_mode by the adapter."
         },
         {
           "name": "signal_stdevs",
@@ -223,7 +223,18 @@
           "desc": "DERIVED, pre-resolved per-period signal volatility (length N+1): signal_stdevs[n] = sqrt(tau[n+1]-tau[n]) * stdev, tau = concat([0], linspace(0, t_last, N), [1]). Baked as exact float reprs so the interpreter's normal draw matches the domain's bit-for-bit; the domain re-derives it from stdev/t_last/N (see assumptions_log)."
         }
       ],
-      "instances": {}
+      "instances": {
+        "mmmfe": {
+          "mmfe_mode": "multiplicative",
+          "stdev": 0.2,
+          "signal_stdevs": [
+            0.0,
+            0.1341640786499874,
+            0.1341640786499874,
+            0.06324555320336758
+          ]
+        }
+      }
     },
     "initial_state": {
       "inventory": 0,
@@ -321,11 +332,11 @@
     }
   },
   "assumptions_log": [
-    "MMFE INFORMATION PROCESS: demand information arrives as a martingale (Heath & Jackson 1994 MMFE). The increment revealed at period n is mean-zero normal with std signal_stdevs[n]; cumulative information I[period] is observed before each order, and demand realizes at the horizon as D = mu + I (additive).",
+    "MMFE INFORMATION PROCESS: demand information arrives as a martingale (Heath & Jackson 1994 MMFE). The increment revealed at period n is mean-zero normal with std signal_stdevs[n]; cumulative information I[period] is observed before each order, and demand realizes at the horizon as D = mu + I (additive) or D = exp(mu + I) (multiplicative), selected by the categorical `mmfe_mode` constant.",
     "DERIVED SCHEDULE BAKED AS DATA: signal_stdevs[n] = sqrt(tau[n+1]-tau[n]) * stdev with tau = concat([0], linspace(0, t_last, N), [1]) is scenario construction (domain-side). The IR carries the *resolved* schedule as exact float reprs so the interpreter's normal draw matches the domain's FnvScenario.signal bit-for-bit; instances that change stdev/t_last/N would need a re-resolved schedule (FNV's parameter variety lives in the design grids, exercised by conformance, not this differential).",
     "1-INDEXED HORIZON: the N=3 ordering periods run on a 1-indexed clock (1..N); the interpreter terminates when the post-increment clock reaches horizon.T, so the terminal clock value is N+1 = 4 (horizon.T = 4, not N). The demand-signal seed key uses period directly (1..N), matching the domain's state.period, so trajectories diff bit-exactly under seed scheme v2 ([period, source_id, 1, episode_seed, seed_salt]).",
     "TERMINAL REALIZATION: demand and sales are realized under the `period == N` guard (event R), before the period increment; they are 0 on every non-terminal row. Objective total = -cost + revenue accumulates to profit = revenue - total_cost.",
-    "ADDITIVE MMFE ONLY: this IR models D = mu + I. The multiplicative case D = exp(mu + I) is a mode variant handled at the domain/grid layer (mmfe_mode), out of IR scope.",
-    "DESIGN GRIDS OUT OF IR SCOPE: the aMMFE / mMMFE parameter sweeps (stdev x t_last x lamb) are experiment-design grids (spec \u00a75.6), consumed only by training/eval drivers. The IR formalizes one concrete scenario; grid coverage is verified structurally by the conformance harness."
+    "MMFE LINK IS A CONSTANT SELECTION: additive (D = mu + I) and multiplicative (D = exp(mu + I)) use the same demand-signal family (the `signal` slot's generator is identical); they diverge only in the deterministic terminal link, applied once at the horizon in the R event. That link is not an uncertainty candidate but a constant-conditioned dynamics expression, keyed on the categorical `mmfe_mode` constant ('additive' | 'multiplicative'). The base scenario is 'additive'; the 'mmmfe' instance selects 'multiplicative' AND independently widens the signal (stdev 0.1 -> 0.2, with the derived signal_stdevs schedule re-baked to match) — showing both a mode selector and a derived-constant re-bake under one instance override. Both are differentially verified by the covering-set sweep (--all-instances): base = aMMFE, instance mmmfe = mMMFE.",
+    "DESIGN GRIDS (PARAMETER SWEEPS) OUT OF IR SCOPE: the mode is now in-IR (the `additive` selector), but the aMMFE / mMMFE parameter sweeps (stdev x t_last x lamb ranges) remain experiment-design grids (spec \u00a75.6), consumed only by training/eval drivers. The IR formalizes concrete scenarios (base + instances); grid coverage is verified structurally by the conformance harness."
   ]
 }

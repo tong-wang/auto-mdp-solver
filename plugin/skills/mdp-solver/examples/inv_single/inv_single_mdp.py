@@ -16,7 +16,7 @@ and the stochastic primitives (demand / lead-time generators) in
 inv_single_uncertainty.py.
 
 Notations:
-    - inventory: net inventory level (negative = backlog when allow_backlog=True)
+    - inventory: net inventory level (negative = backlog when stockout_mode='backlog')
     - pipeline: list where pipeline[k] = qty arriving at the k-th R event from now
     - period: 0-indexed current time step
 
@@ -152,7 +152,7 @@ def _apply_event_D(
     """D event: realize demand; update state.demand and state.lost_sales."""
     state.demand = scenario.demand.sample(state)
     state.inventory -= state.demand
-    if not scenario.allow_backlog:
+    if scenario.stockout_mode == "lost_sales":
         state.lost_sales = max(0, -state.inventory)
         state.inventory  = max(0, state.inventory)
 
@@ -227,7 +227,7 @@ def advance2(
     var_cost   = scenario.order_cost_linear * order
     ord_cost   = fix_cost + var_cost
     hold_cost  = scenario.holding_cost  * max(0,  state2.inventory)
-    if scenario.allow_backlog:
+    if scenario.stockout_mode == "backlog":
         short_cost = scenario.shortage_cost * max(0, -state2.inventory)
     else:
         short_cost = scenario.shortage_cost * state2.lost_sales
