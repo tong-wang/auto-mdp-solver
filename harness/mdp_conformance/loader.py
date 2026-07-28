@@ -2,9 +2,8 @@
 
 A domain is discovered by the spec's file-naming convention (§1): a directory
 containing ``{prefix}_gym.py``, ``{prefix}_mdp.py`` and ``{prefix}_scenarios.py``.
-The prefix is read from the files, not the folder name, because it may differ
-(e.g. the ``dynamic_pricing/`` example uses the ``vanryzin_pricing_`` prefix
-for its IR and adapter).
+The prefix is read from the files, not the folder name, because the two may
+differ (a folder may hold a domain whose IR/adapter use an unrelated prefix).
 
 ``load_domain`` imports the domain's modules (adding its directory to
 ``sys.path`` so the domain's bare-name sibling imports resolve) and returns a

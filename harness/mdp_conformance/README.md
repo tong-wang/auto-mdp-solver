@@ -65,7 +65,7 @@ Behavioral (constructs the gym and runs the simulator):
 - **Behavior is driven through the gym** so single-step (`advance`) and two-step
   (`advance1`/`advance2`) domains are handled uniformly.
 - **Discovery is file-based**, not folder-based: the domain prefix is read from
-  the files (e.g. the `dynamic_pricing/` example uses the `vanryzin_pricing_`
-  prefix for its IR and adapter).
+  the files, so a folder may hold a domain whose IR/adapter use an unrelated
+  prefix.
 - Checks are written against the normalized `DomainHandle`, never a concrete
   domain, so the harness generalizes to freshly generated domains.

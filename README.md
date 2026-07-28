@@ -96,7 +96,7 @@ E=plugin/skills/mdp-solver/examples
 python -m mdp_ir.interpreter_test
 python -m mdp_conformance $E/inv_single $E/dynamic_pricing
 python -m mdp_ir.differential $E/inv_single/inv_single_schema.json --episodes 40
-python -m mdp_ir.differential $E/dynamic_pricing/vanryzin_pricing_schema.json --episodes 40
+python -m mdp_ir.differential $E/dynamic_pricing/dynamic_pricing_schema.json --episodes 40
 ```
 
 All gates must pass: interpreter invariants green, conformance green (SKIPs only

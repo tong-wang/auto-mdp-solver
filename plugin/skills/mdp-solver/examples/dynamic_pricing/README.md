@@ -9,8 +9,8 @@ expected revenue. The continuous-time intensity-control problem is discretized
 into `horizon = 50` periods of length `dt = 0.02` (unit horizon).
 
 This domain was generated from the frozen MDP-IR
-`dynamic_pricing/vanryzin_pricing_schema.json` following the `mdp-solver` skill's Phase B;
-`python -m mdp_ir.differential dynamic_pricing/vanryzin_pricing_schema.json` replays
+`dynamic_pricing/dynamic_pricing_schema.json` following the `mdp-solver` skill's Phase B;
+`python -m mdp_ir.differential dynamic_pricing/dynamic_pricing_schema.json` replays
 the IR interpreter against this implementation (bit-exact on both instances).
 
 ## Layout (spec `MDP_PROJECT_SPEC.md`)

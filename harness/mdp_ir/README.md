@@ -13,7 +13,7 @@ every field; this package is its executable form.
 ## Validate
 
 ```bash
-python -m mdp_ir plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json plugin/skills/mdp-solver/examples/dynamic_pricing/vanryzin_pricing_schema.json
+python -m mdp_ir plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json plugin/skills/mdp-solver/examples/dynamic_pricing/dynamic_pricing_schema.json
 ```
 
 ```python
@@ -33,7 +33,7 @@ trajectories on shared `(instance, episode_seed, decisions)`.
 
 ```bash
 python -m mdp_ir.interpreter plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json --decision order=40
-python -m mdp_ir.interpreter plugin/skills/mdp-solver/examples/dynamic_pricing/vanryzin_pricing_schema.json \
+python -m mdp_ir.interpreter plugin/skills/mdp-solver/examples/dynamic_pricing/dynamic_pricing_schema.json \
     --decision price=1.0 --instance ample_stock --episode-seed 3
 python -m mdp_ir.interpreter_test        # invariant checks on both examples
 ```

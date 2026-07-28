@@ -33,11 +33,11 @@ def check(cond: bool, label: str) -> None:
 
 def main() -> None:
     inv = load_ir(ROOT / "examples" / "inv_single" / "inv_single_schema.json")
-    vrz = load_ir(ROOT / "examples" / "dynamic_pricing" / "vanryzin_pricing_schema.json")
+    dp = load_ir(ROOT / "examples" / "dynamic_pricing" / "dynamic_pricing_schema.json")
     fnv = load_ir(ROOT / "examples" / "fnv" / "fnv_schema.json")
 
     # -- determinism ---------------------------------------------------------
-    for ir, dec in ((inv, {"order": 40.0}), (vrz, {"price": 1.0}), (fnv, {"order": 0.5})):
+    for ir, dec in ((inv, {"order": 40.0}), (dp, {"price": 1.0}), (fnv, {"order": 0.5})):
         a = simulate(ir, episode_seed=7, decisions=dec)
         b = simulate(ir, episode_seed=7, decisions=dec)
         check(a.rows == b.rows, f"{ir.domain.name}: same seed -> identical trajectory")
@@ -62,18 +62,18 @@ def main() -> None:
         "inv_single: leadtime drawn only when the O guard fires",
     )
 
-    # vanryzin: arrivals at t depend on the CURRENT price only — histories
+    # dynamic_pricing: arrivals at t depend on the CURRENT price only — histories
     # that differ before t but agree at t see identical period-t arrivals
-    base = simulate(vrz, episode_seed=11, decisions={"price": 1.0})
+    base = simulate(dp, episode_seed=11, decisions={"price": 1.0})
     switch = simulate(
-        vrz, episode_seed=11,
+        dp, episode_seed=11,
         decisions=lambda ns: {"price": 5.0 if ns["period"] < 5 else 1.0},
     )
     n = min(len(base.rows), len(switch.rows))
     check(
         [r["arrivals"] for r in base.rows[5:n]]
         == [r["arrivals"] for r in switch.rows[5:n]],
-        "vanryzin: arrivals independent of the past price path",
+        "dynamic_pricing: arrivals independent of the past price path",
     )
 
     # -- episode-level realization ---------------------------------------------
@@ -92,11 +92,11 @@ def main() -> None:
         inv0, pipe0 = r["inventory"], sum(r["pipeline"])
     check(True, "inv_single: inventory + pipeline conservation over the episode")
 
-    v = simulate(vrz, episode_seed=9, decisions={"price": 1.0})
+    v = simulate(dp, episode_seed=9, decisions={"price": 1.0})
     check(
         all(r["units_sold"] == min(r["arrivals"], r["inventory"] + r["units_sold"]) for r in v.rows)
         and all(r["lost_demand"] == r["arrivals"] - r["units_sold"] for r in v.rows),
-        "vanryzin: sales capped by stock; lost_demand consistent",
+        "dynamic_pricing: sales capped by stock; lost_demand consistent",
     )
 
     # -- reward modes ------------------------------------------------------------
@@ -106,7 +106,7 @@ def main() -> None:
     )
     check(
         all(abs(r["reward"] - r["total"]) < 1e-9 for r in v.rows),
-        "vanryzin: reward == revenue.total (sense=maximize)",
+        "dynamic_pricing: reward == revenue.total (sense=maximize)",
     )
 
     # -- termination ---------------------------------------------------------------
@@ -114,14 +114,14 @@ def main() -> None:
         len(t.rows) == inv.mdp.horizon_T() and not t.terminated_early,
         "inv_single: runs exactly T periods",
     )
-    sellout = simulate(vrz, episode_seed=1, decisions={"price": 0.0})
+    sellout = simulate(dp, episode_seed=1, decisions={"price": 0.0})
     check(
         sellout.terminated_early and sellout.rows[-1]["inventory"] == 0,
-        "vanryzin: price=0 sells out -> early termination at inventory==0",
+        "dynamic_pricing: price=0 sells out -> early termination at inventory==0",
     )
     check(
         all(r["inventory"] >= 0 for r in sellout.rows),
-        "vanryzin: inventory never negative (no backlog)",
+        "dynamic_pricing: inventory never negative (no backlog)",
     )
 
     # -- scenario instances -----------------------------------------------------
@@ -130,10 +130,10 @@ def main() -> None:
         all(r["inventory"] >= 0 for r in ls.rows) and any(r["lost_sales"] > 0 for r in ls.rows),
         "inv_single[lost_sales]: no backlog, unmet demand recorded as lost_sales",
     )
-    ample = IrInterpreter(vrz, instance="ample_stock").run(9, decisions={"price": 1.0})
+    ample = IrInterpreter(dp, instance="ample_stock").run(9, decisions={"price": 1.0})
     check(
         sum(r["arrivals"] for r in ample.rows) < sum(r["arrivals"] for r in v.rows),
-        "vanryzin[ample_stock]: a=20 -> fewer arrivals than base a=100",
+        "dynamic_pricing[ample_stock]: a=20 -> fewer arrivals than base a=100",
     )
 
     # -- horizon as a scenario constant (T varies per instance) ------------------
@@ -495,10 +495,10 @@ def main() -> None:
           "appended candidate: resolves, derives bounds (uniform-latent mean 30), desugars its draw")
 
     # read-API is lazy: underivable attrs only error when referenced
-    vrz_raw = json.loads(
-        (ROOT / "examples" / "dynamic_pricing" / "vanryzin_pricing_schema.json").read_text())
-    check(layering.is_catalog(vrz_raw)
-          and load_ir(ROOT / "examples" / "dynamic_pricing" / "vanryzin_pricing_schema.json")
+    dp_raw = json.loads(
+        (ROOT / "examples" / "dynamic_pricing" / "dynamic_pricing_schema.json").read_text())
+    check(layering.is_catalog(dp_raw)
+          and load_ir(ROOT / "examples" / "dynamic_pricing" / "dynamic_pricing_schema.json")
           .selection == {"demand": "poisson"},
           "state-dependent settings are legal while nothing references the slot's read-API")
 

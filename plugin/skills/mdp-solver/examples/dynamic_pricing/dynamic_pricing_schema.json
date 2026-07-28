@@ -2,8 +2,8 @@
   "ir_version": "0.4",
   "seed_scheme": "v2",
   "domain": {
-    "name": "vanryzin_pricing",
-    "class_prefix": "VanRyzinPricing",
+    "name": "dynamic_pricing",
+    "class_prefix": "DynamicPricing",
     "one_line": "Dynamic pricing of a fixed initial stock over a finite horizon to maximize expected revenue; price-sensitive stochastic (Poisson) demand, no reorder, no backlog.",
     "problem_class": "revenue_management"
   },

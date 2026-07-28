@@ -7,7 +7,7 @@ folder here + add its row(s). Entries are frozen: no research edits.
 | example | origin | gates |
 |---|---|---|
 | `inv_single` | imported 2026-07-21 | `python -m mdp_conformance plugin/skills/mdp-solver/examples/inv_single` · `python -m mdp_ir plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json` · `python -m mdp_ir.differential plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json --all-instances --episodes 40` (covering set: base + `lost_sales` + `poisson` + `poisson_lost_sales` + the cross-family mixture `mix_demand` — both demand candidates and the per-episode re-selection path exercised) |
-| `dynamic_pricing` | imported 2026-07-21 | `python -m mdp_conformance plugin/skills/mdp-solver/examples/dynamic_pricing` · `python -m mdp_ir plugin/skills/mdp-solver/examples/dynamic_pricing/vanryzin_pricing_schema.json` · `python -m mdp_ir.differential plugin/skills/mdp-solver/examples/dynamic_pricing/vanryzin_pricing_schema.json --episodes 40` |
+| `dynamic_pricing` | imported 2026-07-21 | `python -m mdp_conformance plugin/skills/mdp-solver/examples/dynamic_pricing` · `python -m mdp_ir plugin/skills/mdp-solver/examples/dynamic_pricing/dynamic_pricing_schema.json` · `python -m mdp_ir.differential plugin/skills/mdp-solver/examples/dynamic_pricing/dynamic_pricing_schema.json --episodes 40` |
 | `fnv` | added 2026-07-23 | `python -m mdp_conformance plugin/skills/mdp-solver/examples/fnv` · `python -m mdp_ir plugin/skills/mdp-solver/examples/fnv/fnv_schema.json` · `python -m mdp_ir.differential plugin/skills/mdp-solver/examples/fnv/fnv_schema.json --episodes 40` |
 
 Each domain is ONE catalog schema (`{domain}_schema.json`, IR_LAYERING_PLAN

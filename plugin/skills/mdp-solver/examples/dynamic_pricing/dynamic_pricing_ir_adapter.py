@@ -1,6 +1,5 @@
-"""Differential adapter for the ``dynamic_pricing`` domain (IR name:
-``vanryzin_pricing``; portable-domain contract — lives with the domain,
-discovered from the IR file's directory by
+"""Differential adapter for the ``dynamic_pricing`` domain (portable-domain
+contract — lives with the domain, discovered from the IR file's directory by
 ``mdp_ir.differential.load_adapter_factory``)."""
 
 from __future__ import annotations
