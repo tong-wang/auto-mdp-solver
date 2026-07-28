@@ -69,8 +69,10 @@ they exist for the public GitHub repo.
   `.venv/bin/python` here, else any venv with this repo installed. Use
   `pip install -e "./harness[domain]"` — the bare install is deliberately
   torch-free (harness only), so the `[domain]` extra is what the
-  example/generated domain scripts need (SB3 + torch + tensorboard + pandas).
-  This repo ships no `.venv`; create one if absent.
+  example/generated domain scripts need (SB3 + torch + tensorboard + pandas,
+  plus pytest so a domain's own `{domain}_test.py` runs out of the box).
+  `[dev]` is pytest alone — the torch-free path for harness work, enough to
+  run the whole suite. This repo ships no `.venv`; create one if absent.
 - Never use `param`, `params`, or `param_*` as identifiers (spec rule).
 - **Plugin versioning:** the plugin is the versioned unit — individual SKILL.md /
   doc files carry no per-file version stamps. Any change under `plugin/` bumps
@@ -80,8 +82,8 @@ they exist for the public GitHub repo.
 
 ## Regression suite
 
-Install with the test extra (`pip install -e "./harness[dev]"`), then from the
-repo root:
+Needs pytest — either extra supplies it (`[dev]` is the torch-free one). From
+the repo root:
 
 ```bash
 pytest                    # everything: harness/tests + every domain's own tests

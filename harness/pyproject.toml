@@ -30,12 +30,16 @@ domain = [
     "stable-baselines3[extra]>=2.6,<3",
     "sb3_contrib>=2.6,<3",
     "pandas>=2.2,<3",
+    # a generated domain ships its own `{domain}_test.py` (spec §1.2), so the
+    # extra that makes a domain runnable must also make its gates runnable —
+    # `[domain]` alone is enough to build a case AND check it. Self-reference
+    # rather than a second pin, so the version lives in one place.
+    "auto-mdp-solver[dev]",
 ]
 
-# Test runtime = what the harness's own suite and each domain's
-# `{domain}_test.py` need. Separate from `domain` on purpose: a deployed
-# policy should not pull a test framework, but anyone running a case's gates
-# installs "auto-mdp-solver[domain,dev]" once.
+# Test runtime on its own — the torch-free path. `pytest harness/tests` and a
+# domain's `{domain}_test.py` both run under this alone (neither imports the
+# training stack), so harness work never pulls a ~2 GB dependency.
 dev = [
     "pytest>=8,<10",
 ]

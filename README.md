@@ -89,8 +89,9 @@ pip install -e ./harness
 
 ## Verify (regression suite)
 
-From the repo root, with the test extra installed
-(`pip install -e "./harness[dev]"`):
+From the repo root, with pytest installed — `[dev]` is pytest alone (torch-free
+and enough for the whole suite), `[domain]` includes it alongside the training
+stack:
 
 ```bash
 pytest        # harness engine tests + every example domain's own {domain}_test.py

@@ -75,9 +75,12 @@ Rules:
   holding the same unprefixed name silently share whichever loaded first. The
   `{domain}_*` prefix rule above is what prevents it.
 
-Requires the test extra: `pip install -e "./harness[dev]"` (or
-`auto-mdp-solver[domain,dev]`). It is deliberately separate from `[domain]` — a
-deployed policy should not pull a test framework.
+`[domain]` includes pytest, so the extra that makes a generated domain runnable
+also makes its gates runnable — `pip install "auto-mdp-solver[domain]"` is
+enough to build a case *and* check it. `[dev]` is pytest on its own, the
+torch-free path: `pytest` over `harness/tests` and over a domain's own
+`{domain}_test.py` both work under it, since neither imports the training
+stack.
 
 ### 1.1 Dependency chain
 
