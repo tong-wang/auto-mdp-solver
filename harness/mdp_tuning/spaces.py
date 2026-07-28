@@ -96,14 +96,25 @@ def sample_ppo(trial: optuna.Trial, tunable: set[str], *,
     put("n_epochs",      lambda: trial.suggest_categorical("n_epochs", N_EPOCHS_CHOICES))
     put("vf_coef",       lambda: trial.suggest_float("vf_coef", 0.2, 1.0))
     put("max_grad_norm", lambda: trial.suggest_categorical("max_grad_norm", MAX_GRAD_NORM_CHOICES))
+    # NOTE: use the dict's INSERTION order (size-ordered literal), NOT sorted().
+    # Optuna keys a categorical by its ordered choices tuple and refuses to
+    # resume a study whose recorded order differs — the first suggest raises
+    # "ValueError: CategoricalDistribution does not support dynamic value
+    # space" (nothing is corrupted; the study resumes fine once the original
+    # order is restored). sorted() reordered the choices to alphabetical
+    # 'deep'<'large'<'medium'<'small' and made every pre-existing study
+    # unresumable; insertion order matches what real studies record (the
+    # pre-2026-07-27 explicit lists). Corollary: never reorder/insert entries
+    # in these dicts once studies exist. The enqueue_trial warm start uses
+    # external values and is order-independent.
     put("net_arch",      lambda: NET_ARCH_CHOICES[
-        trial.suggest_categorical("net_arch", sorted(NET_ARCH_CHOICES))])
+        trial.suggest_categorical("net_arch", list(NET_ARCH_CHOICES))])
     # equivariant-head extractor knob — only exposed by equi-capable train scripts
     put("embed_dim",     lambda: trial.suggest_categorical("embed_dim", EMBED_DIM_CHOICES))
     # CNN-extractor knobs (spec §8.5) — only exposed by CNN-capable train scripts
     put("features_dim",  lambda: trial.suggest_categorical("features_dim", FEATURES_DIM_CHOICES))
     put("channels",      lambda: CHANNELS_CHOICES[
-        trial.suggest_categorical("channels", sorted(CHANNELS_CHOICES))])
+        trial.suggest_categorical("channels", list(CHANNELS_CHOICES))])  # insertion order, not sorted() — see net_arch note
 
     # batch_size last so it can respect the sampled n_steps and the domain's
     # structural n_envs (rollout buffer = n_steps × n_envs)
