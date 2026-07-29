@@ -9,6 +9,8 @@ source with a branch word — symbolically and numerically.
 
 from __future__ import annotations
 
+import pytest
+
 from mdp_ir.interpreter import _meta_seed_key, _numeric_seed_key
 from mdp_ir.schema import MdpIR, Realization, UncertaintyStage
 
@@ -52,6 +54,25 @@ def test_v2_keyed_realization_takes_no_period_slot():
     key = _numeric_seed_key(st, 4, period=7, episode_seed=9, seed_salt=13,
                             key_vals=[5], scheme="v2")
     assert key == [5, 4, 1, 9, 13]
+
+
+def test_v2_period_stage_key_exprs_refine_the_period_slot():
+    """K parallel exogenous streams, one read per period (e.g. per-arm bandit
+    payouts keyed on the chosen arm): the key values prepend, `period` stays."""
+    st = stage(key_exprs=["int(arm)"])
+    assert st.seed_key(4, False, scheme="v2") == [
+        "expr:int(arm)", "period", "source:4", "branch:1",
+        "episode_seed", "seed_salt"]
+    key = _numeric_seed_key(st, 4, period=7, episode_seed=9, seed_salt=13,
+                            key_vals=[2], scheme="v2")
+    assert key == [2, 7, 4, 1, 9, 13]
+
+
+def test_episode_stage_rejects_key_exprs():
+    """episode + key_exprs is exactly keyed realization — one spelling only."""
+    with pytest.raises(ValueError, match="keyed"):
+        UncertaintyStage(name="support", realization=Realization.episode,
+                         key_exprs=["1"])
 
 
 def test_v2_meta_key_is_substream_then_branch_zero():

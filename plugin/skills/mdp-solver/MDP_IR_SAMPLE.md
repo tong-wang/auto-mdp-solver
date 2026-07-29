@@ -552,10 +552,24 @@ keyed}` (plus `episode`, v1-only — see below):
 - `period` → drawn every period; key includes `period`.
 - `event` → decision-triggered (`trigger` required, e.g. leadtime at `O` when
   `order > 0`); period-keyed, event-gated.
+- `keyed` → `key_exprs` (int-valued exprs, required) **replace** the `period`
+  slot: a fixed per-episode latent table indexed by the key values, so the
+  same keys realize the same outcomes whenever drawn (batch semantics /
+  common random numbers).
 - `episode` → drawn once; key omits `period`. **v1 only**: under v2 an
   episode-level latent is a **scenario sampler** (world layer, §6.3 / the
   `paper_demand` sampler above), not an intrinsic stage — the schema rejects
   episode-realization stages in v2.
+
+`key_exprs` also composes with `period`/`event`, where the key values
+**refine** the period slot instead: one independent stream per key-tuple per
+period, of which the episode reads one. This is the shape for "K parallel
+exogenous streams, one observed per period" — e.g. a bandit's per-arm payout
+streams with `key_exprs: ["int(arm)"]`. The exprs are evaluated in the
+transition namespace at draw time and may read decisions: they select *which*
+pre-determined stream is revealed, never what it contains, so every stream
+stays fixed by the episode seed and decision-path independence holds.
+(`episode` + `key_exprs` is rejected — that combination is exactly `keyed`.)
 
 The key itself is **computed** by `UncertaintyStage.seed_key()` from
 `realization` + `entity_id_in_seed` + `stream_id`/`sub_stream` — there is no

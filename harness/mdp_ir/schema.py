@@ -133,6 +133,10 @@ class Realization(str, Enum):
                           # key values, so the same keys realize the same outcomes
                           # regardless of when they are drawn (batch semantics /
                           # common random numbers)
+    # `key_exprs` composes with `period`/`event` too: there the key values
+    # *refine* the period slot — one independent stream per key-tuple per
+    # period, of which the episode reads one (e.g. a bandit's per-arm payout
+    # streams, keyed on the chosen arm). On `keyed` they *replace* it.
 
 
 class Sense(str, Enum):
@@ -451,8 +455,15 @@ class UncertaintyStage(_Base):
     realization: Realization
     sub_stream: int | None = None
     trigger: str | None = None               # e.g. "O && order>0"; event stages only
-    key_exprs: list[str] | None = None       # keyed stages: int-valued exprs prepended
-                                             # to the seed key (extension 2026-07-13)
+    key_exprs: list[str] | None = None       # int-valued exprs prepended to the seed
+                                             # key (extension 2026-07-13). Required on
+                                             # keyed stages (replaces the period slot);
+                                             # optional on period/event stages, where
+                                             # they refine it: one independent stream
+                                             # per key-tuple per period. The exprs may
+                                             # read decisions — they select *which*
+                                             # exogenous stream is read, never what it
+                                             # contains, so path-independence holds.
 
     @model_validator(mode="after")
     def _check_trigger(self) -> "UncertaintyStage":
@@ -464,9 +475,10 @@ class UncertaintyStage(_Base):
             )
         if self.realization is Realization.keyed and not self.key_exprs:
             raise ValueError(f"stage {self.name!r}: keyed realization requires key_exprs")
-        if self.realization is not Realization.keyed and self.key_exprs:
+        if self.realization is Realization.episode and self.key_exprs:
             raise ValueError(
-                f"stage {self.name!r}: key_exprs only applies to keyed realization"
+                f"stage {self.name!r}: key_exprs on an episode-realization stage — "
+                "that is exactly keyed realization; declare the stage keyed"
             )
         return self
 

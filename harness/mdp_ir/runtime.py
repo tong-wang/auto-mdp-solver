@@ -299,9 +299,10 @@ class FamilyGenerator:
         for st in source.stages:
             if st.sub_stream is not None or st.key_exprs:
                 raise ValueError(
-                    f"source {source.name!r}: sub-streams / keyed stages need a "
-                    "hand-authored generator (FamilyGenerator keys the plain "
-                    "v2 intrinsic template)"
+                    f"source {source.name!r}: sub-streams / key_exprs stages are "
+                    "hand-authored by design — FamilyGenerator keys the plain v2 "
+                    "intrinsic template and has no namespace to evaluate key "
+                    "exprs in; write the domain generator directly"
                 )
         draw_specs = {d.name: d.distribution for d in sampler.draws} if sampler else {}
         where = f"FamilyGenerator[{source.name}]"

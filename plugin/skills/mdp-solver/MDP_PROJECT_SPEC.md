@@ -854,7 +854,11 @@ Why leaf-first and not the tree-reading root-first order:
   `intrinsic_key()` (§4.2), meta draws through `meta_key()` (§5.2), so the
   templates cannot drift and the conformance harness can flag strays.
 - This structure makes each draw uniquely identified and independent of the
-  decision path.
+  decision path. A domain whose IR keys a stage on a decision (`key_exprs` on
+  a period/event stage — K parallel exogenous streams, one read per period,
+  e.g. per-arm bandit payouts) still conforms: the extra leading key words
+  select *which* pre-determined stream is read, while every stream's contents
+  remain a function of `(episode_seed, seed_salt)` alone.
 
 **Scheme versioning.** The grammar above is **v2**, the canonical scheme for
 all new domains. Pre-existing research domains carry frozen historical keys

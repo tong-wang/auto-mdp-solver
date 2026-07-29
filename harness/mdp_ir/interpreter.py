@@ -164,8 +164,10 @@ def _numeric_seed_key(
     ``period`` below the source, then the branch word ``1`` — see
     ``UncertaintyStage.seed_key`` for both symbolic grammars. Interpreter draws
     are bit-identical to conforming domain code. ``key_vals`` are the evaluated
-    ``key_exprs`` of a keyed stage; keyed stages carry no period slot (the draw
-    is a fixed per-episode latent table indexed by the key values)."""
+    ``key_exprs`` of the stage: on a keyed stage they replace the period slot
+    (a fixed per-episode latent table indexed by the key values); on a
+    period/event stage they refine it — one independent stream per key-tuple
+    per period, of which the episode reads one."""
     key: list[int] = []
     if entity_id is not None:
         key.append(entity_id)

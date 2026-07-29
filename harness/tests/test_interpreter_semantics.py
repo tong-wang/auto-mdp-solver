@@ -247,6 +247,29 @@ def test_pull_thresholds_one_uniform_by_the_chosen_arm():
     assert all(a <= b for a, b in zip(lo_pay, hi_pay))
 
 
+def test_key_exprs_give_each_arm_its_own_period_stream():
+    """`period` + `key_exprs` (relaxation 2026-07-29): the key values refine
+    the period slot, so every (arm, period) is an independent stream — the
+    standard bandit model — while each arm's stream stays fixed by the
+    episode seed: the decision selects WHICH stream is read, never what it
+    contains."""
+    doc = bandit_doc()
+    doc["mdp"]["uncertainty_sources"][0]["stages"][0]["key_exprs"] = ["int(arm)"]
+    interp = IrInterpreter(build(doc))
+    by_arm = {a: [r["payout"] for r in interp.run(0, decisions={"arm": a}).rows]
+              for a in range(3)}
+    # path independence: pulling arm t%3 after a different history reveals
+    # exactly the values the constant-arm episodes saw at those periods
+    rows = interp.run(0, decisions=[{"arm": t % 3} for t in range(5)]).rows
+    assert [r["payout"] for r in rows] == [by_arm[t % 3][t] for t in range(5)]
+    # streams are decorrelated: without key_exprs one shared uniform makes the
+    # higher-mean arm dominate pointwise (the test above); per-arm streams
+    # break that comonotonicity (deterministic at this seed)
+    means = interp.constants["arm_means"]
+    lo, hi = means.index(min(means)), means.index(max(means))
+    assert any(a > b for a, b in zip(by_arm[lo], by_arm[hi]))
+
+
 def test_hidden_latent_vector_is_barred_from_observation():
     doc = bandit_doc()
     doc["gym"]["observation_modes"][0]["features"].append(
