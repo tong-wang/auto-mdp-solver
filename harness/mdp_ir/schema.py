@@ -645,6 +645,47 @@ class Invariant(_Base):
     desc: str = ""
 
 
+class MetricReduce(str, Enum):
+    last = "last"    # the final period's value (terminal read)
+    sum = "sum"      # accumulated over the episode
+    max = "max"      # episode maximum
+    min = "min"      # episode minimum
+
+
+class EvalMetric(_Base):
+    """A bystander metric: it describes, it never decides.
+
+    Gates, crowns, and model selection stay on the objective; eval metrics
+    are extra per-episode report columns (spec §9: emitted *after* the gate
+    metric so ``mdp_gates``'s first-``*_mean`` convention is undisturbed,
+    plus a column in the per-seed sidecar). Typical origin: an objective
+    candidate the human declined at Phase A but wants to keep seeing —
+    record that in ``source``.
+
+    ``expr`` is evaluated each period on the END_OF_PERIOD namespace (same
+    as objective components and invariants) and folded across the episode
+    by ``reduce``. Because a metric never feeds the policy, it is one of the
+    three legal homes for latent references on the eval path (the others:
+    terminal rewards and action-independent normalizers).
+
+    Declared at the IR root, deliberately OUTSIDE the mdp block: adding or
+    editing a metric never moves ``mdp_fingerprint()``, so metrics are
+    appendable after the Phase-A freeze without re-opening confirmation."""
+
+    name: str
+    expr: str
+    reduce: MetricReduce = MetricReduce.last
+    desc: str = ""
+    # provenance: e.g. "objective candidate 'max', declined at Phase A"
+    source: str = ""
+
+    @model_validator(mode="after")
+    def _check_name(self) -> "EvalMetric":
+        if not _IDENT.fullmatch(self.name):
+            raise ValueError(f"eval_metrics name {self.name!r} is not an identifier")
+        return self
+
+
 class ExprBuiltin(_Base):
     """A domain-owned expression builtin, declared by the IR that needs it.
 
@@ -1290,6 +1331,10 @@ class MdpIR(_Base):
     rl: RlBlock
     # design layer (spec §5.6): generality targets for generalist training
     grids: list[ScenarioGrid] = Field(default_factory=list)
+    # bystander report columns (EvalMetric): describe, never decide. Root
+    # level by design — outside the mdp block, so mdp_fingerprint is
+    # unaffected and metrics stay appendable after the Phase-A freeze
+    eval_metrics: list[EvalMetric] = Field(default_factory=list)
     assumptions_log: list[str] = Field(default_factory=list)
     # the slot->candidate selection this IR was resolved under (catalog ⊕
     # selection, IR_LAYERING_PLAN §10); None for a legacy resolved single
@@ -1300,6 +1345,28 @@ class MdpIR(_Base):
     # like `selection`; sits outside the mdp block, so mdp_fingerprint is
     # unaffected by the mechanism)
     mixture_resolutions: dict[str, dict[str, ComponentResolution]] | None = None
+
+    @model_validator(mode="after")
+    def _eval_metric_names(self) -> "MdpIR":
+        """Metric names must be unique and must not shadow anything the
+        END_OF_PERIOD namespace already carries (state, info, decisions,
+        constants, objective components, `total`, `reward`)."""
+        if not self.eval_metrics:
+            return self
+        seen: set[str] = set()
+        taken = self.mdp.value_names | {
+            c.name for c in self.mdp.objective.per_step_components
+        } | {"total", "reward", "t"}
+        for m in self.eval_metrics:
+            if m.name in seen:
+                raise ValueError(f"eval_metrics name {m.name!r} declared twice")
+            if m.name in taken:
+                raise ValueError(
+                    f"eval_metrics name {m.name!r} shadows an existing "
+                    f"namespace value (state/info/decision/constant/component)"
+                )
+            seen.add(m.name)
+        return self
 
     @model_validator(mode="after")
     def _seed_scheme_rules(self) -> "MdpIR":

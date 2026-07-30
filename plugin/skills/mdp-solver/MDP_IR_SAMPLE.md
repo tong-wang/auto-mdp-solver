@@ -621,6 +621,37 @@ fields: experiment axes, not judgment calls.
 
 ---
 
+## 5b. `eval_metrics` — bystander report columns (root level)
+
+When the Phase-A objective was chosen among competing candidates, the
+declined ones are usually still worth *seeing* — the interview offers to keep
+them as report-only metrics (SKILL.md Phase A step 1). Root-level, **outside
+the mdp block by design**: adding or editing a metric never moves
+`mdp_fingerprint()`, so metrics stay appendable after the freeze.
+
+```jsonc
+"eval_metrics": [
+  {
+    "name": "max_tile",                    // must not shadow any namespace value
+    "expr": "max(board)",                  // END_OF_PERIOD namespace, like components
+    "reduce": "last",                      // fold across the episode: last|sum|max|min
+    "desc": "largest tile at game over — the human-legible milestone",
+    "source": "objective candidate 'max', declined at Phase A"
+  }
+]
+```
+
+Semantics: evaluated each period on the same namespace as objective
+components and invariants, folded by `reduce`, reported on the interpreter's
+trajectory (`traj.metrics`) and as `{name}_mean` columns *after* the gate
+columns in every spec-§9 eval TSV (plus the per-seed sidecar). Bystander
+metrics **describe, never decide** — never gate, never crown, never drive
+model selection. Because they never feed the policy, they are also a legal
+home for latent references (a hindsight metric on a hidden regime is fine
+here and forbidden in a per-step reward).
+
+---
+
 ## 6. Scenario-redesign additions (seed scheme v2)
 
 Added 2026-07-22 (spec §5, §6.3). All fields are

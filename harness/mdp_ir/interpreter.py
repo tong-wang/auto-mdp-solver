@@ -50,6 +50,7 @@ from mdp_ir.schema import (
     DecisionType,
     InvariantScope,
     MdpIR,
+    MetricReduce,
     PeriodIndexing,
     Realization,
     StateRole,
@@ -216,6 +217,10 @@ class Trajectory:
     # declared-invariant failures, collected rather than raised: Phase A
     # reports them advisory, the Stage-1 gate fails on them
     violations: list[InvariantViolation] = field(default_factory=list)
+    # per-episode values of the IR's `eval_metrics` (bystander metrics:
+    # describe, never decide) — expr evaluated at END_OF_PERIOD each period,
+    # folded by the metric's `reduce`
+    metrics: dict[str, float] = field(default_factory=dict)
 
     def render(self, max_rows: int | None = None) -> str:
         if not self.rows:
@@ -245,6 +250,10 @@ class Trajectory:
             f"reward total = {self.total_reward:.2f}   "
             f"periods = {len(self.rows)}{tag}"
         )
+        if self.metrics:
+            out.append("eval metrics: " + "   ".join(
+                f"{k} = {v:.2f}" for k, v in self.metrics.items()
+            ))
         if self.violations:
             out.append(f"INVARIANT VIOLATIONS ({len(self.violations)}):")
             out += [f"  {v}" for v in self.violations[:10]]
@@ -539,6 +548,13 @@ class IrInterpreter:
         )
         early = ir.gym.termination.early_terminated_when
         comp_names = [c.name for c in ir.mdp.objective.per_step_components]
+        metric_acc: dict[str, float] = {}
+        _METRIC_FOLD = {
+            MetricReduce.last: lambda old, new: new,
+            MetricReduce.sum: lambda old, new: old + new,
+            MetricReduce.max: max,
+            MetricReduce.min: min,
+        }
 
         ns = self._base_ns()
         ns.update(self._initial_state(ns))
@@ -576,6 +592,15 @@ class IrInterpreter:
             ns.update(comps)
             reward = float(self._eval(self._reward_mode.expr, ns))
 
+            # bystander metrics: same END_OF_PERIOD read as components, folded
+            # across the episode; never touch reward/total (describe, not decide)
+            for m in ir.eval_metrics:
+                v = float(self._eval(m.expr, ns))
+                metric_acc[m.name] = (
+                    v if m.name not in metric_acc
+                    else _METRIC_FOLD[m.reduce](metric_acc[m.name], v)
+                )
+
             snap = lambda v: list(v) if isinstance(v, list) else v  # noqa: E731 — detach from live ns
             row: dict = {"t": period}
             row.update({d.name: snap(ns[d.name]) for d in ir.mdp.decisions})
@@ -609,6 +634,7 @@ class IrInterpreter:
             if int(ns[time_var]) >= self.T:
                 break
 
+        traj.metrics = metric_acc
         return traj
 
     def observe(self, mode_name: str, ns_row: dict) -> dict:

@@ -1455,6 +1455,32 @@ Where:
 A cost-minimizing domain would instead lead with `cost_total_mean` /
 `cost_total_var` and be gated with `--sense minimize`.
 
+**Bystander metrics (`eval_metrics`).** When the IR declares root-level
+`eval_metrics` (each: `name`, `expr` over the END_OF_PERIOD namespace,
+`reduce` ∈ last/sum/max/min across the episode), every eval script emits one
+`{name}_mean` column per metric **after** the objective columns — the
+first-`*_mean` contract above keeps gates and tuning blind to them by
+construction. Bystander metrics *describe, never decide*: they never gate,
+never crown a record, and never drive model selection. Typical origin: an
+objective candidate the human declined at Phase A but wants to keep seeing
+(recorded in the metric's `source`); since a metric never feeds the policy,
+it is also a legal home for latent references (§6.4's reward-latent rule
+does not apply to it).
+
+Two conventions travel with the columns:
+
+- **Per-seed sidecar.** Each eval also writes `<name>.seeds.tsv` — one row
+  per episode (`seed`, objective, then one column per metric). This is the
+  ground truth for any distribution question; since every eval shares one
+  seed list (§9.2), it also enables *paired* per-seed comparisons, which are
+  far sharper than comparing means.
+- **Distribution columns are derived, never curated.** If a metric's support
+  is enumerable from the scenario (e.g. a max-tile metric whose ceiling is
+  known from the board size), threshold/CDF columns are enumerated over the
+  full support — degenerate ends reading 1.000/0.000 are self-evident and
+  harmless; trimming is the presentation layer's job. Hand-picked threshold
+  dicts are per-domain judgment that goes stale as policies improve.
+
 ### 9.4 Incremental output
 
 Open the output file before the parameter grid loop and write + flush each row immediately. This makes results visible in real time without buffering:

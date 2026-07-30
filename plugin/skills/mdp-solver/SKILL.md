@@ -229,6 +229,14 @@ continuous decision?" gates the bounds/masking question.)
    (β, default 1.0) — part of the *objective*, never a solver knob: eval and
    every baseline score `Σ β^t r_t`, training γ defaults to β (spec §8.6),
    and rewards are never pre-discounted inside the env.
+   **When the objective was chosen among competing candidates**, follow up
+   in the next round: "the candidates you didn't pick — keep any as
+   report-only columns? They'll appear in every evaluation table but never
+   decide anything." A multi-select over the declined candidates; each kept
+   one becomes a root-level `eval_metrics` entry (`name`, `expr`, `reduce`,
+   with `source` recording the answer, e.g. "objective candidate, declined
+   at Phase A"). Bystander metrics describe, never decide (spec §9.3) — and
+   they sit outside the mdp block, so they never move the fingerprint.
 2. Interview the user; draft `{name}/{name}_schema.json` — the IR lives in the
    domain's own folder; create `{name}/` now if this is a new domain (v0.4 root:
    `{domain, mdp, gym, rl, assumptions_log}`; `MDP_IR_SAMPLE.md` is the
