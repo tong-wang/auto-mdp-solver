@@ -32,6 +32,8 @@ Each domain lives in its own subfolder `{domain}/`. Every file is prefixed with 
 | `{domain}_benchmark_{method}.py` | Non-RL benchmark solver — `{method}` names the method (`lp`, `dp`, `myopic`, `greedy`, `fluid`, or a domain-custom heuristic). One per method; a solver may expose several related policies via `--policy` (§9.8) |
 | `{domain}_benchmark_{method}_eval.py` | Evaluate a benchmark over the full parameter grid, same TSV format as the RL eval |
 | `{domain}_policy.py` | Deployable policy wrapper over the trained artifact (§12) |
+| `{domain}_policy_probe.py` | Policy-interpretation probe: action-surface sweep, structural-form fit + paired scoring of the fitted rule, agreement vs the reference, feature-sensitivity sweeps (§14). **Required when a reference policy or predicted structural class exists** |
+| `{domain}_plot_policy.py` | Policy-overlay figure — one plot spec, static + interactive renders (§14.3) |
 | `{domain}_test.py` | The domain's own tests: the engine laws + the differential parametrized over the covering set, plus the claims only this domain can state. **Required for a new domain**; see §1.2 |
 
 ### 1.2 `{domain}_test.py`
@@ -1696,3 +1698,121 @@ python -m mdp_gates \
   eval seeds, so its selection score is optimistic. Always re-evaluate the
   winning artifact with the full protocol (more seeds than the tuning eval)
   before reporting or gating it.
+
+---
+
+## 14. Policy Interpretation (`{domain}_policy_probe.py`, `{domain}_plot_policy.py`)
+
+*(Added 2026-07-30, distilled from the `inv_single` escalation campaign — the
+first end-to-end execution of the pipeline's interpret step.)*
+
+The pipeline's aim is a competitive policy **and** the structural insight
+classical DP analysis used to deliver: after `solve`, read the trained policy
+back into the domain's policy-structure vocabulary (a base-stock level,
+(s, S) thresholds, an index rule, protection levels, …). Interpretation sits
+between `solve` and `package`; its findings feed the README's
+empirical-findings section and the final report.
+
+Two forms, mirroring formalize's replicate/elicit duality:
+
+- **Anchored** — a reference policy or a predicted structural class exists
+  (an exact DP, a paper's policy, a classical form from theory). This
+  section specifies the anchored form; it is **required** whenever the
+  domain ships a DP/reference baseline.
+- **Open** — no reference and no predicted class. Only the generic pieces
+  below apply (the action-surface figure, the feature-sensitivity sweeps);
+  discovery-style probes are deliberately not yet spec'd — conventions
+  accumulate from live campaigns first.
+
+### 14.1 The probe (`{domain}_policy_probe.py`)
+
+Loads a trained artifact exactly as `{domain}_ppo_eval.py` does — §9.5
+VecNormalize injection, deterministic actions — so the probed policy is the
+same object the leaderboard scored. Core operation: sweep the policy over a
+declared state grid at a fixed period (remaining state coordinates held at
+declared values) and report, per probed period:
+
+- **the raw action surface** (state → action), dumped so figures and fits
+  never re-run the sweep;
+- **a structural-form statistic** for the predicted class, stated as a
+  number, never an impression — e.g. order-up-to flatness = the spread of
+  `state + action` over the acting region (0 = exact form); an (s, S) fit =
+  the largest still-acting state `s` plus the mean post-action level `S`
+  over acting states;
+- **recovered thresholds vs the reference's** (`S_hat` vs `S*`, per period),
+  when a reference exists;
+- **action agreement** with the reference over the probed grid;
+- **feature-sensitivity sweeps**: hold the state fixed, sweep one
+  observation feature over its range, report how far the action moves. This
+  is the *mechanism* check — does the net condition on this feature? — and
+  it is independent of any score verdict: a feature can be score-neutral at
+  the arm level while the net demonstrably latches onto it (and the reverse
+  claim, "the net ignores it", is only checkable here).
+
+Rules:
+
+- **Validate the probe where the answer is known.** First run it on an
+  instance whose optimal structure is known (the exactly-solvable rung, the
+  domain's DP case). A probe is trusted for discovery only after it has
+  recovered a known answer.
+- **The probe doubles as the training diagnostic.** Before escalating a
+  failing arm (§8.6 diagnosis), probe it: a reading like "flatness 25,
+  agreement 0.04" says the net is not conditioning on the state at all,
+  which localizes the failure to the interface (action encoding, observation
+  scaling) faster than any learning curve — and before any tuning money is
+  spent.
+
+### 14.2 Scoring the fitted rule
+
+The fitted structural rule is itself a policy. Evaluate it under the **same
+§9 protocol** as every other arm — same CRN seed block, same paired report —
+and publish the trio **reference / fitted rule / raw net** with paired Δs.
+
+Rationale: the fitted rule can **beat** the net it was read from — fitting a
+constant threshold deletes the raggedness (plateau oscillation) the net
+carries. Interpretation is therefore a candidate policy *improvement*, not
+merely an explanation; when the fitted rule wins, it is a shippable artifact
+(a few numbers per period replacing a network) and the README must say so.
+
+- **Pre-decide the verdict branches** before scoring:
+  1. clean recovery and |fitted − net| ≤ 1 % of the bar → the net
+     implements the predicted structure; claim it;
+  2. |fitted − net| > 1 % of the bar → the net is doing something else —
+     open a diagnosis before claiming the structural form;
+  3. no structure recovered → suspect the action interface first (encoding,
+     bounds, masking), not the theory.
+- **Full-horizon assertion.** A fitted rule scored from a partial period
+  sweep silently acts arbitrarily in the unprobed periods and returns a
+  plausible-looking garbage score (the observed failure mode inflated cost
+  13× without erroring). The scorer must assert the fit covers every period
+  of the horizon.
+- **Quote absolute gaps beside percentages.** Bars differ in magnitude
+  across instances, so the same absolute gap can read as +1 % on one rung
+  and +4 % on another. A cross-instance percentage comparison without the
+  absolute number misleads.
+
+### 14.3 The figure contract (`{domain}_plot_policy.py`)
+
+The plot is usually how the insight is delivered; it has its own contract:
+
+- **Canonical coordinates.** Plot the action surface in coordinates where
+  the predicted structure is a canonical shape — e.g. post-decision level
+  vs pre-decision state, where a base-stock policy is a flat line and an
+  (s, S) policy is a flat plateau at `S` joining the `y = x` no-act diagonal
+  at `s`. Deviations from the form then show as visible raggedness, not
+  arithmetic.
+- **Overlay, never side-by-side**: the reference policy underneath the
+  trained arms' per-seed traces, so agreement and deviation regions are
+  directly readable — including where the seeds disagree with each other
+  (threshold states are where they blow open).
+- **One plot spec, two renders**: a static figure (SVG/PNG) and an
+  interactive HTML written from the same spec in one run, so the two can
+  never drift.
+- **Where figures land** (the figure companion to §8.4):
+  - the **committed static** figure → `{domain}/figures/` — this is what
+    README / campaign markdown inlines;
+  - the **interactive HTML** → `results/{scenario}/figures/` — gitignored,
+    beside the runs it derives from. The location split *is* the gitignore
+    boundary; no extra ignore rules are needed.
+  - Committed markdown cites the **regenerating command**, never a link to
+    the interactive file — that file does not exist in a fresh clone.

@@ -34,9 +34,10 @@ levels, *(s, S)* thresholds, monotone rules). We want both: a competitive policy
 and, where a classical policy form exists, testing whether it rediscovers one.
 A solution to understand, not only to deploy.
 
-The whole semi-automatic pipeline — **formalize → build → solve → package** — is
-encapsulated as Claude Code skills (and, increasingly, deployable agents), so a
-competitive policy can be reached from a plain-English problem description.
+The whole semi-automatic pipeline — **formalize → build → solve → interpret →
+package** — is encapsulated as Claude Code skills (and, increasingly,
+deployable agents), so a competitive policy can be reached from a
+plain-English problem description.
 
 **Status: pre-release.** The PyPI name (`auto-mdp-solver`) currently holds a
 placeholder; the first functional release is being prepared from this repo.
@@ -52,8 +53,9 @@ RL policy from a verbal description of a dynamic decision-making problem**:
    simulator domain (`_uncertainty` / `_scenarios` / `_mdp` / `_gym` layers),
    a bit-exact differential check against the IR interpreter, benchmarks
    (random / myopic / exact DP where tractable), PPO training and Optuna
-   tuning, and a `{domain}_policy.py` deployment wrapper — with an executable
-   gate between every stage.
+   tuning, a policy-structure readback (the learned rule recovered, fitted,
+   and scored paired against the reference), and a `{domain}_policy.py`
+   deployment wrapper — with an executable gate between every stage.
 
 ## Components
 

@@ -54,15 +54,16 @@ interview). It does not retire the skill.
 ## 4. The skill split — granular operations
 
 Split the monolithic `mdp-solver` skill at **durable-artifact seams** (the gate
-boundaries), not per-stage. Four operations plus a conductor:
+boundaries), not per-stage. Five operations plus a conductor (`interpret`
+graduated from deferred on 2026-07-30 — see its design bullet below):
 
 | op | consumes | produces | re-checks at entry |
 |---|---|---|---|
 | `formalize` (Phase A) | verbal / paper | frozen IR + restatement | — (source) |
 | `build` (Stages 1–2) | frozen IR | domain code + gym | IR validates, `unconfirmed()` empty, fingerprint |
 | `solve` (Stages 3–4) | IR + domain + run-plan (incl. escalation budget) | leaderboard row + trained artifact | conformance 11/11, differential MATCH |
-| `interpret` *(deferred)* | winning artifact + IR (+ known policy) | policy-behavior findings → feed `package` | winning artifact exists |
-| `package` (Stage 5) | IR + winning artifact | `policy.py` + README | eval TSVs exist, ordering sane |
+| `interpret` (Stage 5; anchored form spec §14) | winning artifact + IR (+ reference policy) | structure readback (probe stats, fitted-rule score, overlay figure) → feed `package` | winning artifact exists |
+| `package` (Stage 6) | IR + winning artifact | `policy.py` + README | eval TSVs exist, ordering sane |
 | `auto` (= `mdp-solver`) | verbal / paper | everything | conducts the above with gates between |
 
 Rules:
@@ -165,7 +166,18 @@ Rules:
     audit defects (episode-seed provenance, VecNormalize gamma, clip-dest
     mismatch), and the routing of each piece to spec/schema/harness are pinned
     in `SOLVE_LEVELS_PLAN.md` (repo root).
-- **`interpret` — deferred, underspecified (to-dos to accumulate from examples).** After
+- **`interpret` — GRADUATED 2026-07-30: the anchored form is spec'd as
+  `MDP_PROJECT_SPEC.md` §14 and a pipeline stage (SKILL Stage 5 — interpret;
+  package renumbered to Stage 6).** Distilled from the `inv_single` escalation
+  campaign (rl_test), the first end-to-end execution: probe → (s,S) fit →
+  fitted rule scored under the paired CRN protocol — where the fitted rule
+  *beat* the net it was read from, upgrading interpret from explanation to a
+  candidate policy improvement. Candidate to-dos (1)–(4) below all landed in
+  §14 (behavioural comparison = agreement + the scored trio; viz = §14.3;
+  feature attribution = sensitivity sweeps; deviation analysis = the
+  pre-decided verdict branches). *Open discovery* remains unspec'd —
+  conventions still accumulate from live campaigns. *Original design note
+  (pre-graduation) follows.* After
   `solve`, make sense of the winning policy: recover its *structure*, not just its score.
   Sits between `solve` and `package` (findings feed the package README's empirical-findings
   section): pipeline becomes `formalize → build → solve → interpret → package`. Precedent:
@@ -180,8 +192,18 @@ Rules:
   formalize, judgment-heavy → likely human-in-loop; the observable half (plots, action
   comparisons) is mechanical. **Note:** if this solidifies, the public pipeline string in
   `README.md` and `CLAUDE.md` (currently `formalize → build → solve → package`) becomes five
-  verbs — not updated yet, since `interpret` is deferred.
-- **Visualization (cross-cutting, deferred with `interpret`).** Two folds, both carrying
+  verbs — not updated yet, since `interpret` is deferred. *— resolved 2026-07-30:
+  `README.md` now carries the five verbs; `CLAUDE.md` never had the four-verb
+  string (its north star already named the interpret leg), so no edit was owed
+  there.*
+- **Visualization (cross-cutting, deferred with `interpret`; fold 1 landed
+  2026-07-30 with `interpret`'s graduation).** Fold 1's open question — where
+  figures actually land — is now stated in spec §14.3: one plot spec, two
+  renders; the committed static figure in `{domain}/figures/`, the interactive
+  HTML gitignored in `results/{scenario}/figures/` beside the runs it derives
+  from, and committed markdown citing the regenerating command, never the
+  interactive file. Fold 2 (results-figure reproduction) stays deferred with
+  `replicate`. *Original design note follows.* Two folds, both carrying
   the anchored/open axis: (1) **policy-structure viz** — render the learned policy's
   actions over the state space to expose thresholds/monotonicity/kinks; this is how
   `interpret`'s insight is actually delivered (a plot is usually the insight). *Anchored* =

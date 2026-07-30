@@ -4,8 +4,8 @@ description: >
   Build a trained, deployable RL policy from a verbal description of a dynamic
   decision-making problem: formalize it into an MDP-IR, generate a
   spec-conformant domain (_uncertainty/_scenarios/_mdp/_gym), baselines,
-  PPO training, tuning, and a {domain}_policy.py wrapper — with executable
-  gates between stages. Use when the user describes a sequential decision
+  PPO training, tuning, a policy-structure readback, and a
+  {domain}_policy.py wrapper — with executable gates between stages. Use when the user describes a sequential decision
   problem to model ("build a domain for...", "train a policy for...",
   "formalize this problem"), names an existing IR ({name}/{name}_schema.json in a
   domain folder), or asks to run "the MDP pipeline" / "Phase A" / "Phase B".
@@ -383,7 +383,7 @@ choice, not a Phase-A relic to rubber-stamp:
   and evaluated on the single target. The strategy is not static — the
   human may change it here; honor it.
 
-Carry the confirmed run plan as the contract for Stages 3–5: the selected
+Carry the confirmed run plan as the contract for Stages 3–6: the selected
 scenario name(s) drive the baseline, training, and eval commands, and the
 leaderboard reports only what this pass actually ran. Returning for another
 target later re-enters at Stage 0, not Stage 1.
@@ -566,14 +566,43 @@ the CWD.
   tuned at a small budget does not necessarily improve when retrained
   longer; prefer shipping the tuned artifact itself.
 
-### Stage 5 — package
+### Stage 5 — interpret
+
+What did the policy learn? Read the winning artifact back into the domain's
+policy-structure vocabulary per spec §14. **Anchored** whenever a reference
+policy or a predicted structural class exists — any domain with a DP
+baseline qualifies. With neither, only the generic pieces apply (the
+action-surface figure, the feature-sensitivity sweeps); record what they
+show and move on.
+
+- `{domain}_policy_probe.py` per spec §14.1: the action surface over a
+  state grid, the structural-form statistic, recovered thresholds + action
+  agreement vs the reference, feature-sensitivity sweeps. Validate the
+  probe first on an instance whose optimal structure is known before
+  trusting it where none is.
+- Fit the predicted structural rule and **score it under the Stage-4 eval
+  protocol** (same seeds, paired): report reference / fitted rule / net,
+  with the verdict branches pre-decided per spec §14.2. The fitted rule
+  beating its own net is a real outcome — when it happens, the fitted rule
+  is a shippable artifact; ship it and say so.
+- `{domain}_plot_policy.py` per spec §14.3: the overlay figure in canonical
+  coordinates; committed static render in `{domain}/figures/`, interactive
+  HTML beside the runs in `results/{scenario}/figures/` (gitignored);
+  committed markdown cites the regenerating command.
+
+No hard gate: a failed structural recovery fires spec §14.2's diagnosis
+branches but does not block packaging — the finding (including "it is not
+doing the classical thing") goes in the README's empirical findings.
+
+### Stage 6 — package
 
 - `{domain}_policy.py` per spec §12 (model + vecnorm stats + action
   transform behind `act(obs)`; documented observation contract; `__main__`
   smoke test against the raw `_mdp` loop — run it).
 - Domain `README.md`: layout table, usage commands, results table with all
   baselines and the shipped model, and any empirical findings (which modes
-  won/lost and why).
+  won/lost and why, plus the Stage-5 readback: the recovered rule, its
+  agreement with the reference, and the fitted rule's paired score).
 - Add the domain to `CLAUDE.md`'s Core Domains list.
 - Trained artifacts (`results/`) are gitignored; the README's commands must
   reproduce them.
@@ -583,7 +612,10 @@ the CWD.
 Lead with the leaderboard (DP / PPO / heuristics / random, same seeds),
 the % of optimal reached, the paths to the shipped model and policy file,
 and anything the user must decide (failed axes, envelope compromises,
-assumptions added to the IR's `assumptions_log`). **Respect the Phase-A mode
+assumptions added to the IR's `assumptions_log`). When Stage 5 ran anchored,
+the leaderboard carries the fitted rule as its own row, and the report states
+the structure readback in one line (recovered rule, agreement, fitted vs net
+— absolute gap beside the percentage). **Respect the Phase-A mode
 stance:** put scenario modes on one head-to-head leaderboard only when they
 were declared comparable; when they are independent branches (e.g. additive
 vs multiplicative MMFE), report each as its own leaderboard — a cross-branch
