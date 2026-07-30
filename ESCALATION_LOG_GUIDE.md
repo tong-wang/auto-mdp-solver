@@ -5,7 +5,15 @@ escalation layers) and §14 (gym gates). Status: to be validated on a live
 experimental project, then revised from feedback and eventually promoted into the
 plugin skill as the trace convention feeding the escalation playbook. Distilled from
 what worked — and what stayed invisible — in `topk_id` (EQUINET.md, BAYES11.md).
-2026-07-29: §IR-CHANGELOG added (formalization reversals), seeded on `mab` P9.*
+2026-07-29: §IR-CHANGELOG added (formalization reversals), seeded on `mab` P9.
+2026-07-29 (same day, second revision): first live trial ran — `game2048` in
+rl_test. §3 reframed around the priority-ordered design tree with a frontier
+(operator direction), id spaces fixed (§2), interview-reversal tripwire added
+(§5), imported-verdict rule added (§7), template updated (§11).
+2026-07-29 (third revision): diagnosis entries added to §6 — typed checkpoint
+records in the ledger timeline (reads / observed / missing / plan, arbiters
+with pre-decided branches); the frontier cites its governing diagnosis.
+Proposed from the second live trial, `mab`.*
 
 ## 1. Why this format
 
@@ -42,36 +50,159 @@ ESCALATION.md
 └── §LEDGER           append-only, hypothesis → runs → verdict
 ```
 
+Cross-references use **four id spaces, one prefix each** — `F{n}` is reserved
+by §IR-CHANGELOG (the first trial's frontier briefly squatted on F and
+collided with it):
+
+| prefix | space | lifecycle |
+|---|---|---|
+| `P{n}` | selection-split priority at a tree node (§3.1) | standing; revised by tree surgery |
+| `S{n}` | coverage-split schedule at a tree node (§3.1) | standing; children postponable, never prunable |
+| `A{n}` | frontier agenda item (§3.5) | consumed → becomes a ledger entry |
+| `#E{n}` | ledger entry | append-only |
+| `F{n}` | IR-changelog reversal | append-only, sparse |
+
 ## 3. §MAP — the current frame
 
-Four blocks. The map is **not one diagram** — it is a small set of typed views:
+The map's spine is **one priority-ordered design tree**: nodes are design
+choices, and children are designed *in the context of* their parent's choice.
+(Revised after the first live trial, `game2048`: the earlier decomposition +
+grids pair kept generating cross-product cells that were structurally void or
+meaningless, while the real structure — each level conditioned on the one
+above — was a tree all along.)
 
-**3.1 Decomposition (mermaid tree).** The gap to the current bar, cut into named
-buckets. Attach a **bound** wherever a control experiment has produced one — a
-bucket with a number is worth ten without (topk_id's localization control bounded
-node-pooling at ≤0.105 OC of a ~2.5× total gap, redirecting weeks of effort).
-Status-mark every node: `✓` validated `✗` refuted `⏸` parked `▶` in flight.
+**3.1 The design tree.**
 
-**3.2 Design grids (markdown tables).** The orthogonal axes (obs mode × head × HP ×
-scenario…), one table per meaningful slice; **cells hold run IDs + headline metric +
-mark** (`#38 −0.3625 ✗`). You already draw these as "results tables" — recognize
-them as map views and keep them current. Tables diff cleanly and generalize by
-slicing; do not force grids into the tree.
+- **Levels order by conditioning strength, not expected gain**: a choice sits
+  above another when changing it would invalidate the work below it
+  (game2048: target scale ≻ action interface ≻ obs transform ≻ obs encoding ≻
+  arch ≻ HP — the *biggest* lever, obs encoding, sits mid-tree; HP is at the
+  bottom because nothing conditions on it). The root may split on **targets**
+  (3×3 → 4×4); the standard eval protocol and the reference bar are then
+  **per-target-node annotations**, not campaign globals.
+- **Default level order** (override per domain by conditioning analysis):
+  S-splits (targets / scenario families) ≻ action interface ≻ observation ≻
+  architecture / extractor ≻ training signal (reward shaping, HP) — matching
+  the spec-§8.6 escalation layers `L2(gym)` / `L2(arch)` / `L2(hp)`. The
+  order encodes **conditioning, not importance**: HP is last because nothing
+  conditions on it, not because it moves results least — it is a *covariate*
+  of every comparison above it, not a parent (topk_id: "plain HP is bigger
+  than either research issue"), which is what rule 9 exists for.
+- **Type every split: coverage (AND) vs selection (OR).** A **coverage
+  split** — `S{n}` edges — partitions the *problem*: target scales
+  (3×3 → 4×4), scenario families (Gaussian vs Bernoulli arms). Every child
+  must eventually carry a reasonable solution, so S-children are
+  **postponable, never prunable** (`✗`/`∅` are illegal on S-edges; an
+  S-child is ✓ covered, ▶ active, or ⏸ postponed with a *scheduled return*),
+  and — for partitions — each owns its **own protocol, bar and leaderboard**
+  (extension-chain links instead share the target's protocol: the cross-link
+  comparison measures the *price of generality*, and losing it never prunes
+  a link). A **selection
+  split** — `P{n}` edges — compares *solutions*: modeling and design
+  alternatives (counts vs bayes, grid vs onehot). The point is to crown one
+  child and prune the rest; siblings are rows on **one shared leaderboard**.
+  The crown forks at S-splits (one ★ path per covered child) and passes
+  through exactly one child at P-splits. An S-split can sometimes be
+  **collapsed by a generalist** — one policy covering all cells — where the
+  axis permits (game2048: `prob_4` could, `grid_size` cannot: the obs shape
+  changes); a P-split has no analogue. This typing is the Phase-A **mode
+  stance** carried onto the tree: scenario modes declared "independent
+  branches, reported separately" arrive as S-splits, "competing designs to
+  compare head-to-head" as P-splits. **The litmus is redundancy at
+  crowning**: P-siblings become redundant the moment one is crowned; an
+  S-sibling never does (game2048: crowning the masked interface did not make
+  the free interface redundant — its value is less machinery, and that
+  survives the win).
+- **S-splits carry two annotations — shape and obligation — not a third edge
+  type.** Shape: a **partition** (3×3 vs 4×4, Gaussian vs Bernoulli) has
+  disjoint cells, each covered on its own; an **extension chain** (game2048:
+  masked ⊂ free — the free interface drops the mask oracle; topk_id: bayes
+  (0,0) ⊂ (0,1) ⊂ (1,1) — progressively less dependency on the Bayes
+  machinery) has *nested contracts ordered by generality*: solving a more
+  general link subsumes the restricted ones, so the chain is climbed from
+  the restricted end, levers transferring up as imported priors (§3.2).
+  Obligation: `must` (default — blocks case close) or `stretch`
+  (nice-to-have generality: may stay open at close, recorded as an *open
+  extension* — but never ✗ refuted, since crowning a restricted sibling
+  cannot make a more general contract redundant).
+- **Siblings carry ranks** — local and standing: P1 > P2 > … orders
+  competitors at a selection split; S1 > S2 > … *schedules coverage* at a
+  coverage split. Both are priorities and both revise via REPRIORITIZED
+  lines, but they license different things: a low-P child may never run at
+  all (a crowned winner prunes it); a low-S child runs *later*, never
+  *never*. S-order is set by transfer (cover the child that teaches the most
+  about the others first), cost, claim importance, and prerequisites — and
+  pairs with a per-child *return condition* saying when the next S-child
+  activates.
+- **Marks**: `✓` validated · `✗` closed · `⏸` pruned/parked (always with a
+  reason + tripwire) · `∅` structurally void (*cannot* exist — say why) · `▶`
+  in flight · `★` the crowned path.
+- **Bounds attach to nodes.** A branch with a validated delta is worth ten
+  without (topk_id's localization control bounded node-pooling at ≤0.105 OC;
+  game2048's ladder: +29% config, +46% 2-D structure, +64% value one-hot —
+  each rung isolated by its own control).
+- **The tree is dynamic.** REPARENTED / SPLIT / REPRIORITIZED / SHATTERED are
+  expected moves, each costing one changelog line (§4). A campaign that
+  passes its bar re-roots the decomposition on *headroom above current best*;
+  the bar itself moves to the off-tree register as a calibration item.
 
-**3.3 Current best bundle.** The validated-positive package, stated **as a bundle
-with its pairing constraints**. Levers validated together stay together (topk_id:
-γ=1 × nopass — "neither validated alone"). Adopt/reject bundles, not components.
+**3.2 Expansion disciplines** — what keeps the tree from losing the grid's one
+virtue, mechanical generation of the cell nobody thought of:
 
-**3.4 Open questions, ranked; parked items with guardrails.** What the next budget
-should attack and in what order; what is deliberately not being pursued and the
-tripwire that would un-park it (topk_id issue (3): parked, with the "never route
-MAP μ,σ into the forward path" guardrail).
+- **Prune visibly.** A branch declined by judgment appears anyway: one line,
+  reason, tripwire (`⏸`). Never silently omitted, and never confused with `∅`
+  impossible.
+- **Controls are siblings.** A crowned branch's children must include the
+  controls that decompose its win (game2048: onehot's +64% stayed confounded
+  with the CNN until an MLP-on-onehot sibling existed).
+- **Imported levers are labeled.** A lever pre-validated in a prior campaign
+  enters as a high-prior branch with its provenance attached; it is either
+  re-validated in-campaign or its claims ship with the label (game2048:
+  `onehot` re-validated at the standard protocol; `log2` labeled "operator
+  recollection, no surviving A/B" with a parked re-validation control).
+
+**3.3 Slice views (grids, on demand).** Render a 2-axis table only when a
+genuine cross-branch interaction is under test; cells hold run IDs + headline
+metric + mark (`#38 −0.3625 ✗`). Generated from the tree when the question
+arises, never maintained as a second source of truth (topk_id's C 2×2 was
+exactly this — a slice, not the map).
+
+**3.4 Current best bundle = the crowned path.** The `★` path root→leaf, with
+pairing constraints on jointly-validated edges (topk_id: γ=1 × nopass —
+"neither validated alone"; game2048: the shaping penalty exists only under
+the free interface, so adopting one commits to the other). Adopt/reject
+paths, not components.
+
+**3.5 The frontier — the execution plan.** A priority-ordered queue of `A{n}`
+**agenda items**: each is an action *at* a tree node (act on the incumbent /
+expand a new child) or an **off-tree obligation** (bar calibration, protocol
+bookkeeping — budget-consuming but not solution-touching; keep an off-tree
+register beside the queue). Semantics:
+
+- P is local and standing; A is global and dated. Default order = follow the
+  P's down the crowned path.
+- Legitimate divergences, each explicit: off-tree items carry no P; P's never
+  order actions under *different* parents (the queue resolves those, crowned
+  path first); overrides are allowed at the cost of a REPRIORITIZED line.
+- `⏸`/`∅` nodes emit no agenda items until their tripwire fires (topk_id
+  issue (3): parked with the "never route MAP μ,σ into the forward path"
+  guardrail).
+- A completed A becomes a ledger entry; the P's persist. The frontier
+  subsumes "open questions, ranked" — parked items live as `⏸` nodes.
+- **The frontier cites the diagnosis that last reordered it** (§6): "frontier
+  as of #E{n}" — every queue order traces to a dated reasoning record.
+- **Split types bind the queue**: an agenda item that crowns a P-child
+  licenses pruning its siblings; completing an S-child never reduces its
+  siblings' obligation — postponed S-children are coverage *debt*, and a
+  campaign does not close while one is outstanding (a deliberate scope cut
+  is a re-framing of the root, changelog line owed, not a prune).
 
 ## 4. §FRAME-CHANGELOG — the evolution that matters
 
 Append **one line per re-framing** — not per routine update. Date + change +
 forcing evidence (run IDs). Vocabulary: *introduced / split / merged / narrowed /
-refuted / parked / un-parked*. Example lines (topk_id, reconstructed):
+refuted / parked / un-parked*, plus the tree-surgery verbs *reparented /
+reprioritized / retyped / shattered* (§3.1). Example lines (topk_id, reconstructed):
 
 ```
 2026-07-17  two-issue → three-bucket: plain HP is bigger than either research issue (C 2×2)
@@ -93,13 +224,21 @@ These lessons exist only as experience, and experience evaporates. Reversals
 are sparse — a handful per case — so they need none of the map/ledger
 machinery, just the changelog shape: append-only, one entry per reversal.
 
-**When an entry is owed** — two tripwires, both machine-visible:
+**When an entry is owed** — three tripwires, the first two machine-visible:
 
 1. **Phase-A veto** — a `human_override` in `assumptions_log` whose *reason*
    generalizes beyond this case (skip routine parameter overrides).
 2. **Post-freeze fingerprint move** — any commit where the structural
    fingerprint changes after the Phase-A gate owes an entry citing the ledger
    id that forced it (binding rule 7).
+3. **Interview reversal** — the draft model changed shape *during* Phase A
+   because a human answer falsified a plausible formalization, before any
+   freeze existed for the machine tripwires to guard. This one is on the
+   operator. (game2048 F1: the inherited `sum` reward measured survival, not
+   play — caught in the objective round; the most teachable of that
+   campaign's four entries, and neither machine tripwire would ever have
+   fired. All Confirmables ended `human_confirmed`, so tripwire 1 was silent
+   too.)
 
 Entry schema:
 
@@ -160,6 +299,30 @@ verdict in place). Per entry:
   "8M ≈ 4M — not undertrained").
 - **status** — `✓ / ✗ / ~ (neutral) / ▶`.
 
+**Diagnosis entries.** Not every ledger entry tests a hypothesis. At a
+checkpoint — several agenda items landed, or the next spend depends on
+attributing the remaining gap to competing causes — append a **diagnosis**
+entry: same `#E` id space, typed in the heading (`DIAGNOSIS:`). It is the
+mandated record of the map discussion that otherwise evaporates (§1): the
+map carries the *conclusions* as standing state; the diagnosis carries the
+*reasoning*, event-shaped and interleaved with the runs it reads and the runs
+it spawns. Schema:
+
+- **reads** — the verdicts consolidated (#E ids; imported evidence with its
+  provenance label, rule 8).
+- **observed** — what is now established, scope conditions attached.
+- **missing** — the named gaps; these become tree nodes (the candidate
+  causes/potentials the next budget arbitrates between).
+- **plan** — the A items spawned, each with its arbiter and **pre-decided
+  verdict branches, stated before the probe runs** — the ledger's
+  hypothesis-before-launch discipline, applied to planning: without it a
+  diagnosis is retrofitted storytelling.
+
+Map surgery from a diagnosis costs the usual changelog lines, and the
+frontier cites the diagnosis that last reordered it (§3.5). No verdict/status
+fields — a diagnosis is superseded by the next diagnosis, never marked
+right or wrong in place.
+
 ## 7. Binding rules
 
 1. **No run without an address.** Every launched run cites a map bucket + grid
@@ -186,6 +349,20 @@ verdict in place). Per entry:
    fingerprint changing after the Phase-A gate means the model itself was
    re-formalized; the F-entry (§5) records why the first formalization looked
    right and what falsified it. Machine-checkable, CI-enforceable later.
+8. **Imported verdicts carry provenance.** Evidence from outside the
+   campaign's protocol (a prior project, a recollection) may crown or prune a
+   branch only with its provenance attached; dropping the label requires an
+   in-campaign re-validation at the standard protocol. Rule 3's eval honesty,
+   extended across campaign boundaries.
+9. **Prune on decisive margins only — HP is a covariate.** Comparisons above
+   the HP level are taken at the shared derived center (the spec-§8.6 L1
+   config): a valid *screen*, and a margin far beyond plausible HP
+   sensitivity prunes (game2048's +46%/+64% representation rungs). A close
+   margin is **HP-confounded**: status `~`, never `✗` — tune each surviving
+   sibling (per-cell `L2(hp)`) before crowning or pruning (topk_id's C 2×2:
+   no judgment was possible before per-combination tuning). The scope
+   condition "at the L1 center, untuned" travels with every screened verdict
+   (rule 5).
 
 ## 8. What stays out
 
@@ -234,24 +411,31 @@ citations, and scope conditions are already in place.
 
 ## MAP  (as of {date})
 
-### Decomposition
+### Design tree
 ​```mermaid
 graph TD
-    GAP["gap to {bar}: {size}"] --> B1["{bucket} {mark}<br/>{bound if any}"]
-    GAP --> B2["{bucket} {mark}"]
+    ROOT["root: {campaign}"]
+    ROOT ==>|"S1 ▶"| T1["target: {name}<br/>protocol: {eval}; bar: {reference}"]
+    ROOT -->|"S2 postponed"| T2["target: {next} — coverage debt; return: {when}"]
+    T1 ==>|"P1 ★"| C1["{choice} {mark} {bound if any}"]
+    T1 -->|"P2 ⏸"| C2["{choice} — {reason}; tripwire: {…}"]
+    T1 -.->|"∅"| C3["{impossible cell} — {why}"]
 ​```
 
-### Grids
+### Frontier
+1. **A1 — {action} @ {tree path}**  {▶|queued} — {evidence; cost}
+- parked: {⏸ node} — tripwire: {…}
+
+### Off-tree register
+- {bar calibration | protocol bookkeeping | next campaign roots}
+
+### Current best bundle
+{the ★ path + jointly-validated edges + headline @ standard eval}
+
+### Slice view  (only while a cross-branch interaction is under test)
 |              | {axis-B v1}   | {axis-B v2}   |
 |--------------|---------------|---------------|
 | {axis-A v1}  | #1 {num} ✓    | #4 {num} ✗    |
-
-### Current best bundle
-{levers + pairing constraints + headline number @ standard eval}
-
-### Open / parked
-1. {question — next attack}
-- ⏸ {parked item} — guardrail: {tripwire}
 
 ## FRAME-CHANGELOG
 {date}  {INTRODUCED|SPLIT|NARROWED|REFUTED|PARKED|UN-PARKED} {claim} ({evidence ids})
@@ -267,7 +451,13 @@ rule: {trigger-first generalization}
 
 ## LEDGER
 ### #{id} {date} — {one-line hypothesis}
-address: {bucket} / {grid cell}
+address: {tree path} / A{n}
 runs: {commands or paths}
 verdict: {numbers @ protocol; comparison}   status: {✓|✗|~|▶}
+
+### #{id} {date} — DIAGNOSIS: {checkpoint one-liner}
+reads:    {#E ids + imported evidence w/ provenance}
+observed: {established, scope attached}
+missing:  {named gaps → tree nodes}
+plan:     {A items + arbiters + pre-decided branches}
 ```
