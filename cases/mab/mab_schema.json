@@ -1,0 +1,655 @@
+{
+  "ir_version": "0.4",
+  "seed_scheme": "v2",
+  "domain": {
+    "name": "mab",
+    "class_prefix": "Mab",
+    "one_line": "Standard stochastic multi-armed bandit: pull one of K arms per round for T rounds; arm means hidden, drawn fresh each episode; maximize cumulative reward.",
+    "problem_class": "bandit"
+  },
+  "mdp": {
+    "horizon": {
+      "T": "horizon_T",
+      "period_indexing": "0-based"
+    },
+    "entity_structure": {
+      "kind": "single",
+      "entity_id_in_seed": false
+    },
+    "state_variables": [
+      {
+        "name": "period",
+        "role": "time_index",
+        "type": "int",
+        "bounds": [
+          0,
+          40000
+        ],
+        "observability": "observable",
+        "desc": "current round t; horizon ends when period == T"
+      },
+      {
+        "name": "pulls",
+        "role": "core",
+        "type": "int_vector",
+        "length": "n_arms",
+        "element_bounds": [
+          0,
+          40000
+        ],
+        "observability": "observable",
+        "desc": "pulls[i] = number of times arm i has been pulled so far (sufficient-statistic component)"
+      },
+      {
+        "name": "payouts",
+        "role": "core",
+        "type": "float_vector",
+        "length": "n_arms",
+        "element_bounds": [
+          -60000.0,
+          60000.0
+        ],
+        "observability": "observable",
+        "desc": "payouts[i] = total reward collected from arm i so far (sufficient-statistic component)"
+      }
+    ],
+    "info_fields": [
+      {
+        "name": "reward",
+        "type": "float",
+        "desc": "realized payout of this round's pull (0/1 for Bernoulli branch; real for Gaussian branch)"
+      },
+      {
+        "name": "mean_pulled",
+        "type": "float",
+        "desc": "true mean of the pulled arm (diagnostic; derived from hidden means, never observable)"
+      },
+      {
+        "name": "opt_mean",
+        "type": "float",
+        "desc": "true mean of the best arm this episode (diagnostic; enables per-episode regret accounting at eval)"
+      },
+      {
+        "name": "payoff",
+        "type": "decomposition",
+        "components": [
+          "pull",
+          "total"
+        ]
+      }
+    ],
+    "decisions": [
+      {
+        "name": "arm",
+        "type": {
+          "value": "discrete",
+          "suggested": "discrete",
+          "source": "human_confirmed",
+          "rationale": "the decision is which one of K arms to pull - inherently a discrete index; confirmed in the Phase-A interview"
+        },
+        "dim": 1,
+        "bounds": {
+          "value": [
+            0,
+            "arm_max"
+          ],
+          "suggested": [
+            0,
+            "arm_max"
+          ],
+          "source": "human_confirmed",
+          "rationale": "K=10 arms (Sutton & Barto testbed size), confirmed in the Phase-A interview; index range is exact, not a scale guess"
+        },
+        "feasibility": [],
+        "desc": "index of the arm pulled this round; every arm is always feasible"
+      }
+    ],
+    "dynamics": {
+      "event_sequence": [
+        "P",
+        "U"
+      ],
+      "observation_point": "pre-pull",
+      "transitions": [
+        {
+          "event": "P",
+          "updates": [
+            "reward ~ payout.pull",
+            "mean_pulled = payout_arm_means[int(arm)]",
+            "opt_mean = max(payout_arm_means)"
+          ]
+        },
+        {
+          "event": "U",
+          "updates": [
+            "pulls[int(arm)] += 1",
+            "payouts[int(arm)] += reward"
+          ]
+        },
+        {
+          "event": "END_OF_PERIOD",
+          "updates": [
+            "period += 1"
+          ]
+        }
+      ]
+    },
+    "objective": {
+      "sense": "maximize",
+      "discount_factor": 1.0,
+      "per_step_components": [
+        {
+          "name": "pull",
+          "expr": "reward"
+        }
+      ]
+    },
+    "invariants": [
+      {
+        "name": "one_pull_per_round",
+        "expr": "sum(pulls) == t + 1",
+        "desc": "exactly one arm is pulled per round and no round is skipped: the pull counts sum to the number of rounds elapsed (t is the input period, 0-based, so the first round ends with sum(pulls) == 1)"
+      },
+      {
+        "name": "pulled_arm_advances",
+        "expr": "pulls[int(arm)] == prev.pulls[int(arm)] + 1",
+        "desc": "the chosen arm's count increments; with one_pull_per_round this pins that no other arm's count moved"
+      },
+      {
+        "name": "payout_ledger",
+        "expr": "close(sum(payouts), sum(prev.payouts) + reward)",
+        "desc": "the per-arm payout accumulator grows by exactly the realized payout of this round's pull - nothing is credited to an arm that was not played"
+      },
+      {
+        "name": "regret_is_nonnegative",
+        "expr": "opt_mean >= mean_pulled",
+        "desc": "the best arm's true mean dominates the pulled arm's, so per-round regret (opt_mean - mean_pulled) is never negative; the claim that makes the regret accounting at eval well-posed"
+      }
+    ],
+    "scenario": {
+      "constants": [
+        {
+          "name": "n_arms",
+          "value": 10,
+          "axis": "size",
+          "desc": "K, the number of arms: state-vector length, initial-state width, and the size of the per-episode iid arm-means draw"
+        },
+        {
+          "name": "arm_max",
+          "value": 9,
+          "axis": "size",
+          "desc": "K-1, the largest arm index. Decision/action bounds resolve constant NAMES, not expressions, so the index ceiling is carried explicitly; every instance must set it to n_arms - 1"
+        },
+        {
+          "name": "horizon_T",
+          "value": 1000,
+          "axis": "horizon",
+          "desc": "T, rounds per episode. Named here (not a literal in horizon.T) so instances vary it; exprs still read the reserved identifier T, which the interpreter resolves via MdpBlock.horizon_T(instance)"
+        },
+        {
+          "name": "sigma",
+          "value": 1.0,
+          "axis": "noise",
+          "desc": "known payout noise sd of the Gaussian branch"
+        },
+        {
+          "name": "is_gauss",
+          "value": false,
+          "axis": "variant",
+          "desc": "belief parametrization the `bayes` observation is built from: false = Beta(1,1) posterior, true = Normal posterior. The payout branch itself is selected by the payout slot; this rides the same instance override so the two cannot drift"
+        }
+      ],
+      "instances": {
+        "gaussian": {
+          "payout": "gaussian",
+          "is_gauss": true
+        },
+        "gauss_K5_T10": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 5,
+          "arm_max": 4,
+          "horizon_T": 10
+        },
+        "gauss_K5_T25": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 5,
+          "arm_max": 4,
+          "horizon_T": 25
+        },
+        "gauss_K5_T50": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 5,
+          "arm_max": 4,
+          "horizon_T": 50
+        },
+        "gauss_K5_T100": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 5,
+          "arm_max": 4,
+          "horizon_T": 100
+        },
+        "gauss_K5_T250": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 5,
+          "arm_max": 4,
+          "horizon_T": 250
+        },
+        "gauss_K5_T500": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 5,
+          "arm_max": 4,
+          "horizon_T": 500
+        },
+        "gauss_K10_T20": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 20
+        },
+        "gauss_K10_T50": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 50
+        },
+        "gauss_K10_T100": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 100
+        },
+        "gauss_K10_T200": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 200
+        },
+        "gauss_K10_T500": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 500
+        },
+        "gauss_K20_T40": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 20,
+          "arm_max": 19,
+          "horizon_T": 40
+        },
+        "gauss_K20_T100": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 20,
+          "arm_max": 19,
+          "horizon_T": 100
+        },
+        "gauss_K20_T200": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 20,
+          "arm_max": 19,
+          "horizon_T": 200
+        },
+        "gauss_K20_T400": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 20,
+          "arm_max": 19,
+          "horizon_T": 400
+        },
+        "gauss_K20_T1000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 20,
+          "arm_max": 19,
+          "horizon_T": 1000
+        },
+        "gauss_K20_T2000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 20,
+          "arm_max": 19,
+          "horizon_T": 2000
+        },
+        "gauss_K10_T200_s2": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 200,
+          "sigma": 2.0
+        },
+        "gauss_K10_T400_s2": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 400,
+          "sigma": 2.0
+        },
+        "gauss_K10_T320_s4": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 320,
+          "sigma": 4.0
+        },
+        "gauss_K5_T1000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 5,
+          "arm_max": 4,
+          "horizon_T": 1000
+        },
+        "gauss_K5_T2500": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 5,
+          "arm_max": 4,
+          "horizon_T": 2500
+        },
+        "gauss_K5_T5000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 5,
+          "arm_max": 4,
+          "horizon_T": 5000
+        },
+        "gauss_K5_T10000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 5,
+          "arm_max": 4,
+          "horizon_T": 10000
+        },
+        "gauss_K10_T2000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 2000
+        },
+        "gauss_K10_T5000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 5000
+        },
+        "gauss_K10_T10000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 10000
+        },
+        "gauss_K10_T20000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 10,
+          "arm_max": 9,
+          "horizon_T": 20000
+        },
+        "gauss_K20_T4000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 20,
+          "arm_max": 19,
+          "horizon_T": 4000
+        },
+        "gauss_K20_T10000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 20,
+          "arm_max": 19,
+          "horizon_T": 10000
+        },
+        "gauss_K20_T20000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 20,
+          "arm_max": 19,
+          "horizon_T": 20000
+        },
+        "gauss_K20_T40000": {
+          "payout": "gaussian",
+          "is_gauss": true,
+          "n_arms": 20,
+          "arm_max": 19,
+          "horizon_T": 40000
+        }
+      }
+    },
+    "initial_state": {
+      "pulls": "zeros(n_arms)",
+      "payouts": "zeros(n_arms)"
+    },
+    "expr_builtins": [
+      {
+        "name": "bayes_post_mean",
+        "module": "mab_bayes",
+        "desc": "per-arm conjugate posterior mean of the true arm mean (Beta(1,1) prior on the Bernoulli branch; N(0,1) prior, sigma=1, on the Gaussian branch)"
+      },
+      {
+        "name": "bayes_post_sd",
+        "module": "mab_bayes",
+        "desc": "per-arm conjugate posterior sd of the true arm mean (same priors)"
+      }
+    ],
+    "uncertainty_slots": [
+      {
+        "name": "payout",
+        "interface": "PayoutGenerator",
+        "stream_id": 0,
+        "latent": false,
+        "stages": [
+          {
+            "name": "pull",
+            "realization": "period",
+            "key_exprs": [
+              "int(arm)"
+            ]
+          }
+        ],
+        "default": "bernoulli",
+        "candidates": {
+          "bernoulli": {
+            "generator": "BernoulliPayout",
+            "family": "bernoulli",
+            "is_discrete": true,
+            "settings": {
+              "arm_means": {
+                "draw": {
+                  "family": "iid",
+                  "settings": {
+                    "of": "uniform",
+                    "size": "n_arms",
+                    "low": 0.0,
+                    "high": 1.0
+                  }
+                },
+                "example": [
+                  0.5,
+                  0.5,
+                  0.5,
+                  0.5,
+                  0.5,
+                  0.5,
+                  0.5,
+                  0.5,
+                  0.5,
+                  0.5
+                ],
+                "hidden": true
+              },
+              "p": "payout_arm_means[int(arm)]"
+            },
+            "desc": "0/1 payout of the pulled arm; the K arm probabilities are one hidden per-seed iid draw of Uniform(0,1) and the pulled arm indexes it"
+          },
+          "gaussian": {
+            "generator": "GaussianPayout",
+            "family": "normal",
+            "is_discrete": false,
+            "settings": {
+              "arm_means": {
+                "draw": {
+                  "family": "iid",
+                  "settings": {
+                    "of": "normal",
+                    "size": "n_arms",
+                    "mean": 0.0,
+                    "std": 1.0
+                  }
+                },
+                "example": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "hidden": true
+              },
+              "mean": "payout_arm_means[int(arm)]",
+              "std": "sigma"
+            },
+            "desc": "N(mu_i, sigma^2) payout of the pulled arm; the K arm means are one hidden per-seed iid draw of N(0,1) and the pulled arm indexes it"
+          }
+        },
+        "desc": "the one source of randomness in this problem: the payout of the arm pulled this round. Bernoulli and Gaussian are alternative recipes for it and never coexist, so they share its stream identity on both seed branches. The pull stage is keyed on the chosen arm (key_exprs, solver >= v0.5.9), which refines the period slot into K independent per-arm streams of which the round reads one \u2014 without it a single primitive variate per period is shared by all arms, making Gaussian payouts differ only by their means and Bernoulli payouts comonotone. Both candidates name their latent arm_means, so the synthesized constant payout_arm_means exists under either selection"
+      }
+    ]
+  },
+  "gym": {
+    "observation_modes": [
+      {
+        "name": "stats",
+        "default": true,
+        "features": [
+          {
+            "ref": "pulls"
+          },
+          {
+            "ref": "payouts"
+          },
+          {
+            "derived": "time_to_go",
+            "expr": "T - period"
+          }
+        ]
+      },
+      {
+        "name": "bayes",
+        "features": [
+          {
+            "derived": "post_mean",
+            "expr": "bayes_post_mean(pulls, payouts, is_gauss)"
+          },
+          {
+            "derived": "post_sd",
+            "expr": "bayes_post_sd(pulls, payouts, is_gauss)"
+          },
+          {
+            "derived": "time_to_go",
+            "expr": "T - period"
+          }
+        ]
+      },
+      {
+        "name": "bayes_h",
+        "features": [
+          {
+            "derived": "post_mean",
+            "expr": "bayes_post_mean(pulls, payouts, is_gauss)"
+          },
+          {
+            "derived": "post_sd",
+            "expr": "bayes_post_sd(pulls, payouts, is_gauss)"
+          },
+          {
+            "derived": "time_to_go",
+            "expr": "T - period"
+          },
+          {
+            "derived": "horizon",
+            "expr": "T"
+          }
+        ]
+      }
+    ],
+    "action_modes": [
+      {
+        "name": "arm",
+        "default": true,
+        "encodes": "arm",
+        "type": "discrete",
+        "bounds": [
+          0,
+          "arm_max"
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "identity: agent emits the arm index; all n_arms arms always feasible, no masking needed"
+      }
+    ],
+    "reward_modes": [
+      {
+        "name": "payout",
+        "default": true,
+        "expr": "total",
+        "desc": "per-round realized pull payout (sense=maximize, no sign flip)"
+      }
+    ],
+    "termination": {
+      "horizon_end": "terminated",
+      "early_terminated_when": null
+    }
+  },
+  "rl": {
+    "requires_memory": {
+      "value": false,
+      "suggested": true,
+      "source": "human_override",
+      "rationale": "hidden world-latent samplers make the derivation suggest memory; overridden: (pulls, payouts) in state are the exact sufficient statistic for the arm means under both conjugate priors, so the belief-state MDP is fully observed via the stats observation"
+    },
+    "algo": "ppo",
+    "frame_stack": 1,
+    "obs_normalization": {
+      "enabled": true,
+      "rationale": "enabled=true for BOTH obs modes - settled empirically. History: first derived true with a rationale that reasoned about the stats features and called them stationary; then split per mode 2026-07-29 (stats off, as spec 8.3's drifting/accumulator case - counts climb to T, payout totals unbounded); then the split was REFUTED by an isolation probe on the same stream (only the flag changed): stats L1 norm_obs=true 927.63 +/- 6.88 vs false 855.73 +/- 7.18, +71.9 (z~7.2). The within-episode drift cost is real but second-order next to what normalization buys on raw counts and totals. bayes (bounded, self-normalizing posterior features) was never in question. mab_ppo_train._derived_norm_obs is the executable form; full trail in mab/ESCALATION.md (O2, #E8, #E10)"
+    }
+  },
+  "assumptions_log": [
+    "Two scenario-mode branches, independent leaderboards (human-decided): Bernoulli (base instance) and Gaussian ('gaussian' instance); reward scales differ so no head-to-head comparison.",
+    "Canonical priors (human-decided): Bernoulli p_i ~ Uniform(0,1) i.i.d.; Gaussian mu_i ~ N(0,1) i.i.d. with known sigma=1.",
+    "K=10 arms, T=1000 rounds is the BASE instance (human-decided; Sutton & Barto testbed size). #E32 (2026-08-06) promoted K and T from structural literals to axis-tagged scenario constants (n_arms / arm_max / horizon_T) so the robustness grid can vary them per instance; the base instance's resolved values are unchanged, so every recorded result stands.",
+    "Arm means are hidden per-episode world latents (samplers, meta branch); the policy sees only its pull history.",
+    "Sufficient-statistics observation (human-decided): per-arm pull counts + payout totals + time-to-go; no recurrent memory (worked human_override on requires_memory).",
+    "Vector world latents encoded as K scalar sampler draws (p0..p9 / m0..m9) since sampler families are scalar-valued; draws execute in declared order from one meta-keyed rng.",
+    "Both branch sources declared with period realization; only the guarded branch transition actually draws each round, so the unused family consumes no randomness.",
+    "info.mean_pulled / info.opt_mean expose the true means for eval-time regret accounting only; they appear in no observation mode and in no reward mode. The per-step reward is the realized payout - an observable - so the censoring the agent is meant to infer around is intact (spec: latent belongs in an eval-only metric, a terminal reward, or an action-independent normalizer, never in a per-step reward a memory policy could invert). Enforced by mab_test.py::test_no_observation_or_reward_mode_reads_the_hidden_means.",
+    "payouts element bounds [-60000, 60000] cover the widest #E35 cell (T=40000 draws of N(mu, sigma^2), |mu| <~ 4 at K=20) at a wide margin; Bernoulli branch stays within [0, T]. State/element bounds are typed list[float] (literal only), so they are sized for the whole instance set rather than per instance - metadata, since the runtime vector comes from initial_state.",
+    "Horizon end is `terminated` (T is part of the problem); no early termination.",
+    "#E32 robustness grid (human-decided): specialists, one policy per cell, so the cells are scenario INSTANCES (spec 5.4), not a ScenarioGrid (5.6 - generalist targets only, and its family-agreement assertion would rightly reject cells that disagree on n_arms). Cells: K in {5,10,20} x n in {2,5,10,20,50,100} pulls-per-arm with T = K*n, plus three sigma cells at K=10 that reach a given information budget B = n/sigma^2 by a second route.",
+    "#E35 long-horizon cells (human-decided): n = T/K in {200,500,1000,2000} added across K in {5,10,20}, extending the #E32 ladder past the point where #E34 measured the rule crossing thompson (T ~ 14,000). Registered so PPO can be TRAINED on them; the analytic sweep never needed the registry. Specialists again, so instances rather than a grid.",
+    "#E36 observation mode `bayes_h` (human-decided): `bayes` plus the episode's horizon T, for generalist training over varying T. The two time features stay RAW and separate; the equivariant extractor rescales both by a CONSTANT T_max for conditioning, which is a change of units and cannot manufacture the ratio. Note this exposes a confound in the existing `bayes` path: _IndexExtractor divides ttg by its construction-time horizon, so #E24's readback and #E26's (ttg/T)^p form were fitted to a network that was HANDED the ratio."
+  ]
+}
