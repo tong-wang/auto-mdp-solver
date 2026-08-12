@@ -419,6 +419,13 @@ Write in dependency order: `{domain}_exceptions.py` (optional) →
   the differential parametrized over the covering set derived from the schema,
   at least one negative control, and any claim an IR expression cannot state.
 
+- Emit `{domain}/CLAUDE.md` from `DOMAIN_CLAUDE_TEMPLATE.md` (beside this
+  skill) as the folder's first doc: fill the problem statement, the
+  leaderboard-commensurability line, the pinned-solver line and the command
+  slots; keep the fixed text verbatim; leave the Traps section seeded. The
+  template's filling rules are binding — pointer-first, campaign-varying
+  content linked never copied, traps added the same day they are paid for.
+
 **GATE:** all three must exit 0 —
 `python -m mdp_conformance {domain}` (generated-code shape),
 `python -m mdp_ir.laws {domain}` (IR execution semantics), and
@@ -501,6 +508,14 @@ escalations (hp / gym / arch), only after the L1 gate shows a gap. A tuned
 result is always L2: level ≥ L2 ⟺ more than one training config was tried.
 Run L0 by default (it is usually the cheapest run on the board); put both on
 the leaderboard, clearly labeled.
+
+Before designing any L2+ escalation, consult the shipped playbook:
+`PLAYBOOK.md` beside this skill is the curated index, linking into
+`examples/*/PLAYBOOK.md` — each a campaign's distilled experiences. Match on
+*symptom*, read the matched entry **with its context**, and analogize —
+entries are experiences, not rules; their scope conditions decide whether one
+applies here. An entry's `#E` citations resolve in that example's
+`ESCALATION.md`; drill down only when the entry's story needs chasing.
 
 - Train on the **Stage-0 target and strategy** (the selected fixed scenario or
   world sampler for a specialist, or `grid.as_sampler()` for a generalist) —
@@ -603,7 +618,12 @@ doing the classical thing") goes in the README's empirical findings.
   baselines and the shipped model, and any empirical findings (which modes
   won/lost and why, plus the Stage-5 readback: the recovered rule, its
   agreement with the reference, and the fitted rule's paired score).
-- Add the domain to `CLAUDE.md`'s Core Domains list.
+- Final pass over `{domain}/CLAUDE.md` (emitted at Stage 1 from
+  `DOMAIN_CLAUDE_TEMPLATE.md`): every command runs as written, the
+  record-eval stance matches how the leaderboard was actually produced, the
+  doc table matches the files that exist (owed docs marked "owed"), traps
+  current. Then add the domain to the root `CLAUDE.md`'s domain list — one
+  line; the folder's own file carries the rest.
 - Trained artifacts (`results/`) are gitignored; the README's commands must
   reproduce them.
 

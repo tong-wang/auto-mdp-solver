@@ -13,7 +13,13 @@ rl_test. §3 reframed around the priority-ordered design tree with a frontier
 2026-07-29 (third revision): diagnosis entries added to §6 — typed checkpoint
 records in the ledger timeline (reads / observed / missing / plan, arbiters
 with pre-decided branches); the frontier cites its governing diagnosis.
-Proposed from the second live trial, `mab`.*
+Proposed from the second live trial, `mab`.
+2026-08-12 (fourth revision): §10 rewritten from the `mab` case-close review —
+distillation lands as an in-folder `PLAYBOOK.md` of digest entries
+(context / symptom / diagnosis / prescription / failed attempts — experiences,
+not rules; real names and numbers, ledger cited not copied); the three onward
+promotions named (contribution / curation / graduation-to-rule); mid-campaign
+upstream proposals split out to the mdp-propose skill.*
 
 ## 1. Why this format
 
@@ -384,25 +390,68 @@ right or wrong in place.
   fan-out (map + running-status coloring) is rendered *from* this file on demand;
   it is not a second source of truth.
 
-## 10. Case close — distillation
+## 10. Case close — distillation into `PLAYBOOK.md`
 
-When the campaign ends (positive or negative), run one distillation pass:
+When the campaign ends (positive or negative), run one distillation pass into
+**`PLAYBOOK.md` in the case folder**. Distilled experiences are still
+experiences, not rules — but distilling means *digesting*, not dumping: an
+entry carries only what is necessary to reuse the experience — context,
+symptom, diagnosis, prescription, failed attempts — with real names and real
+numbers (the file sits beside the case), and **cites** the ledger for
+everything else instead of copying it. An entry without its story is
+unusable; an entry buried in its story is unread.
 
-- **ledger → symptom-indexed lever entries** (symptom / hypothesis / cheap probe /
-  lever / verdict + scope / evidence) for the escalation playbook;
-- **changelog → frame-move entries** (reusable ways of structuring the search:
-  bound-before-build, gap-decomposition-into-buckets, cell-taxonomy placement);
-- **ir-changelog → modeling-rule entries**: the `rule:` lines travel to the
-  playbook under lever layer `IR-formalization` (same sanitize-and-contribute
-  flow — domain renamed to its structure class); their promotion target in the
-  skill is a Phase-A checklist consulted at the classifying-randomness step,
-  which is why trigger-first phrasing is mandatory;
-- negative campaigns distill too — an envelope verdict ("feasibility-dominated
-  combinatorial + classical solver exists → RL not competitive") is playbook
-  content, not just a dead end.
+File layout — a header, three passes, and the negative space:
 
-The format above is designed to make this pass near-mechanical: addresses,
-citations, and scope conditions are already in place.
+- **header** — the structure class in one sentence, plus the eval protocol
+  every number below is quoted at (seeds, CRN, oracle/reference), stated once;
+- **ledger → lever entries** (`LV{n}`), one block each:
+
+  ```
+  context:      <only what the entry cannot be read without: where in the
+                campaign it fired, what was already ruled out; protocol
+                deltas from the header>
+  symptom:      <observable signature>
+  diagnosis:    <mechanism — plus the cheap probe that confirmed it, if any>
+  prescription: <lever layer (HP | gym-obs | gym-action | gym-reward | arch |
+                algo | protocol | process | interpretation) + the change;
+                measured effect @ the header protocol; scope conditions>
+  failed:       <attempts on the same symptom that lost, one line each>
+  evidence:     <#E ledger citations>
+  ```
+
+- **frame-changelog → frame moves** (`FM{n}`) — reusable ways of structuring
+  the search (bound-before-build, gap-decomposition-into-buckets,
+  cell-taxonomy placement), each with the moment it paid off;
+- **ir-changelog → modeling rules** (`MR{n}`) — the `rule:` lines, under
+  lever layer `IR-formalization`, trigger-first phrasing mandatory;
+- **what did not transfer** — expectations imported from earlier campaigns
+  that failed here. Negative campaigns distill too: an envelope verdict
+  ("feasibility-dominated combinatorial + classical solver exists → RL not
+  competitive") is playbook content, not just a dead end.
+
+The log format above is designed to make this pass near-mechanical:
+addresses, citations, and scope conditions are already in place.
+
+From here the entries have three onward promotions, in increasing rarity:
+
+1. **Contribution** — the playbook travels *inside the case folder* on a
+   case PR (mdp-contribute). There is no playbook-only path: a case too
+   sensitive to contribute (even re-skinned) keeps its playbook at home.
+2. **Curation** — the maintainer indexes shipped entries in the plugin's
+   `PLAYBOOK.md` (links into promoted examples' playbooks); solve-time
+   consultation is symptom-matched and analogized, never obeyed.
+3. **Graduation to a rule** — reserved for entries confirmed across ≥ 2
+   independent campaigns that should fire *without* symptom-matching.
+   Targets: the Phase-A checklist consulted at the classifying-randomness
+   step (modeling rules — why trigger-first phrasing is mandatory), or a
+   spec-§8.6 default (lever entries).
+
+Separately from distillation: walls hit **mid-campaign** — a spec/schema/
+process gap the campaign had to work around — are filed when fresh via
+**mdp-propose** (`UPSTREAM_PROPOSAL_<slug>.md` → one issue each), never
+batched to case close; a proposal is pinned against a spec version and goes
+stale.
 
 ## 11. Template
 

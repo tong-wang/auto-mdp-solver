@@ -1,8 +1,19 @@
 # examples/ manifest — the solver regression suite
 
 One row per example domain; the gate commands are run from the repo root and
-must all pass. Promoting a finished project from a research repo = move the
-folder here + add its row(s). Entries are frozen: no research edits.
+must all pass. Two promotion sources: a finished project from a research
+repo, or a `cases/` folder promoted **whole** — campaign record
+(`PLAYBOOK.md`, `ESCALATION.md`, `INTERPRET.md`, figures) included, since
+everything here ships with the plugin and the in-folder playbook must be
+reachable by the installed skill. Admission criteria live in
+`cases/README.md`. Either way: move the folder (never copy — two folders
+with the same `{name}_*` modules break pytest's import mode), add its
+row(s), update the shape-coverage note below.
+
+The freeze is scoped: **code, schema, and tests are frozen** — no research
+edits, ever. The campaign-record docs are maintainer-curated instead:
+recurrence marks and scope corrections may land there, each shipping as a
+plugin version bump so "what shipped" stays answerable from the tag.
 
 Every example carries three gates, all run from the repo root with
 `E=plugin/skills/mdp-solver/examples`:

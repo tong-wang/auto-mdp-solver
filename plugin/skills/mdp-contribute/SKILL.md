@@ -1,32 +1,45 @@
 ---
 name: mdp-contribute
 description: >
-  Contribute a finished MDP case or distilled escalation-playbook entries
-  upstream to the public auto-mdp-solver repo (github.com/tong-wang/auto-mdp-solver).
-  Use when the user wants to share/submit/contribute a case they built with the
-  mdp-solver skill ("contribute this case", "share this upstream", "submit to
-  auto-mdp-solver"), optionally re-skinned to hide the business context, or to
-  contribute lessons ("contribute the playbook entries") from an escalation
-  campaign. Everything is assembled and shown locally first; nothing is sent
-  without the user's explicit approval of the final content.
+  Contribute a finished MDP case — with its distilled escalation playbook
+  riding in the case folder — upstream to the public auto-mdp-solver repo
+  (github.com/tong-wang/auto-mdp-solver). Use when the user wants to
+  share/submit/contribute a case they built with the mdp-solver skill
+  ("contribute this case", "share this upstream", "submit to auto-mdp-solver"),
+  optionally re-skinned to hide the business context. A case too sensitive
+  even re-skinned is not contributed. For proposing extensions to the spec or
+  IR schema, use the mdp-propose skill instead. Everything is assembled and
+  shown locally first; nothing is sent without the user's explicit approval of
+  the final content.
 ---
 
-# Contribute a case or playbook entries upstream
+# Contribute a case, playbook included
 
-Target repo: **`tong-wang/auto-mdp-solver`**. Two kinds of contribution, mapping
-onto the repo's two knowledge assets:
+Target repo: **`tong-wang/auto-mdp-solver`**. The contribution is the case
+**with its distilled playbook in the folder**. (A separate flow — proposing an
+extension to the spec/schema itself — is the **mdp-propose** skill, filed
+mid-campaign the moment the wall is hit, not here at case close.)
 
 | tier | what travels | lands as |
 |---|---|---|
-| 1 — full case | domain + IR + docs (no `results/`) | PR adding `cases/<name>/` |
+| 1 — full case | domain + IR + docs + campaign record incl. `PLAYBOOK.md` (no `results/`) | PR adding `cases/<name>/` |
 | 1b — re-skinned case | same, after an isomorphic rename | PR adding `cases/<name>/` |
-| 2 — playbook entries | sanitized symptom→lever lessons | structured GitHub issue |
 
-Hard rule for every tier: **assemble → show → confirm → send.** The user sees the
-exact file list / body before anything leaves the machine, and each `gh` command
-that publishes (push, `pr create`, `issue create`) runs only after an explicit
-yes. If the user declines at any point, stop cleanly and leave the assembled
-material on disk for them.
+**Sensitive means not contributed.** A case ships whole and real — real
+domain name (a textbook name is the best retrieval key there is), real
+numbers, `#E` ledger citations that resolve because `ESCALATION.md` ships
+beside them. When the *business context* is the only sensitive part, tier 1b
+hides it by isomorphic rename, verified by the gates. There is no partial
+path below that — no sanitized excerpts, no playbook-only contribution: what
+a rename cannot hide stays home. What is always scrubbed, both tiers:
+absolute local paths, credentials/keys, internal hostnames, names/emails the
+user didn't choose to publish.
+
+Hard rule: **assemble → show → confirm → send.** The user sees the exact file
+list / PR body before anything leaves the machine, and each `gh` command that
+publishes (push, `pr create`) runs only after an explicit yes. If the user
+declines at any point, stop cleanly and leave the assembled material on disk
+for them.
 
 ## 0. Scope check
 
@@ -38,15 +51,19 @@ material on disk for them.
   through it.
 - Check `gh auth status`. Not authenticated → tell the user to run
   `gh auth login` and pause.
-- Ask which tier (1 / 1b / 2) unless the request already says.
+- Ask which tier (1 / 1b) unless the request already says. If the case is
+  sensitive beyond what a re-skin hides, say so plainly and stop — nothing is
+  contributed.
 
 ## 1. Always first: distill locally
 
 If the case folder has an escalation log (`ESCALATION.md` per
-ESCALATION_LOG_GUIDE), run its case-close distillation now, into the folder:
-ledger → symptom-indexed lever entries; frame-changelog → frame-move entries.
-This happens regardless of tier — it is for the user's own playbook; tiers only
-decide what leaves.
+ESCALATION_LOG_GUIDE) and no `PLAYBOOK.md` yet, run the guide's §10 case-close
+distillation now, into the folder: digest entries — only the necessary
+context / symptom / diagnosis / prescription / failed attempts, real names
+and numbers, ledger citations for everything else. This happens whether or
+not the case ends up contributed — it is the user's own playbook; tier 1
+sends the file as-is.
 
 ## 2. Tier 1 — full case
 
@@ -59,18 +76,27 @@ decide what leaves.
   (+ `_ppo_tune` if used), `{name}_policy.py`
 - `README.md` — problem statement, layout table, **leaderboard**, and the exact
   commands that reproduce every number in it
-- `ESCALATION.md` if the campaign kept one (recommended — it is half the value)
+- `CLAUDE.md` — the domain's operating brief (emitted at Stage 1 from the
+  skill's template); on staging, re-point its pinned-solver line at the
+  upstream repo and drop machine-local paths
+- the campaign record: `ESCALATION.md`, `PLAYBOOK.md` (§1), `INTERPRET.md`
+  and committed figures if the campaign kept them — the record is half the
+  value, and for a case later promoted to the examples set it ships with the
+  plugin
 
-Exclude: `results/`, `__pycache__`, logs, anything gitignored. Then scrub the
-staged files for private material — absolute local paths, credentials/keys,
-internal hostnames, names/emails the user didn't choose to publish — and show
-anything found.
+Exclude: `results/`, `__pycache__`, logs, anything gitignored. Then run the
+always-scrub (paths, credentials, hostnames, identities) over the staged
+files and show anything found.
 
-**2b. Provenance (must ask, verbatim topics).** (i) Does the user have the right
-to publish this problem? Paper-derived cases: citation present in the README.
-Business-derived: the user confirms ownership or approval — if unsure, offer
-tier 1b or 2 instead. (ii) Is the leaderboard honest — produced by the README's
-own commands at the stated eval protocol? Record both answers in the PR body.
+**2b. Provenance (must ask, verbatim topics).** (i) Does the user have the
+right to publish this problem *and its campaign record*? A case accepted into
+`cases/` may later be promoted whole into the plugin's examples set, so the
+decision covers `ESCALATION.md`/`PLAYBOOK.md` too. Paper-derived cases:
+citation present in the README. Business-derived: the user confirms ownership
+or approval — if unsure, offer tier 1b; if a re-skin still doesn't clear it,
+stop without contributing. (ii) Is the leaderboard honest — produced by the
+README's own commands at the stated eval protocol? Record both answers in the
+PR body.
 
 **2c. Gates — must be green before any PR** (CI re-runs these on the PR):
 
@@ -91,10 +117,10 @@ Red gate → fix or stop; never open a PR with red gates.
 - Maintainer: branch in the working clone instead.
 
 PR body: what the case stresses that the pipeline hasn't handled before (the
-`cases/` admission question), leaderboard summary (is RL competitive? negative
-verdicts are fine and said plainly), provenance statements from 2b, gates-green
-statement. Show the user the final file list and PR body; send on confirm; report
-the PR URL.
+`cases/` admission question), leaderboard summary (is any pipeline deliverable
+— trained policy or its §14 readback — competitive? negative verdicts are fine
+and said plainly), provenance statements from 2b, gates-green statement. Show
+the user the final file list and PR body; send on confirm; report the PR URL.
 
 ## 3. Tier 1b — re-skinned case
 
@@ -104,33 +130,10 @@ rename identifiers, docstrings, README narrative; abstract units/constants'
 intact. The IR makes this mechanical: rename via the schema, regenerate names in
 code, keep everything else byte-equivalent in behavior. **Proof of integrity =
 the gates**: re-run 2c on the re-skinned folder; green means the rename broke
-nothing. Ask the user to review the re-skinned README specifically for residual
-business context before 2d.
-
-## 4. Tier 2 — playbook entries only
-
-**4a. Draft entries** in the playbook schema, one block each:
-
-```
-symptom:    <observable signature>
-hypothesis: <mechanism>
-probe:      <cheap confirmation, if any>
-lever:      <layer: HP | gym-obs | gym-action | gym-reward | arch — and the change>
-verdict:    <effect, normalized (% over baseline); scope conditions; interactions>
-evidence:   <domain class + eval protocol — no business context>
-```
-
-**4b. Sanitize, default-deny.** Structure-level schema fields travel as-is;
-free-text gets a scrub pass (domain renamed to its structure class — e.g.
-"entity-ranking under noisy pairwise probes" — absolute numbers → % over
-baseline; no constants that identify the business). Show the user a
-before/after diff of every entry; they approve or edit each.
-
-**4c. Send** as one issue:
-`gh issue create --repo tong-wang/auto-mdp-solver --title "playbook: <n> entries — <structure class>" --label playbook-entry`
-(omit the label if the repo lacks it), body = the approved entries + eval
-protocol note. Show body, confirm, send, report the URL. The shipped playbook is
-maintainer-curated: entries land via review, with attribution.
+nothing. The rename extends to the campaign record — entry text and the
+labels on numbers, never the numbers' roles; if the record cannot be renamed
+faithfully, leave the record out and say so in the PR. Ask the user to review
+the re-skinned README specifically for residual business context before 2d.
 
 ## Failure notes
 

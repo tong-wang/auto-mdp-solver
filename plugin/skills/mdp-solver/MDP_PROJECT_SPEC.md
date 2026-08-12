@@ -15,10 +15,13 @@ examples provide. All new MDP domains should follow these conventions.
 
 ## 1. File Layout
 
-Each domain lives in its own subfolder `{domain}/`. Every file is prefixed with the domain name.
+Each domain lives in its own subfolder `{domain}/`. Every code file is
+prefixed with the domain name; the campaign docs (`CLAUDE.md`, `README.md`,
+`ESCALATION.md`, …) are deliberately not.
 
 | File | Purpose |
 |---|---|
+| `CLAUDE.md` | Domain-local operating brief — emitted at Stage 1 from the skill's `DOMAIN_CLAUDE_TEMPLATE.md`. Pointer-first: where to look + what bites, never a second copy of the README |
 | `{domain}_exceptions.py` | Custom exception hierarchy (optional) |
 | `{domain}_uncertainty.py` | Stochastic primitives: the `SamplingContext` protocol and all `{Source}Generator` classes (demand, leadtime, …) — including latent-bearing generators that own their source's per-episode world latent (§5.2) — **omit entirely when the dynamics are deterministic** (§4.3) |
 | `{domain}_scenarios.py` | **World layer — composition only**: the `{Domain}Scenario` / `{Domain}ScenarioSource` / `{Domain}MixtureSampler` classes, their predefined instances, and the `SCENARIOS` registry. Owns no sampling: latents live on generators (§5.2) |

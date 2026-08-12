@@ -39,8 +39,11 @@ subtrees, plus root-level material for public browsers:
 | `plugin/skills/mdp-solver/SKILL.md` | the pipeline skill (source of truth) |
 | `plugin/skills/mdp-solver/MDP_PROJECT_SPEC.md` | **canonical** per-domain architecture/naming/RNG/script conventions |
 | `plugin/skills/mdp-solver/MDP_IR_SAMPLE.md` | annotated MDP-IR reference |
+| `plugin/skills/mdp-solver/DOMAIN_CLAUDE_TEMPLATE.md` | template for the per-domain `{domain}/CLAUDE.md` emitted at Stage 1 (provenance block, file hygiene, seeded traps; campaign-specific slots) |
 | `plugin/skills/mdp-solver/examples/` | frozen exemplar domains — ship with the plugin as few-shot exemplars **and** are the regression suite (see `examples/MANIFEST.md` there) |
-| `plugin/skills/mdp-contribute/SKILL.md` | the contribution skill (case PRs / re-skinned cases / playbook-entry issues; `.github/workflows/case-gates.yml` is its CI counterpart) |
+| `plugin/skills/mdp-solver/PLAYBOOK.md` | shipped escalation-playbook **index** — maintainer-curated; links into promoted examples' in-folder `PLAYBOOK.md`s (digest entries per ESCALATION_LOG_GUIDE §10) |
+| `plugin/skills/mdp-contribute/SKILL.md` | the contribution skill (case PRs with the playbook riding in the folder / re-skinned cases; a case too sensitive even re-skinned is not contributed; `.github/workflows/case-gates.yml` is its CI counterpart) |
+| `plugin/skills/mdp-propose/SKILL.md` | the proposal skill — mid-campaign spec/schema/process extension proposals, one `upstream-proposal` issue each; maintainer disposition accept (case becomes the regression) / reject / defer, recorded on the issue |
 | `.claude-plugin/marketplace.json` | marketplace manifest (points at `./plugin`) |
 | `cases/` | auto-solve test cases: one folder per case, built end-to-end by the skill |
 | `README.md`, `docs/` | public-facing landing + guides/FAQ (browse on GitHub) |
@@ -53,13 +56,18 @@ they exist for the public GitHub repo.
 
 ## Rules
 
-- `plugin/skills/mdp-solver/examples/` is frozen: entries change only when
-  pipeline/spec work requires it, never as research. Each entry must keep the
-  manifest gates green.
-- Adding an example (promoting a finished domain from a research repo): move
-  the domain folder into `plugin/skills/mdp-solver/examples/`, add its gate
-  lines to that dir's `MANIFEST.md`. Zero code edits — domains are
-  location-independent by the portable-domain contract (in-folder
+- `plugin/skills/mdp-solver/examples/` is frozen in its code, schemas, and
+  tests: those change only when pipeline/spec work requires it, never as
+  research. Campaign-record docs (`PLAYBOOK.md`, `ESCALATION.md`,
+  `INTERPRET.md`) are maintainer-curated instead (see the manifest). Each
+  entry must keep the manifest gates green.
+- Adding an example (promoting a finished domain from a research repo, or a
+  `cases/` folder per the criteria in `cases/README.md` — deliverable-
+  competitive incl. §14 readback, coverage, debt paid): move the **whole**
+  folder into `plugin/skills/mdp-solver/examples/` (campaign record included
+  — promotion is also the publication decision, since examples ship with the
+  plugin), add its gate lines to that dir's `MANIFEST.md`. Zero code edits —
+  domains are location-independent by the portable-domain contract (in-folder
   `{domain}_ir_adapter.py`, IR-relative builtin resolution, path-taking tools,
   folder-relative outputs).
 - New test cases go under `cases/<case_name>/` and follow the skill end to
