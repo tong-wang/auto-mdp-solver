@@ -170,7 +170,17 @@ def print_summary(study: optuna.Study, top: int = 5) -> None:
         print(f"  trial {t.number:3d}  value={t.value:.4f}  "
               f"cfg={t.user_attrs.get('cfg', '?')}")
     best = done[0]
-    print(f"  -> best model: {best.user_attrs.get('model_path', '?')}")
+    # the winner's full recorded eval row, name-blind: the study's objective
+    # is one column of it, and a block-portable column (a regret, a ratio)
+    # beside the raw one is what makes the number readable across studies
+    means = {k: v for k, v in best.user_attrs.items()
+             if k.endswith("_mean") and isinstance(v, (int, float))}
+    if means:
+        row = "  ".join(f"{k}={v:.4f}" for k, v in means.items())
+        print(f"  -> winner's eval row: {row}")
+    print(f"  -> best model: {best.user_attrs.get('model_path', '?')}"
+          + (f"  (scored on {best.user_attrs['score_checkpoint']} checkpoint)"
+             if "score_checkpoint" in best.user_attrs else ""))
 
 
 def resolve_tunable(scripts: DomainScripts, args: argparse.Namespace,

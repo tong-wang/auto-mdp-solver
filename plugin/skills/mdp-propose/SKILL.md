@@ -35,7 +35,14 @@ folder, git-tracked. Required sections:
   StateVariable`, spec §8.6), and a version pin in the header:
   `Status: draft — not yet proposed. Against v<X.Y.Z> / main @ <sha>.`
 - **The gap** — what the current version does, quoted or cited precisely
-  enough that upstream can find it without the campaign's context.
+  enough that upstream can find it without the campaign's context. **First
+  check the upstream specs and understand why they are designed that way**:
+  search the spec, the sample, and the plan docs for existing text on the
+  same question — several sections carry titled rationales (e.g. §8.4 "Why
+  `tuning/` is not under `{scenario_name}/`"), and a proposal that walks
+  past one arrives pre-refuted. If such text exists, quote it and answer
+  it; if the answer is "the rationale is right and my case is different",
+  say exactly how.
 - **Proposed change** — semantics, not a diff; include the smallest example
   that exercises it.
 - **Cost of the status quo** — what the campaign had to do instead, and what
@@ -51,7 +58,10 @@ folder, git-tracked. Required sections:
 The motivating campaign is **evidence, not contamination**: keep the real
 domain and numbers when the case is publishable. Scrub only business-private
 material (same provenance rule as mdp-contribute) — and local paths,
-credentials, hostnames always.
+credentials, hostnames always. The **cross-project citation pass**
+(mdp-contribute §2a) applies here too: a proposal's evidence sections quote
+campaign records, which carry rule-8 provenance labels naming sibling
+projects — run the same three-way disposition before the issue is filed.
 
 ## 2. Send
 

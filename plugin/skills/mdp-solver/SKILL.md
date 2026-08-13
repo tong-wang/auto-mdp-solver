@@ -426,6 +426,11 @@ Write in dependency order: `{domain}_exceptions.py` (optional) →
   template's filling rules are binding — pointer-first, campaign-varying
   content linked never copied, traps added the same day they are paid for.
 
+- Emit `{domain}/.gitignore` beside it — three lines: `results/`, `scratch/`,
+  `__pycache__/`. The folder must carry its own ignore rules (portable-domain
+  contract): a contributed or promoted folder cannot assume the destination
+  repo's root `.gitignore` covers them.
+
 **GATE:** all three must exit 0 —
 `python -m mdp_conformance {domain}` (generated-code shape),
 `python -m mdp_ir.laws {domain}` (IR execution semantics), and
@@ -594,7 +599,11 @@ show and move on.
   state grid, the structural-form statistic, recovered thresholds + action
   agreement vs the reference, feature-sensitivity sweeps. Validate the
   probe first on an instance whose optimal structure is known before
-  trusting it where none is.
+  trusting it where none is. If a probe carries its own implementation of
+  the MDP core (a vectorized sim for sweeps), it is licensed but gated:
+  declare the equivalence it claims and prove it in `{domain}_test.py`
+  (spec §1.2's second-implementation gates) — probe outputs land in the
+  run's `probe/` dir, readback conclusions in `interpret/` (spec §8.4).
 - Fit the predicted structural rule and **score it under the Stage-4 eval
   protocol** (same seeds, paired): report reference / fitted rule / net,
   with the verdict branches pre-decided per spec §14.2. The fitted rule

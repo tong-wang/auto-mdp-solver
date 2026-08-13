@@ -64,9 +64,17 @@ change the fingerprint and needs no re-confirmation.
       },
       {
         "name": "inventory", "role": "core", "type": "int",
-        // scale-derived bounds are SYMBOLIC over the slot read-API (derived by
-        // mdp_ir.families, §7) and resolve per selected demand candidate —
-        // never freeze one candidate's scale into the structure
+        // Bounds are the envelope the gym materializes into its spaces — the
+        // MDP itself often has none (demand is unbounded; a counter runs to
+        // the horizon). When the envelope follows from other parameters,
+        // DECLARE THE DERIVATION, never a literal frozen from it. Two forms:
+        //   expression over constants/slot stats — resolved once at load
+        //     ("40 * demand.mean", below);
+        //   bare name of a scenario constant instances override — kept
+        //     symbolic, resolved per instance via mdp.state_bounds()
+        //     ([0, "horizon_T"], like Decision.bounds and `length`).
+        // A union-over-instances literal is correct for no instance and drags
+        // the structural fingerprint every time a bigger cell is registered.
         "bounds": ["-40 * demand.mean", "40 * demand.mean"],
         "observability": "observable",
         "desc": "net on-hand inventory after all period events; read by next transition"

@@ -89,7 +89,16 @@ def sample_ppo(trial: optuna.Trial, tunable: set[str], *,
     # gamma / gae_lambda sampled as (β-x) / (1-x) so the log scale resolves
     # the interesting region near the ceiling
     put("gamma",         _draw_gamma)
-    put("gae_lambda",    lambda: round(1.0 - trial.suggest_float("one_minus_gae_lambda", 0.01, 0.2, log=True), 6))
+    # Range is deliberately wide and ABSOLUTE — never coupled to T̄. Two
+    # campaigns measured opposite optima (mab #E35: λ≈0.99+, long deferred
+    # credit; game2048 #E34/#E38: λ≈0.90-0.95 won, dense reward + spawn
+    # noise), so no episode-relative floor is imposed: λ's optimum tracks
+    # where consequences realize and what the noise costs, and the tuner
+    # searches the full range. Floor 5e-4 → λ ≤ 0.9995 (credit horizon up
+    # to ~2000 steps), so long-horizon values are inside the space — the
+    # old 0.01 floor capped the horizon at 100 steps and made mab's
+    # hand-set λ=0.994 unreachable AND un-enqueueable as a warm start.
+    put("gae_lambda",    lambda: round(1.0 - trial.suggest_float("one_minus_gae_lambda", 5e-4, 0.2, log=True), 6))
     put("clip_init",     lambda: trial.suggest_categorical("clip_init", CLIP_INIT_CHOICES))
     put("n_steps",       lambda: 2 ** trial.suggest_int(
         "log2_n_steps", n_steps_log2_low(min_n_steps), 12))
@@ -166,8 +175,9 @@ def encode_ppo(cfg: dict[str, object], *, n_envs: int = 1,
             else:
                 skipped.append(dest)
         elif dest == "gae_lambda":
-            if isinstance(value, (int, float)) and 0.01 <= 1.0 - value <= 0.2:
-                params["one_minus_gae_lambda"] = round(1.0 - value, 6)
+            om = round(1.0 - value, 6) if isinstance(value, (int, float)) else None
+            if om is not None and 5e-4 <= om <= 0.2:
+                params["one_minus_gae_lambda"] = om
             else:
                 skipped.append(dest)
         elif dest == "clip_init":

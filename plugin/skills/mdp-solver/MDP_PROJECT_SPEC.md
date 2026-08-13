@@ -73,6 +73,27 @@ Rules:
 - **Carry a negative control.** At least one test must corrupt the IR and
   assert the gate *fails* (`assert_diverges`, or a mis-stated claim that
   produces violations). A gate never observed failing is not known to gate.
+  The control covers *each* gate the domain claims: two gates on the same
+  object are blind to different faults (a σ-drop is invisible to an exact
+  agreement gate run at σ's default; a prior-drop is invisible to a
+  calibration gate), so one demonstrated failure does not certify the others.
+- **Gate every second implementation.** A domain may carry additional
+  implementations of its MDP core (a vectorized probe, a batched replay) —
+  the differential itself is one, so plurality is licensed, not banned. Each
+  declares the equivalence it claims and proves it here:
+
+  | claim | gate |
+  |---|---|
+  | **bit-exact replica** — same trajectories | exact equality (`== 0.0`, never `allclose`) against `{domain}_mdp`/`{domain}_gym` over shared seeds and actions |
+  | **distributional** — same laws, different draws | its deterministic core agrees with the functions the IR names (`expr_builtins`); it *should* also state what stands in for the diff in the region it generalizes into (a calibration check, a known-answer probe) |
+
+  Gates live in this file, never behind a manual `--part` someone must
+  remember to run. Any scenario constant a fast path assumes is **derived
+  from or asserted against the resolved instance**, so an IR edit fails
+  loudly instead of silently narrowing every result to one stale cell. And
+  a distributionally-gated implementation licenses **contrasts, not
+  levels**: paired differences on its own seed block may be quoted;
+  absolute levels come only from the canonical eval (§9).
 - **Stay runnable standalone**: end with
   `if __name__ == "__main__": raise SystemExit(pytest.main([__file__]))`.
 - **Never add an unprefixed module** to a domain folder. pytest's `prepend`
@@ -742,6 +763,51 @@ class {Domain}ScenarioGrid:
   legacy-exact draw mode on its derived sampler to preserve recorded
   numbers.
 
+**Choosing axes.** Not every scenario constant may become one. For one
+policy to serve every cell, three independent conditions must hold: **(a)
+shape** — observation and action spaces identical across cells; **(b) HP
+validity** — every scalar hyperparameter simultaneously right for every cell
+(they are set once, at construction, for the whole run); **(c)
+commensurability** — cell scores on one scale, so the aggregate the sampler
+optimizes means something. Classify a candidate axis by which it breaks
+(`mdp_conformance` reads the tiers off the IR's own declarations and warns):
+
+- **Tier 1 — structural: do not, unless you pay for it.** Anything that
+  changes the **action space** (a constant named in decision or action-mode
+  bounds). One policy cannot emit two action spaces. This is a *plumbing*
+  limit, not a mathematical one — an equivariant per-entity scorer is
+  already count-agnostic — so it is liftable: pad the action space to the
+  family maximum and mask the surplus (§7.1). Budget for it honestly (wasted
+  capacity, permanently masked logits, a normalizer that no longer sees a
+  fixed slot count), and declare it if you do it.
+- **Tier 2 — costly but survivable.** Two distinct mechanisms, and the
+  interventions are not interchangeable. *Changes the observation dimension*
+  (a constant named in a state variable's `length` or bounds — e.g. a lead
+  time setting pipeline length): pad the affected vectors to the family
+  maximum; benign once declared. *Changes the horizon* (the `horizon.T`
+  constant): changes no space's shape, so it is easy to add and hard to get
+  right — it breaks (b) and (c) instead. Horizon-dependent scalar HPs
+  (`gae_lambda`, rollout composition) silently change *meaning* across
+  cells; the measured optima in two campaigns bracket opposite directions
+  (§8.6), so re-derive per cell, never transfer.
+- **Tier 3 — free.** Constants entering only the reward computation or the
+  uncertainty parameters (costs, prices, distribution parameters). These
+  change what the optimal policy *is* without changing what a policy *is* —
+  exactly what a generality target should vary.
+- **Rider 1 — is the axis observable?** Cuts across all tiers. If the axis
+  value is in the observation, the policy conditions on it directly. If not,
+  the policy must *infer which cell it is in* from within-episode experience
+  — the generalist becomes an adaptive policy, and the sufficient-statistic
+  question (`requires_memory`) re-opens. A tier-3 axis the agent can neither
+  observe nor identify from its own history is the quietly bad case.
+- **Rider 2 — does the axis change reward scale?** Then the sampler's
+  uniform-over-cells is *not* uniform-over-reward: a cell at the high end
+  contributes proportionally more to every aggregate, and that weighting
+  silently becomes the training objective — and the checkpoint-selection
+  criterion. The horizon does this by construction; so does any cost axis
+  spanning orders of magnitude. Report **per cell** (§9.6) and state the
+  weighting; never quote a single aggregate as the generalist's score.
+
 ---
 
 ## 6. Core MDP (`{domain}_mdp.py`)
@@ -953,7 +1019,8 @@ class {Domain}Env(gym.Env):
     - "vec_ip": flat vector with inventory positions
 
     Notes:
-    - The core simulator is the source of truth for dynamics and reward.
+    - The core simulator is the reference implementation of the schema's
+      dynamics and reward; this wrapper adds none of its own.
     - This wrapper handles only Gym-facing concerns: spaces, formatting, reset/step.
     """
 
@@ -1219,6 +1286,11 @@ results/
       monitor.monitor.csv            # SB3 Monitor CSV
       {ALGO}_1/                      # TensorBoard event files
       ppo_eval_{eval_scenario}.tsv   # eval output (eval scenario encoded in filename)
+      checkpoints/                   # periodic checkpoints (§8.6: every 5% of budget)
+      probe/                         # §14.1 instrument outputs for THIS model — raw
+                                     #   measurements: action surfaces, sweeps, phase curves
+      interpret/                     # §14 readback of THIS model — conclusions: fitted
+                                     #   structural form + parameters, agreement stats, verdict
     benchmark/
       {method}/                      # one dir per benchmark method (dp, lp, ...)
         {scenario_name}.txt          # precomputed solution table for this scenario, if any
@@ -1230,7 +1302,24 @@ results/
       trial_{NNNN}/                  # passed to the train script as --outdir
         train.log  eval.log  eval.tsv
         {scenario_name}/{run_name}/  # the tree above, re-applied by the train script
+  insights/                          # across-run comparisons — domain-level, like tuning/:
+    {question-slug}/                 #   rule-vs-benchmark contrasts, multi-seed syntheses,
+                                     #   generalist-vs-specialist studies (conventions inside
+                                     #   are still accumulating; the home is fixed)
 ```
+
+**Model-specific artifacts live with the model.** A probe measures *one*
+trained model and a readback concludes about *one* trained model, so both
+land inside that model's run dir — the same logic that puts `eval.log` there.
+The write direction is the boundary: a probe script *writes* `probe/`
+(instrument output, data, regenerable); an interpret script *reads* `probe/`
+and the eval TSVs and *writes* `interpret/` (analysis: the fitted rule, its
+constants, the verdict). Both anchor to the run dir of the model they were
+pointed at (`model_path.parent / "probe"`) — they already take
+`--model-path`, and §8.4's derive-from-input-path rule makes that the
+anchored form, so no hard-coded run lists. Anything comparing *across* runs
+or policies — a fitted rule scored against a benchmark, a cross-seed
+synthesis — is not about one model and goes to `insights/`.
 
 **Anchor every output path to the script, never to the CWD.** Any script that
 writes into `results/` resolves it as
@@ -1334,8 +1423,8 @@ Expose `--features_dim`, `--channels`, `--kernel_size` as CLI arguments so the `
 Training runs are **leveled** by how much judgment produced their config.
 The invariant: **level ≥ L2 ⟺ more than one training configuration was
 tried** — replicate seeds are copies, not search; within-run model selection
-(plateau stop, best checkpoint) is part of L1's single run; a tuned result is
-always an escalation.
+(the post-hoc checkpoint screen, §9.7) is part of L1's single run; a tuned
+result is always an escalation.
 
 - **L0 — faithful defaults** (control, reporting only, never a gate). The
   library's defaults plus only what the *problem* forces: γ = β
@@ -1359,7 +1448,7 @@ always an escalation.
 | knob | rule |
 |---|---|
 | `gamma` | γ = β. Undiscounted indefinite horizon: γ = 1 − 1/T̄. γ < β only as a logged L2(hp) bias-variance move; γ > β never (more bias *and* more variance). |
-| `gae_lambda` | 0.95; raise toward 0.98+ when action consequences materialize ≫ 1/(1−λ) steps out. |
+| `gae_lambda` | λ sets the credit horizon `1/(1−λ)`. Choose the L1 value from **where action consequences realize** — which may be far shorter than the episode (a 2048 merge chain pays within ~10–20 moves; short credit won there, λ 0.90–0.95, game2048 #E34/#E38) or span the whole remaining horizon (an exploratory pull pays over everything after it; long credit was mandatory there, λ 0.99+, mab #E35 — at 167 steps of credit over T=20000, 2 of 3 seeds never learned at all). Coverage `(1/(1−λ))/T̄` is the diagnostic lens, not a formula: a λ carried across a horizon change silently changes what it means, so **re-examine it — in either direction — whenever T̄ moves**; it is per-instance, never a transferable tuned constant. No universal floor or band exists: the two campaigns' optima bracket ~2% to ~17% coverage. |
 | `n_envs`, `n_steps` | rollout = n_steps × n_envs ≥ max(2048 transitions, 10 episodes); n_envs = 4 default, structural, never tuned; long T̄ → raise n_envs before inflating n_steps. That ordering is an **L1 move**, made once when the train script's defaults are written. At L2 it no longer applies: `mdp_tuning` holds n_envs at that default — it is a forced-move lock, not a knob — and meets the same floor from the other side, raising the n_steps lower bound to ⌈10·T̄/n_envs⌉ (`--episode-len`, `--min-rollout-episodes`). |
 | `batch_size` | rollout/32 … rollout/8, power of two. |
 | LR schedule | exogenous noise dominates reward variance (read the IR's uncertainty block) → 1e-4 → 1e-5; near-deterministic dense-reward → 3e-4 → 3e-5. `lr_final = lr_init/10`. |
@@ -1369,8 +1458,20 @@ always an escalation.
 | `norm_obs` | §8.3 decision per the IR (heterogeneous stationary → on; drifting/accumulator obs → off, prefer sufficient-statistic obs). |
 | `norm_reward` | on, with `gamma=args.gamma` passed (§8.3). |
 | `net_arch` | (64,64) for obs dim ≤ ~32; scale the first hidden layer to ~2–4× obs dim above. Structured obs (set/permutation, grid, sequence) is never a width problem — record a *predicted escalation: arch* note. Boundary: `net_arch` widths = HP layer; custom extractors = arch layer. |
-| budget | ceiling = 20k–50k episodes × T̄ steps AND ≥ ~300 updates; plateau early-stop on the eval-callback curve, not the rollout curve. |
-| model selection | `EvalCallback` on a fixed CRN selection seed set **disjoint** from the reporting protocol's seeds, best-model saving, `sync_envs_normalization` before each eval; optionally weight-average the last ~5 checkpoints and validate against the best single one on the selection set. **The terminal checkpoint is never the deliverable.** |
+| budget | ceiling = 20k–50k episodes × T̄ steps AND ≥ ~300 updates. **A training run runs to its budget — no early stopping.** The training trajectory is too noisy to make any judgment from; judgment happens post-hoc, on CRN evals of saved checkpoints (the selection row). Early stopping exists only in tuning trials (§9.7), where it reads the periodic CRN eval, never the rollout curve, and the arm is one of many. |
+| model selection | **Post-hoc, three-layer (§9.7).** `CheckpointCallback` every ~5% of budget (~20 checkpoints); after training, evaluate every checkpoint on the selection block (~2048 CRN seeds, disjoint from the protocol block), take the top-k (k≈3, adjustable — widen when the leaders sit within one screen-SE), confirm those on the protocol block (~8192), ship the winner. No `EvalCallback`, no live selection env, no `sync_envs_normalization` — the machinery that selected a generalist's checkpoint on one wrong cell (mab #E36 V4) simply isn't there. **The terminal checkpoint is never the deliverable** — the marginal gain of the screen over a working callback is small (+1.4, mab #E33) but selecting *at all* is worth +43, and the post-hoc form buys the robustness. |
+
+**The derivation records its basis.** The train script's L1 table comment
+states what each derived value was derived *from* — the measured T̄ (and at
+which scale/instance, under roughly what policy strength, since episode
+length drifts as the agent improves in open-ended domains). A derivation
+whose basis moved is stale even though every number in it is unchanged: the
+one campaign that recorded its basis (`T~48`, game2048) is the one that
+caught its own violation when the campaign changed scale; re-derive when the
+instance, scale, or measured T̄ moves. The train script also **warns** (never
+errors) at start when the rollout holds fewer than the ≥10-episode floor —
+measured as a co-factor, not a cliff (game2048: r = +0.31, flat arms at 2.4
+episodes did not collapse), which is why it is a warning.
 
 Diagnosis at the L1 gate: L1 ≤ random → suspect the build, don't escalate;
 L1 < L0 → the derivation misfired; L1 competitive vs baselines → done; gap →
@@ -1406,6 +1507,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def parse_args() -> argparse.Namespace:
     return _build_arg_parser().parse_args()
 ```
+
+Two conventions the parsers follow:
+
+- **Criterion-selecting boolean flags use `argparse.BooleanOptionalAction`**
+  (`--stochastic` / `--no-stochastic`), never `store_true`: both values stay
+  reachable from `mdp_tuning`'s `--eval-arg KEY=VALUE` pass-through, and the
+  flag's meaning is visible in `--help`. A `store_true` whose other value is
+  the silent default is exactly how 73 trials get ranked on the wrong
+  criterion without an error.
+- **Train scripts accept `--tag <ledger-address>`** (free-form, default
+  empty): the escalation-log entry this run was launched under (`A8a`,
+  `E14`). It costs nothing — the args log records every CLI arg verbatim, so
+  the tag lands in the run dir's immutable `{scenario}_{algo}_args.txt` and a
+  reader standing in the run dir can find its birth entry without grep.
 
 ### 9.2 Seed loop
 
@@ -1456,6 +1571,11 @@ Where:
 - `profit_var`: sample variance (`ddof=1`)
 - `semivar_d`: downside semi-variance — `sum(max(mu - x, 0)^2) / (n-1)` for x in profits
 - `semivar_u`: upside semi-variance — `sum(max(x - mu, 0)^2) / (n-1)`
+
+Leading `#` lines in an eval TSV are **provenance, not data** — model path,
+seed block, scenario — and every §9 reader (`mdp_gates`, `mdp_tuning`) skips
+them. Stamp them liberally: a TSV that states its own block is what makes a
+cross-study comparison auditable.
 
 A cost-minimizing domain would instead lead with `cost_total_mean` /
 `cost_total_var` and be gated with `--sense minimize`.
@@ -1559,15 +1679,29 @@ for cell_id, source in targets:
 
 **Benchmark solutions file**: a precomputed solution table (e.g. a DP policy table) lives at `results/{scenario_name}/benchmark/{method}/{scenario_name}.txt`. These are artifacts analogous to a trained model: the table covers one scenario family and is referenced by `--solutions` at eval time. A model trained on `simple` can still reference the parent scenario's solutions file if `simple`'s parameters are a subset of that grid.
 
-### 9.7 Eval tiers — how many episodes, and which numbers are quotable
+### 9.7 Eval tiers — the three-layer evaluation
 
-Three tiers with different jobs; only the third produces leaderboard numbers:
+One principle organizes all judgment: **the training trajectory is never a
+judgment input** — too noisy for any decision, in training or tuning. Every
+judgment reads a CRN eval, and the three layers trade randomness against
+efficiency (the numbers are defaults, adjustable case by case; the *blocks
+are mutually disjoint* — a layer that ranks must not touch the block that
+quotes):
 
-| tier | where | episodes | job |
+| layer | where | episodes | job |
 |---|---|---|---|
-| smoke | train-script tail | 50 | sanity ("did it learn anything"); never quoted |
-| selection | `EvalCallback` during L1 training | ~256–512 CRN seeds, **disjoint** from reporting | rank checkpoints of one run + plateau detection; L0 has none |
-| reporting | `{domain}_ppo_eval.py` / benchmark evals | **2048 default, 8192 evidence-grade** | the leaderboard number; a ladder run *exists* only once this TSV does |
+| trial | periodic eval inside a tuning trial, every ~5% of budget | ~512 CRN seeds | the tuner's signal: trial value = the **last** eval (it describes the artifact the trial ships); early stopping reads THIS curve, never the rollout curve — patience ~4 evals with a min-evals guard ~5, strict comparison (the fixed CRN block pairs the evals, so policy differences are not draw noise); `trial.report` on the same curve enables population pruning |
+| screen | post-hoc over a training run's ~20 checkpoints (§8.6) | ~2048 CRN seeds | rank the checkpoints, pass the top-k to confirmation; its scores are never quoted |
+| protocol | `{domain}_ppo_eval.py` / benchmark evals | **~8192 evidence-grade** (2048 default for cheap domains) | confirm the top-k, crown the winner — the leaderboard number; a ladder run *exists* only once this TSV does |
+
+A smoke eval (train-script tail, ~50 episodes, "did it learn anything")
+stays outside the layers and is never quoted.
+
+The screen layer is affordable because the **selection evaluator is
+vectorized over episodes** — the old "~256–512 seeds" tier reflected a
+scalar `predict`-per-step loop's budget, not a statistical judgment; batched
+eval runs 20–100× cheaper per step than training, and the seed count stops
+being the constraint.
 
 Sizing: from a ~500-episode pilot SD σ, `n ≈ (2σ/ε)²` for the smallest delta
 ε worth resolving. Make comparative claims on **per-seed paired differences**
@@ -1700,7 +1834,11 @@ python -m mdp_gates \
 - **Post-tuning rule**: a tuning study's winner was *selected* on its tuning
   eval seeds, so its selection score is optimistic. Always re-evaluate the
   winning artifact with the full protocol (more seeds than the tuning eval)
-  before reporting or gating it.
+  before reporting or gating it. And the gap is not only optimism: a
+  different seed block is a different draw of the problem, so **the oracle
+  itself moves** between blocks (mab measured 16.24 points) — the shift can
+  go either direction and affects every trial alike, which is why a study's
+  absolute scores are comparable only within that study.
 
 ---
 
@@ -1726,6 +1864,13 @@ Two forms, mirroring formalize's replicate/elicit duality:
   below apply (the action-surface figure, the feature-sensitivity sweeps);
   discovery-style probes are deliberately not yet spec'd — conventions
   accumulate from live campaigns first.
+
+Scope note: this section specifies the **readback that ships** — the
+deliverable read from the winning artifact at Stage 5. Probes run *inside*
+an escalation campaign (diagnosing a failing arm, checking a mechanism
+before spending budget) are campaign record, governed by the escalation
+guide, not by this section; their outputs land in the run's `probe/` dir
+(§8.4) and their lessons in the campaign's `PLAYBOOK.md`.
 
 ### 14.1 The probe (`{domain}_policy_probe.py`)
 
@@ -1754,10 +1899,13 @@ declared values) and report, per probed period:
 
 Rules:
 
-- **Validate the probe where the answer is known.** First run it on an
-  instance whose optimal structure is known (the exactly-solvable rung, the
-  domain's DP case). A probe is trusted for discovery only after it has
-  recovered a known answer.
+- **Validate the instrument where the answer is known.** This binds every
+  instrument, not just this probe: a replay harness, a fast
+  re-implementation (§1.2's second-implementation gates), a critic readout —
+  each is trusted for discovery only after it has recovered a fact the
+  domain already certifies (the exactly-solvable rung, the DP case, a
+  recorded protocol number). An instrument that has never recovered a known
+  answer is not measuring yet.
 - **The probe doubles as the training diagnostic.** Before escalating a
   failing arm (§8.6 diagnosis), probe it: a reading like "flatness 25,
   agreement 0.04" says the net is not conditioning on the state at all,

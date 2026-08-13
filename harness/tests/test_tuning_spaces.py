@@ -95,3 +95,20 @@ def test_encode_skips_unrepresentable() -> None:
     # a default below a raised n_steps floor is skipped, not enqueued stale
     params, skipped = encode_ppo({"n_steps": 2048}, min_n_steps=2500)
     assert skipped == ["n_steps"] and not params
+
+
+def test_long_horizon_lambda_is_inside_the_space() -> None:
+    """Upstream #4: the old 1−λ floor of 0.01 capped the credit horizon at
+    100 steps — mab's hand-set λ=0.994 was unreachable and could not even be
+    enqueued as the warm-start trial. The range stays ABSOLUTE (never coupled
+    to T̄): two campaigns measured opposite optima, so the tuner searches the
+    full range and no episode-relative floor is imposed."""
+    params, skipped = encode_ppo({"gae_lambda": 0.994}, beta=1.0)
+    assert not skipped
+    cfg = sample_ppo(FixedTrial(params), {"gae_lambda"}, beta=1.0)
+    assert abs(cfg["gae_lambda"] - 0.994) < 1e-9
+
+    # both campaigns' winners representable: game2048's 0.90 and λ→0.9995
+    for lam in (0.90, 0.9995):
+        params, skipped = encode_ppo({"gae_lambda": lam}, beta=1.0)
+        assert not skipped, lam

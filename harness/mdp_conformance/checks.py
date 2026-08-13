@@ -631,7 +631,83 @@ def check_grids(h: DomainHandle) -> list[CheckResult]:
         total = sum(len(list(g)) for g in GRIDS.values())
         results.append(CheckResult("grids.registry", "PASS",
                                    f"{len(GRIDS)} grid(s), {total} cells; samplers pure"))
+    results.append(_check_grid_axes(h, GRIDS))
     return results
+
+
+def _axis_tiers(ir) -> dict[str, str]:
+    """Constant name -> tier label, read off the IR's own declarations
+    (spec §5.6 "Choosing axes"). Assignment order makes tier-1 win when a
+    constant plays several roles — the action space is the harder break."""
+    tiers: dict[str, str] = {}
+    m = ir.mdp
+    for sv in m.state_variables:
+        if isinstance(sv.length, str):
+            tiers[sv.length] = f"tier-2 obs-dim (sets length of state {sv.name!r})"
+        for raw in (sv.bounds, sv.element_bounds):
+            for x in raw or []:
+                if isinstance(x, str):
+                    tiers.setdefault(
+                        x, f"tier-2 obs-dim (sets bounds of state {sv.name!r})")
+    if isinstance(m.horizon.T, str):
+        tiers[m.horizon.T] = "tier-2 horizon"
+    for d in m.decisions:
+        for x in d.bounds.value:
+            if isinstance(x, str):
+                tiers[x] = f"tier-1 (sets action bounds of decision {d.name!r})"
+    for am in ir.gym.action_modes:
+        for pair in am.bounds_per_decision():
+            for x in pair:
+                if isinstance(x, str):
+                    tiers[x] = f"tier-1 (sets action bounds of mode {am.name!r})"
+    return tiers
+
+
+def _check_grid_axes(h: DomainHandle, GRIDS: dict) -> CheckResult:
+    """Classify each grid axis by what it breaks (spec §5.6): tier 1 changes
+    the action space (one policy cannot emit two); tier-2 horizon changes no
+    space's shape but silently re-scales horizon-dependent HPs and cell
+    rewards; tier-2 obs-dim needs padding to the family maximum. Tier 3
+    (reward/uncertainty constants) is what a generality target should vary."""
+    schemas = sorted(h.directory.glob("*_schema.json"))
+    if len(schemas) != 1:
+        return CheckResult("grids.axes", "SKIP", "no single *_schema.json to classify against")
+    try:
+        from mdp_ir.schema import load_ir
+        ir = load_ir(schemas[0])
+    except Exception as e:
+        return CheckResult("grids.axes", "SKIP",
+                           f"schema not loadable ({type(e).__name__}: {e})")
+    tiers = _axis_tiers(ir)
+    warns, classified = [], 0
+    for key, grid in GRIDS.items():
+        axes = getattr(grid, "axes", None)
+        if not isinstance(axes, dict):
+            continue
+        for name, values in axes.items():
+            classified += 1
+            tier = tiers.get(name)
+            if tier is None:
+                continue  # tier 3: reward/uncertainty constant — free
+            if tier == "tier-2 horizon":
+                nums = [v for v in values if isinstance(v, (int, float))]
+                span = (f"{max(nums) / min(nums):.0f}x ({min(nums)}->{max(nums)})"
+                        if nums and min(nums) > 0 else "?")
+                warns.append(
+                    f"{key}: axis {name!r} is the horizon (span {span}) — "
+                    f"horizon-dependent HPs (gae_lambda, rollout composition) "
+                    f"change meaning across cells, re-derive per cell; cell "
+                    f"rewards are scale-weighted, report per cell (§9.6), "
+                    f"never one aggregate")
+            else:
+                warns.append(f"{key}: axis {name!r} is {tier} — see §5.6 "
+                             f"Choosing axes for the obligations")
+    if warns:
+        return CheckResult("grids.axes", "WARN", "; ".join(warns[:4]))
+    if classified:
+        return CheckResult("grids.axes", "PASS",
+                           f"{classified} axis(es), all tier-3 (reward/uncertainty)")
+    return CheckResult("grids.axes", "SKIP", "no grid declares axes metadata")
 
 
 REGISTRY = [

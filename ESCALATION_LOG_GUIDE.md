@@ -93,7 +93,7 @@ above — was a tree all along.)
   order encodes **conditioning, not importance**: HP is last because nothing
   conditions on it, not because it moves results least — it is a *covariate*
   of every comparison above it, not a parent (topk_id: "plain HP is bigger
-  than either research issue"), which is what rule 9 exists for.
+  than either research issue"), which is what rule 10 exists for.
 - **Type every split: coverage (AND) vs selection (OR).** A **coverage
   split** — `S{n}` edges — partitions the *problem*: target scales
   (3×3 → 4×4), scenario families (Gaussian vs Bernoulli arms). Every child
@@ -360,7 +360,15 @@ right or wrong in place.
    branch only with its provenance attached; dropping the label requires an
    in-campaign re-validation at the standard protocol. Rule 3's eval honesty,
    extended across campaign boundaries.
-9. **Prune on decisive margins only — HP is a covariate.** Comparisons above
+9. **No number from an ungated implementation.** A quantity produced by a
+   second implementation of the MDP core (a vectorized probe, a batched
+   replay) enters the ledger only if that implementation passes its
+   spec-§1.2 gates in `{domain}_test.py` — declared equivalence, proven, in
+   the tracked suite. And a *distributionally*-gated implementation licenses
+   contrasts, not levels: paired differences on its own block may be cited;
+   absolute levels come only from the canonical eval. Rule 3's eval honesty,
+   extended to the instrument that produced the number.
+10. **Prune on decisive margins only — HP is a covariate.** Comparisons above
    the HP level are taken at the shared derived center (the spec-§8.6 L1
    config): a valid *screen*, and a margin far beyond plausible HP
    sensitivity prunes (game2048's +46%/+64% representation rungs). A close
@@ -375,7 +383,16 @@ right or wrong in place.
 - **Dispatch state** — what is running where (WATCH_STATUS-style). Ephemeral,
   different lifecycle; keep it in its own file or the dispatcher. Don't let it
   colonize the map (`▶` marks are pointers, not process management).
-- **Raw outputs** — `results/` folders, TB logs. The ledger cites paths.
+- **Raw outputs** — `results/` folders, TB logs. The ledger cites **run
+  names, never paths** — the timestamped run name is the join key, stable
+  under any reorganization, and `grep <run_name>` in this file is the
+  reverse index (which entries used this run; a run no entry cites is
+  deletable). Two disciplines keep the key stable: **run dirs are immutable
+  once created** — status (voided, superseded, crowned) belongs in the
+  ledger, never in the folder name (renaming runs is how a campaign killed
+  4 of its first 9 citations in a day) — and a run's birth entry rides its
+  own args log via the train script's `--tag` flag (spec §9.1), so the
+  forward join needs no grep at all.
 - **Spec/playbook content** — conventions live in the spec; the log records what
   *happened*, cites the rest.
 

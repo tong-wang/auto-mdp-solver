@@ -203,6 +203,10 @@ def run_logged(cmd: list[str], log_path: Path, cwd: Path) -> None:
     env.setdefault("OMP_NUM_THREADS", "1")
     env.setdefault("MKL_NUM_THREADS", "1")
     with log_path.open("w") as log:
+        # provenance header: a finished study stays auditable from its logs
+        # alone — which command, from where, produced this output
+        log.write(f"# cmd: {' '.join(cmd)}\n# cwd: {cwd}\n")
+        log.flush()
         proc = subprocess.run(cmd, cwd=str(cwd), stdout=log,
                               stderr=subprocess.STDOUT, text=True, env=env)
     if proc.returncode != 0:

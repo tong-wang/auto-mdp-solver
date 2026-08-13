@@ -88,6 +88,33 @@ Exclude: `results/`, `__pycache__`, logs, anything gitignored. Then run the
 always-scrub (paths, credentials, hostnames, identities) over the staged
 files and show anything found.
 
+**Cross-project citations — a separate pass, run here, before anything is
+committed.** The always-scrub catches *accidental* leakage; citations of
+other projects are deliberate, guide-mandated content (rule 8 requires an
+imported lever to carry its provenance label), so they need a disposition,
+not a grep-and-delete. Enumerate every other project/domain the staged files
+name — search prose as well as identifiers, and search the campaign-record
+files (`ESCALATION.md`, `PLAYBOOK.md`, `INTERPRET.md`) and code comments
+first, since rule-8 labels concentrate there. Classify each:
+
+1. **Already published** — in `cases/`, the skill's `examples/`, or
+   otherwise public: cite freely by name. Provenance to a case a reader can
+   open beats uniformity; anonymizing it destroys a working reference.
+2. **Private** — list every citation with file and line, and ask the user
+   per project: publish the name (a valid answer is "it's about to be
+   contributed"), or anonymize.
+3. **Anonymize** — ask *how*; never invent a descriptive alias. A shape
+   description identifies a project as precisely as its name; whether it
+   does is the user's call, not the assistant's.
+
+Timing is the point: the disposition happens on the staged tree, **before
+the contribution commit exists**. A redaction commit on top of an earlier
+commit withholds nothing — the name stays recoverable from the branch via
+`git log -S`, and the PR's own refs keep pre-squash commits reachable even
+after a squash-merge. If a leak is discovered after commits exist, the
+remedy is to rewrite the branch or open a fresh single-commit PR — never a
+follow-up commit.
+
 **2b. Provenance (must ask, verbatim topics).** (i) Does the user have the
 right to publish this problem *and its campaign record*? A case accepted into
 `cases/` may later be promoted whole into the plugin's examples set, so the

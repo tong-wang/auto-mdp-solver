@@ -270,13 +270,22 @@ class StateVariable(_Base):
     role: StateRole
     type: str
     observability: Observability = Observability.observable
-    bounds: list[float] | None = None
+    # [lo, hi] — the envelope the gym materializes into its spaces. The MDP
+    # itself often has no bound (demand is normal, a counter runs to the
+    # horizon); this field is the imposed one, so when it follows from other
+    # parameters, declare the derivation instead of freezing a literal:
+    # an entry may be an expression over constants/slot stats (resolved at
+    # load, e.g. "40 * demand.mean") or the *name of a scenario constant*
+    # overridable per instance (resolved per instance, like horizon.T —
+    # `MdpBlock.state_bounds`). A union-over-instances literal is correct
+    # for no instance and drags the structural fingerprint on every widen.
+    bounds: list[float | str] | None = None
     # a literal length, or the name of a scenario constant (overridable per
     # instance, like horizon.T) — e.g. a pipeline whose length tracks the
     # selected lead time. Metadata only: the runtime vector comes from
     # initial_state (`zeros(<len>)`), so nothing downstream must resolve it.
     length: int | str | None = None
-    element_bounds: list[float] | None = None
+    element_bounds: list[float | str] | None = None
     categories: list[str] | None = None
     desc: str = ""
     # borderline state-vs-info calls carry a Confirmable placement (sample §5.1)
@@ -803,6 +812,30 @@ class MdpBlock(_Base):
             out.append(float(v))
         return out[0], out[1]
 
+    def state_bounds(
+        self, name: str, instance: str | None = None, element: bool = False
+    ) -> tuple[float, float] | None:
+        """Effective [lo, hi] of a state variable's (element_)bounds: entries
+        are literals or names of scenario constants, overridable per instance
+        (like `horizon_T`). None when the variable declares no bounds. This is
+        what Stage-2 codegen resolves when writing the gym's spaces."""
+        sv = next(s for s in self.state_variables if s.name == name)
+        raw = sv.element_bounds if element else sv.bounds
+        if raw is None:
+            return None
+        consts = {c.name: c.value for c in self.scenario.constants}
+        if instance is not None:
+            consts.update(self.scenario.instances[instance])
+        out = []
+        for x in raw:
+            v = consts[x] if isinstance(x, str) else x
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise TypeError(
+                    f"state {name!r} bound {x!r} resolved to non-numeric {v!r}"
+                )
+            out.append(float(v))
+        return out[0], out[1]
+
     def horizon_T(self, instance: str | None = None) -> int:
         """Effective horizon length: `horizon.T` is a literal or the name of
         a scenario constant, overridable per instance like any constant."""
@@ -951,6 +984,49 @@ class MdpBlock(_Base):
                         f"decision {d.name!r}: bounds resolve to lo >= hi "
                         f"({lo} >= {hi}) in {where}"
                     )
+        return self
+
+    @model_validator(mode="after")
+    def _state_bounds_resolve(self) -> "MdpBlock":
+        """String entries in state (element_)bounds must name scenario
+        constants and resolve to numeric lo < hi in the base scenario and in
+        every instance — same contract as decision bounds. (Expression-form
+        entries never reach here: layering collapses them at load.)"""
+        consts = {c.name: c.value for c in self.scenario.constants}
+        for sv in self.state_variables:
+            for label, raw in (("bounds", sv.bounds),
+                               ("element_bounds", sv.element_bounds)):
+                if raw is None:
+                    continue
+                if len(raw) != 2:
+                    raise ValueError(
+                        f"state {sv.name!r}: {label} must be [lo, hi], got {raw}"
+                    )
+                names = [x for x in raw if isinstance(x, str)]
+                unknown = [x for x in names if x not in consts]
+                if unknown:
+                    raise ValueError(
+                        f"state {sv.name!r}: {label} entries {unknown} name "
+                        f"no scenario constant"
+                    )
+                scopes = {"base": {}} | {
+                    f"instance {i!r}": ov
+                    for i, ov in self.scenario.instances.items()
+                } if names else {"base": {}}
+                for where, overrides in scopes.items():
+                    merged = consts | overrides
+                    lo, hi = (merged[x] if isinstance(x, str) else x for x in raw)
+                    for tag, v in (("lo", lo), ("hi", hi)):
+                        if isinstance(v, bool) or not isinstance(v, (int, float)):
+                            raise ValueError(
+                                f"state {sv.name!r}: {label} {tag} resolves to "
+                                f"non-numeric {v!r} in {where}"
+                            )
+                    if lo >= hi:
+                        raise ValueError(
+                            f"state {sv.name!r}: {label} resolve to lo >= hi "
+                            f"({lo} >= {hi}) in {where}"
+                        )
         return self
 
     @model_validator(mode="after")
