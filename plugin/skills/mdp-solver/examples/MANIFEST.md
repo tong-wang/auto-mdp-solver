@@ -57,10 +57,16 @@ Shape coverage note: these cover continuous single-entity control, two-step
 advance, episode-support demand, decision-conditioned generators, exact-DP
 benchmarks, and a **cross-family world mixture** (`inv_single`'s
 `mix_demand`, exercising per-episode candidate re-selection and the
-family-generic runtime); the **design layer** — a `{domain}_grids.py`
-with `GRIDS`, generalist-over-a-grid training, an information-accumulation
-(MMFE) state, and a terminal-only stochastic payoff (`fnv`, the reference
-grid exemplar); and, from `mab`, **discrete actions** (the first — the other
+family-generic runtime); the **design layer**, split across two
+exemplars that are not interchangeable — `fnv` is the grid-*construction*
+case (`{domain}_grids.py` with `GRIDS`, a 1080-cell `from_axes` cross
+product whose six axes are all **tier-3**, so it is the regression for the
+§5.6 classifier's PASS branch, plus an information-accumulation (MMFE) state
+and a terminal-only stochastic payoff; note it ships no train/eval pair, so
+it exercises grid *definition*, not training), while `mab` is the
+generalist-*training* case (a trained generalist over a **tier-2 horizon**
+axis, the regression for the classifier's WARN branch, with per-cell
+reporting because that axis re-scales rewards); and, from `mab`, **discrete actions** (the first — the other
 three are all continuous), **censored information** (only the pulled arm is
 observed, so the agent must infer the rest), a **decision that selects which
 exogenous stream is read** (`key_exprs` on a period stage — the regression
