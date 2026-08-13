@@ -608,7 +608,18 @@ def build_model(args: argparse.Namespace, env, outdir: Path) -> PPO:
 
 
 # ---------------------------------------------------------------------------
-# §8.6 selection protocol: CRN eval, best-model tracking, plateau early stop
+# Selection protocol — SUPERSEDED, DO NOT COPY INTO A NEW DOMAIN.
+#
+# This is the pre-v0.7.0 design: a live in-training callback. Spec §8.6/§9.7
+# now prescribe a post-hoc three-layer screen — CheckpointCallback only, then
+# rank the checkpoints on a ~2048-seed block and confirm the top-k on the
+# protocol block — and say "no EvalCallback, no live selection env". That
+# change was made partly on this campaign's evidence (#E33, and #E36 V4 where
+# this very callback selected a generalist's checkpoint on one wrong cell).
+#
+# It stays here because every number in this folder was produced by it, so
+# replacing it would leave the leaderboard describing code that did not
+# generate it. mab_selection_probe.py is the post-hoc screen run by hand.
 # ---------------------------------------------------------------------------
 
 class SelectionEvalCallback(BaseCallback):

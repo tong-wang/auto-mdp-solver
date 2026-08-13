@@ -15,6 +15,21 @@ edits, ever. The campaign-record docs are maintainer-curated instead:
 recurrence marks and scope corrections may land there, each shipping as a
 plugin version bump so "what shipped" stays answerable from the tag.
 
+**Where an entry is not exemplary, say so here.** These folders are read as
+few-shot examples, so a domain built before a convention changed will teach
+the superseded pattern by demonstration — a prose disclaimer inside the
+folder keeps its own record honest but does not stop the code being copied.
+Current caveats:
+
+- `mab` — its **selection machinery predates v0.7.0**. The train script uses
+  a live in-training `SelectionEvalCallback`; §8.6/§9.7 now specify a
+  post-hoc three-layer screen and state "no `EvalCallback`, no live selection
+  env" — a change this campaign's own #E33/#E36 V4 motivated. Read `mab` for
+  the shapes listed below; take the selection pattern from the spec, not from
+  this script. The code stays as it is because every number in the folder was
+  produced by it (see its `CLAUDE.md` Traps and `README`); `mab_selection_probe.py`
+  is the post-hoc screen the campaign ran by hand.
+
 Every example carries three gates, all run from the repo root with
 `E=plugin/skills/mdp-solver/examples`:
 
