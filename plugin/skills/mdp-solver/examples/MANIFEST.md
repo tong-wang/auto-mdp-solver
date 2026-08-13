@@ -22,7 +22,6 @@ Every example carries three gates, all run from the repo root with
 |---|---|---|
 | `inv_single` | imported 2026-07-21 | `python -m mdp_conformance $E/inv_single` · `python -m mdp_ir $E/inv_single/inv_single_schema.json` · `pytest $E/inv_single` |
 | `dynamic_pricing` | imported 2026-07-21 | `python -m mdp_conformance $E/dynamic_pricing` · `python -m mdp_ir $E/dynamic_pricing/dynamic_pricing_schema.json` · `pytest $E/dynamic_pricing` |
-| `fnv` | added 2026-07-23 | `python -m mdp_conformance $E/fnv` · `python -m mdp_ir $E/fnv/fnv_schema.json` · `pytest $E/fnv` |
 | `mab` | promoted from `cases/` 2026-08-13 (contributed PR #13) | `python -m mdp_conformance $E/mab` · `python -m mdp_ir $E/mab/mab_schema.json` · `pytest $E/mab` |
 
 The third gate is each domain's own `{domain}_test.py`, sitting beside the code
@@ -57,31 +56,25 @@ Shape coverage note: these cover continuous single-entity control, two-step
 advance, episode-support demand, decision-conditioned generators, exact-DP
 benchmarks, and a **cross-family world mixture** (`inv_single`'s
 `mix_demand`, exercising per-episode candidate re-selection and the
-family-generic runtime); the **design layer**, split across two
-exemplars that are not interchangeable — `fnv` is the grid-*construction*
-case (`{domain}_grids.py` with `GRIDS`, a 1080-cell `from_axes` cross
-product whose six axes are all **tier-3**, so it is the regression for the
-§5.6 classifier's PASS branch, plus an information-accumulation (MMFE) state
-and a terminal-only stochastic payoff; note it ships no train/eval pair, so
-it exercises grid *definition*, not training), while `mab` is the
-generalist-*training* case (a trained generalist over a **tier-2 horizon**
-axis, the regression for the classifier's WARN branch, with per-cell
-reporting because that axis re-scales rewards); and, from `mab`, **discrete actions** (the first — the other
-three are all continuous), **censored information** (only the pulled arm is
-observed, so the agent must infer the rest), a **decision that selects which
-exogenous stream is read** (`key_exprs` on a period stage — the regression
-case for v0.5.9), **symbolic size axes** (bounds and lengths naming scenario
-constants, so one IR spans 34 compositions), and the **§14 interpret leg**
-end to end — a policy probe, a fitted structural rule scored as a first-class
-§9 benchmark, and the campaign record (`ESCALATION.md`, `PLAYBOOK.md`,
-`INTERPRET.md`, `CLAUDE.md`) that makes the in-folder playbook reachable by
-the installed skill. Not yet covered by a shipped example: multi-entity,
-action masking, deterministic dynamics + sampled instances, competitive
-information modes.
+family-generic runtime); and, from `mab`, the **design layer** with a
+trained generalist over a `{domain}_grids.py` grid, **discrete actions** (the
+first — the other two are continuous), **censored information** (only the
+pulled arm is observed, so the agent must infer the rest), a **decision that
+selects which exogenous stream is read** (`key_exprs` on a period stage — the
+regression case for v0.5.9), **symbolic size axes** (bounds and lengths
+naming scenario constants, so one IR spans 34 compositions), and the **§14
+interpret leg** end to end — a policy probe, a fitted structural rule scored
+as a first-class §9 benchmark, and the campaign record (`ESCALATION.md`,
+`PLAYBOOK.md`, `INTERPRET.md`, `CLAUDE.md`) that makes the in-folder playbook
+reachable by the installed skill. Not yet covered by a shipped example:
+multi-entity, action masking, deterministic dynamics + sampled instances,
+competitive information modes, an information-accumulation (MMFE) state, and
+a terminal-only stochastic payoff.
 
-`mab` is also the shipped example whose grid trips the §5.6 `grids.axes`
-tier warning (its axis is the horizon), so the check has a live regression.
-Its results are **Gaussian-only by declared scope** — the `bernoulli` branch
-is implemented and differentially gated but deliberately not evaluated,
-which is a scope boundary, not an unpaid debt; the folder states what that
-forgoes.
+`mab`'s grid trips the §5.6 `grids.axes` tier warning (its axis is the
+horizon), so that branch of the check has a live regression; the tier-3 PASS
+branch is covered by `harness/tests/test_conformance_grid_axes.py` on
+synthetic IRs, which is where a classifier's own regression belongs. `mab`'s
+results are **Gaussian-only by declared scope** — the `bernoulli` branch is
+implemented and differentially gated but deliberately not evaluated, which is
+a scope boundary, not an unpaid debt; the folder states what that forgoes.

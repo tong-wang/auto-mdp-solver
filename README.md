@@ -104,8 +104,8 @@ stages:
 
 ```bash
 E=plugin/skills/mdp-solver/examples
-python -m mdp_conformance $E/inv_single $E/dynamic_pricing $E/fnv   # generated-code shape
-python -m mdp_ir.laws     $E/inv_single $E/dynamic_pricing $E/fnv   # IR execution semantics
+python -m mdp_conformance $E/inv_single $E/dynamic_pricing $E/mab   # generated-code shape
+python -m mdp_ir.laws     $E/inv_single $E/dynamic_pricing $E/mab   # IR execution semantics
 python -m mdp_ir.differential $E/inv_single/inv_single_schema.json --all-instances --episodes 40
 ```
 

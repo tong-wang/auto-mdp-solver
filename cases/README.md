@@ -71,3 +71,12 @@ maintainer-curated).
 | promoted case | when | now at |
 |---|---|---|
 | `mab` — stochastic multi-armed bandit | 2026-08-13 | `plugin/skills/mdp-solver/examples/mab/` |
+
+Demotion is the same move in reverse, and is not a failure verdict: an
+example that no longer earns its place as a *few-shot exemplar* — too
+specific a problem, or incomplete as a pipeline run — returns here, where it
+still gates. `fnv` moved back on 2026-08-13: it ships no train/eval pair, so
+it never exercised the solve leg, and its MMFE ordering problem is narrower
+than the shapes an exemplar should teach. Note its solve half exists in the
+originating research repo, so completing it is a contribution of the missing
+scripts, not a fresh case.
