@@ -23,6 +23,7 @@ Every example carries three gates, all run from the repo root with
 | `inv_single` | imported 2026-07-21 | `python -m mdp_conformance $E/inv_single` · `python -m mdp_ir $E/inv_single/inv_single_schema.json` · `pytest $E/inv_single` |
 | `dynamic_pricing` | imported 2026-07-21 | `python -m mdp_conformance $E/dynamic_pricing` · `python -m mdp_ir $E/dynamic_pricing/dynamic_pricing_schema.json` · `pytest $E/dynamic_pricing` |
 | `fnv` | added 2026-07-23 | `python -m mdp_conformance $E/fnv` · `python -m mdp_ir $E/fnv/fnv_schema.json` · `pytest $E/fnv` |
+| `mab` | promoted from `cases/` 2026-08-13 (contributed PR #13) | `python -m mdp_conformance $E/mab` · `python -m mdp_ir $E/mab/mab_schema.json` · `pytest $E/mab` |
 
 The third gate is each domain's own `{domain}_test.py`, sitting beside the code
 it describes. It runs the engine laws (`mdp_ir.laws`) and **parametrizes the
@@ -46,13 +47,35 @@ the same sweep in one process and stays the tool for manual investigation.
 Each schema also declares its conservation laws under `mdp.invariants`, which
 the differential and the laws gate both enforce.
 
+`mab`'s covering set: both `payout` candidates (`bernoulli` base +
+`gaussian`) × the K/T grid — 33 declared instances spanning K ∈ {5, 10, 20}
+and T ∈ {10 … 40000}, plus the `gaussian` composition itself. Its size axes
+are symbolic (`n_arms`, `horizon_T`), so registering a further cell extends
+the sweep without touching the structure.
+
 Shape coverage note: these cover continuous single-entity control, two-step
 advance, episode-support demand, decision-conditioned generators, exact-DP
 benchmarks, and a **cross-family world mixture** (`inv_single`'s
 `mix_demand`, exercising per-episode candidate re-selection and the
-family-generic runtime); and the **design layer** — a `{domain}_grids.py`
+family-generic runtime); the **design layer** — a `{domain}_grids.py`
 with `GRIDS`, generalist-over-a-grid training, an information-accumulation
 (MMFE) state, and a terminal-only stochastic payoff (`fnv`, the reference
-grid exemplar). Not yet covered by a shipped example: multi-entity,
-discrete + action masking, deterministic dynamics + sampled instances,
-competitive/censored information modes.
+grid exemplar); and, from `mab`, **discrete actions** (the first — the other
+three are all continuous), **censored information** (only the pulled arm is
+observed, so the agent must infer the rest), a **decision that selects which
+exogenous stream is read** (`key_exprs` on a period stage — the regression
+case for v0.5.9), **symbolic size axes** (bounds and lengths naming scenario
+constants, so one IR spans 34 compositions), and the **§14 interpret leg**
+end to end — a policy probe, a fitted structural rule scored as a first-class
+§9 benchmark, and the campaign record (`ESCALATION.md`, `PLAYBOOK.md`,
+`INTERPRET.md`, `CLAUDE.md`) that makes the in-folder playbook reachable by
+the installed skill. Not yet covered by a shipped example: multi-entity,
+action masking, deterministic dynamics + sampled instances, competitive
+information modes.
+
+`mab` is also the shipped example whose grid trips the §5.6 `grids.axes`
+tier warning (its axis is the horizon), so the check has a live regression.
+Its results are **Gaussian-only by declared scope** — the `bernoulli` branch
+is implemented and differentially gated but deliberately not evaluated,
+which is a scope boundary, not an unpaid debt; the folder states what that
+forgoes.

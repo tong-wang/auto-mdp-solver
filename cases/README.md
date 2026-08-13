@@ -70,4 +70,4 @@ maintainer-curated).
 
 | promoted case | when | now at |
 |---|---|---|
-| *(none yet)* | | |
+| `mab` — stochastic multi-armed bandit | 2026-08-13 | `plugin/skills/mdp-solver/examples/mab/` |
