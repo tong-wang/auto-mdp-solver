@@ -499,6 +499,11 @@ python mab_benchmark_thompson_eval.py -s gauss_K10_T1000 --n-seeds 8192
 python mab_benchmark_rule_eval.py     -s gauss_K10_T1000 --n-seeds 8192
 
 # train + eval (OMP pinning matters on shared boxes)
+# NOTE: this train script uses a live in-training selection callback, which
+# v0.7.0's §8.6/§9.7 replaced with a post-hoc three-layer screen (checkpoint
+# only, rank on ~2048 CRN seeds, confirm top-k on the protocol block). The
+# spec cites this campaign's #E33 and #E36 V4 for that change. Every number
+# below was produced under the older design; the code is kept as it ran.
 # defaults — NOT the config behind the leaderboard's trained rows
 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python mab_ppo_train.py -s gauss_K10_T1000 -o bayes
 
