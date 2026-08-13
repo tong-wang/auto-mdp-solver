@@ -61,7 +61,12 @@ The repo-root `CLAUDE.md` carries the cross-domain rules.
 | `PLAYBOOK.md` | the guide-§10 case-close digest (exists once the campaign closes) |
 | `mab_schema.json` | **the IR — authoritative** for the problem definition |
 | `mab.restatement.md` | the frozen Phase-A restatement |
-| `UPSTREAM_PROPOSAL_*.md` | drafts against the solver spec, not local decisions — all ten filed upstream as issues #3–#12; the drafts stay in the originating project and are not part of this case |
+| `UPSTREAM_PROPOSAL_*.md` | drafts against the solver spec, not local decisions |
+
+**No `UPSTREAM_PROPOSAL_*.md` are open here.** All ten this campaign filed are
+dispositioned; a filed draft is deleted, because the issue carries the same
+body with its outcome attached and cannot drift from what was argued.
+`ESCALATION.md` §UPSTREAM records where each went (issues #3–#12).
 
 Round plans are deliberately **not** in this table: they live in `scratch/`
 and are deleted once their findings are in `ESCALATION.md` (see File
@@ -148,8 +153,20 @@ same day**, citing the finding (#E…) that paid for it.
   hand for each larger cell (**F4**).
 - **Plateau early-stopping is OFF** (`--patience` defaults to 0) — it fires
   before the true peak and forfeits most of the +42.90 that selecting a
-  checkpoint at all is worth (#E33). A deliberate deviation from §8.6's
-  `budget` row.
+  checkpoint at all is worth (#E33). This was a deliberate deviation when the
+  campaign ran; **v0.7.0's §8.6 now mandates it** ("a training run runs to its
+  budget — no early stopping"), partly on this campaign's evidence, so the
+  deviation became the rule.
+- **The selection machinery here PREDATES v0.7.0's design and is not
+  conformant to it.** This campaign used a live in-training
+  `SelectionEvalCallback`; §8.6/§9.7 now specify a post-hoc three-layer
+  screen — `CheckpointCallback` only, then rank ~20 checkpoints on a ~2048-seed
+  block, confirm the top-k on the protocol block — with "no `EvalCallback`, no
+  live selection env". The spec cites **#E33 and #E36 V4** for that change:
+  the callback that selected a generalist's checkpoint on one wrong cell is
+  exactly this one. Every number here was produced under the old design, which
+  is why the code still carries it; a re-run should use the new path.
+  `mab_selection_probe.py` is the post-hoc screen this campaign ran by hand.
 - **`norm_obs` must stay OFF for any equivariant policy** — VecNormalize
   normalizes each observation *dimension* independently, so arm slots acquire
   different running statistics and the permutation equivariance that is the

@@ -1143,6 +1143,44 @@ rule:     if a catalog slot has a default, the default is a CLAIM about which
 
 ---
 
+## UPSTREAM  *(local extension — what this campaign proposed, and what became of it)*
+
+Ten spec/schema/process proposals were filed from this campaign via
+`mdp-propose`, one issue each, and all ten were dispositioned. The drafts were
+deleted once filed: a GitHub issue carries the same body, records the
+disposition beside it, and cannot drift from what was actually argued — a
+local copy can. Read the issue, not a memory of the draft.
+
+| # | proposal | disposition |
+|---|---|---|
+| [#3](https://github.com/tong-wang/auto-mdp-solver/issues/3) | `bounds_name_constants` | **ACCEPT (narrowed)** — `StateVariable.bounds`/`element_bounds` take constant names; fingerprint still hashes bounds, so envelope changes remain logged |
+| [#4](https://github.com/tong-wang/auto-mdp-solver/issues/4) | `l1_derivation_units` | **ACCEPT (substantially revised)** — units argument landed as mechanism with NO numbers; our ~1% floor **refuted** by game2048's opposite result (see #E35's amendment) |
+| [#5](https://github.com/tong-wang/auto-mdp-solver/issues/5) | `grid_axes` | **ACCEPT** — §5.6 taxonomy + a new `grids.axes` conformance check; `gauss_K10_Tlog` is its live regression |
+| [#6](https://github.com/tong-wang/auto-mdp-solver/issues/6) | `generalist_lambda` | **MERGED into #5**; its numeric prescriptions rejected on the same evidence as #4 |
+| [#7](https://github.com/tong-wang/auto-mdp-solver/issues/7) | `checkpoint_selection` | **ACCEPT, rebuilt** — the maintainer's design inverted ours: the training trajectory is not a judgment input at all |
+| [#8](https://github.com/tong-wang/auto-mdp-solver/issues/8) | `tuning_selection_validity` | **ACCEPT** — most had already shipped at `115aa98`; residue in v0.7.0 |
+| [#9](https://github.com/tong-wang/auto-mdp-solver/issues/9) | `second_simulators` | **ACCEPT (narrowed)** — plurality licensed, gates required |
+| [#10](https://github.com/tong-wang/auto-mdp-solver/issues/10) | `cross_project_citations` | **ACCEPT with one amendment** — the citation pass is in mdp-contribute §2a |
+| [#11](https://github.com/tong-wang/auto-mdp-solver/issues/11) | `results_conventions` | **PARTIAL** — 5–6 already done, 2 deferred, 1/3/4 **rejected**; the join problem was re-diagnosed |
+| [#12](https://github.com/tong-wang/auto-mdp-solver/issues/12) | `interpret_types` | **PARTIAL** — three pieces landed, the three-type taxonomy **rejected** |
+
+Two things worth carrying out of that round, neither of them "we were right":
+
+- **Two proposals were refuted by a second campaign, not by argument.** #4's
+  coverage floor and #6's derived prescriptions both presumed a band that
+  game2048's pre-registered λ sweep contradicts — its optima sit at ~2–4%
+  coverage with a *lower* λ winning, against mab's ~8–17%. Both campaigns
+  confirm the mechanism and jointly refute any numeric band. A single campaign
+  can establish a mechanism; it cannot establish a constant, and this is the
+  cleanest demonstration of that the campaign produced.
+- **The strongest proposals were the ones with a measured incident behind
+  them** (#3, #5, #9, #10 — each traceable to something that cost time here).
+  The weakest were the ones that generalized a number (#4's band, #6) or
+  proposed a taxonomy ahead of the second instance (#12). Evidence of a wall
+  transfers; a rule inferred from one side of it does not.
+
+---
+
 ## RUNS  *(local extension — not a guide §11 section)*
 
 The action↔artifact index. Ledger entries live in the campaign's namespace
