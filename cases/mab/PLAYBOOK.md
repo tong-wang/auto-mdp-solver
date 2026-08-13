@@ -414,20 +414,20 @@ log. **F4**
 Expectations imported from earlier campaigns (rule-8 imported levers, labelled
 with their provenance until re-validated here) that failed on this domain.
 
-- **Belief-potential reward shaping — imported from topk_id**, where
+- **Belief-potential reward shaping — imported from another project**, where
   belief-obs + potential shaping was the instance-A gate-pass pairing. Here it
   REGRESSED the policy to 1293.03, −21.4 against the raw MLP. Shaping a
   quantity the agent already observes adds gradient without adding
   information. The exploration deficit it was meant to fix was real; the
   placement was wrong, and the fix that worked was LV3 (#E15, #E22).
-- **Attention over entities — imported from topk_id's full tier** (multi-head
+- **Attention over entities — imported from another project's full tier** (multi-head
   + LayerNorm + PMA readout). Here even the *minimal* attention rung lost
-  (1336.65 vs 1387.57), so the full tier was never run. The topk_id claim
-  narrows rather than transfers: that boundary was complex top-k selection,
-  this one is rank-1 vs rank-2 among exchangeable arms (#E20).
+  (1336.65 vs 1387.57), so the full tier was never run. That project's claim
+  narrows rather than transfers: that boundary was a different selection
+  shape, this one is rank-1 vs rank-2 among exchangeable arms (#E20).
 - **What DID transfer, recorded so the prior stays calibrated**: equivariant
-  nets (topk_id arch win +0.061) transferred and took the architecture crown
-  (LV2); and the imported *caution* that HP were decisive in topk_id — hence a
+  nets (a +0.061 arch win there) transferred and took the architecture crown
+  (LV2); and the imported *caution* that HP were decisive there — hence a
   null at an inherited centre refutes "rung X at that centre", not rung X —
   was vindicated hard when the stats prune reversed at the tuned centre (FM4,
   LV1).

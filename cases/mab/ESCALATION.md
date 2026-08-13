@@ -265,7 +265,7 @@ the interesting remaining question lives one level up.**
    | **c-max** ✗ | **same class, leave-one-out max pooling** — ctx_i = max_{j≠i} h_j, the "best arm other than me". Identical size to c (8,769 scorer par); the *only* difference is the pooling statistic, so the pair isolates it | architecture — decision-relevant statistic | one L1 run | → #E20: **1328.16 ± 6.10, −63.33** (seed-z −2.68). Beats c by +18.01 but at **seed-z 0.76 — noise (#E21)**: mean-as-nuisance vs max-as-leader is **UNRESOLVED**, not confirmed |
    | **c** ✗ | **EquiNet (DeepSets tier)** — per-arm scorer + mean-pooled context at *every* layer. Equivalently spellable as a flat MLP with its weights bound by the symmetry (Ravanbakhsh et al. 2017: Sₙ-equivariant layers have two free weights per feature pair); implemented structurally, which is K-agnostic | architecture + cross-arm context | one L1 run | **1310.16 ± 6.06 — REGRESSES −81.33, z=−9.31** vs the matched control at 1.96× the scorer params: the cross-arm context is not what PPO was missing |
    | **d** ✗ | **attention over arms, minimal form** — the same pooling slot, weights learned per state by masked self-attention (no positional encoding, no value projection); spans c's uniform and c-max's one-hot. 10,913 scorer par | architecture — learned pooling | one L1 run | → #E20: **1336.65 ± 6.19, −54.84, z=−6.21**. The decisive cell — it *can represent* both siblings at 2.4× the control's params and still loses to no-context, level with fixed-max (z=0.98): **findability, not capacity** |
-   | d-full | attention over arms — **equinet, full topk_id tier** (multi-head + LayerNorm + PMA readout) | — | — | ⏸ only if minimal d pays. Original scope check on the topk claim: that boundary was complex top-k, this one is rank-1 vs rank-2; if it pays anyway, the topk claim narrows |
+   | d-full | attention over arms — **equinet, the other project's full tier** (multi-head + LayerNorm + PMA readout) | — | — | ⏸ only if minimal d pays. Original scope check on the imported claim: that boundary was a different selection shape, this one is rank-1 vs rank-2; if it pays anyway, the imported claim narrows |
 
    > ⚠ **Reading the z-values above and in the A7 table (#E21, 2026-08-01).**
    > Figures written before #E21 use the 8192-seed *evaluation* SE (±6.3).
@@ -278,8 +278,9 @@ the interesting remaining question lives one level up.**
    equivariant net behind a slotwise normalizer is *not* an equivariant
    policy — rungs b/c must tie the normalizer stats per feature *type*
    (one mean/var for all post-mean slots, one for all sd slots).
-   *Imported lever* (rule 8): equivariant nets pre-validated in topk_id (arch
-   win +0.061 @ honest 8192); label travels until re-validated here.
+   *Imported lever* (rule 8): equivariant nets pre-validated in **another
+   project** (arch win +0.061 @ honest 8192); label travels until
+   re-validated here.
 5. **A7 — exploration levers @ T1/bayes crown** — rung b ✗ (#E15: shaping
    REGRESSED); rung a folds into A3 (#E16). **Rung c ✓ consumed → #E17:
    over-exploration MATERIAL** — the crown's explore-rate *rises* 22% → 30.5%
@@ -311,7 +312,7 @@ the interesting remaining question lives one level up.**
 
    Gate obligations (gym layer): shaping **trains-only**, selection and eval
    on the faithful reward — the selection callback already scores faithfully.
-   *Imported lever* (rule 8): belief-obs + potential shaping is the topk_id
+   *Imported lever* (rule 8): belief-obs + potential shaping is the other project's
    instance-A gate-pass pairing; label travels until re-validated here.
 6. **A3 — `mdp_tuning` L2(hp) @ T1/bayes/L1/index** ✓ *consumed → #E28* —
    the study closed on its timeout 2026-08-03 at **73/73 trials COMPLETE**
@@ -503,8 +504,7 @@ the interesting remaining question lives one level up.**
   confirmation; affects no number.
 - **KG reference (proposed, cheap)** — add the knowledge-gradient policy as a
   third reference: closed-form for Gaussian posteriors, often above UCB and
-  Thompson at *finite* horizon, and machinery precedent exists (topk_id
-  `kg_m`). Sharpens what the ceiling actually is (is ~97% on the table, or is
+  Thompson at *finite* horizon, and machinery precedent exists (the other project's `kg_m`). Sharpens what the ceiling actually is (is ~97% on the table, or is
   95.5% the right aspiration?) before budget is spent closing the gap.
 
 ### Current best bundle — the ★ path
@@ -669,8 +669,8 @@ it be configured.
                         equivariance error + regret profile) arbitrates and bounds both before RL
                         spend; pre-decided: both fire -> A6 before A7; neither -> A3 promotes
 2026-07-29  REPRIORITIZED  A3 (mdp_tuning) demoted to closing must-do on the winning config —
-                        campaign closes on A3 + A4; A6 (equivariant ladder, imported from topk_id)
-                        and A7 (ent ladder + belief-potential shaping, topk_id pairing) inserted
+                        campaign closes on A3 + A4; A6 (equivariant ladder, imported from another project)
+                        and A7 (ent ladder + belief-potential shaping, the other project's pairing) inserted
                         conditional on A5's verdict
 2026-07-29  PARKED      DQN/value-based switch — epsilon-greedy is state-independent undirected
                         noise, a downgrade from the learnable stochastic policy the protocol is
@@ -753,7 +753,7 @@ it be configured.
                         detected ANY cross-arm mechanism. The prediction may still hold; it is
                         now simply untested rather than supported. SCOPE NARROWED: rung d is run
                         in its MINIMAL form — attention as the pooling operator, in the same slot
-                        c/c-max use — not topk_id's full tier (multi-head + LayerNorm + PMA
+                        c/c-max use — not the other project's full tier (multi-head + LayerNorm + PMA
                         readout), so the ladder keeps changing one lever at a time. The full tier
                         becomes rung d-full if minimal-d pays. This makes the three cross-arm
                         rungs one family differing only in the pooling weights alpha over the
@@ -765,7 +765,7 @@ it be configured.
                         the ceiling is the statistic, not the flexibility, and A6 closes on
                         whichever fixed pooling won; d < both siblings => attention is costing
                         optimization more than it buys, the classic small-data attention failure
-2026-07-31  RECORDED    HP CONFOUND across the whole A6 arch ladder, imported from topk_id
+2026-07-31  RECORDED    HP CONFOUND across the whole A6 arch ladder, imported from another project
                         experience (operator, rule 8): HP were decisive there, and every A6 rung
                         (b, c, c-max, d) is trained at the L1 centre inherited from the MLP
                         class. A null therefore refutes "rung X AT THE L1 CENTRE", not rung X —
@@ -914,6 +914,16 @@ it be configured.
                         load-bearing at the artifact level (an argmax eval would have pruned
                         the encoding a second time). New tool: mab_stats_probe.py; findings in
                         INTERPRET.md Part II
+2026-08-12  UPSTREAM    the per-domain CLAUDE.md proposal filed from this campaign was
+                        ADOPTED in solver v0.6.0 (b3bbcc0) — and widened on the way: it
+                        asked for Stage 6 to emit the file, the landed design has Stage 1
+                        emit it from a new DOMAIN_CLAUDE_TEMPLATE.md, Stage 6 verify it,
+                        and spec §1 give it a declared home. The template also made the
+                        Traps section a seeded, growing list, each trap citing the #E that
+                        paid for it — which the proposal had not thought to ask for.
+                        mab/CLAUDE.md is now generated from that template. Same release
+                        moved the playbook into the case folder (guide §10 digest schema)
+                        and gave spec/schema proposals their own channel (mdp-propose)
 ```
 
 ---
@@ -935,7 +945,7 @@ initial:   key derived from realization alone — `[period, source, 1,
            marginal), the spec derives keys mechanically from realization, and
            every gate stayed green — nothing prompted a second look.
 signal:    downstream-impl (#E6); needed upstream-change → solver v0.5.9
-           (b893f7b), proposed from here (UPSTREAM_PROPOSAL_keyed_period_seed.md)
+           (b893f7b), proposed from this campaign and adopted upstream
 symptom:   one primitive variate shared by all arms: Gaussian cross-arm
            differences equal the mean differences to 10 dp; Bernoulli payouts
            comonotone (a win at p=0.10 forces a win at p=0.90). The round's
@@ -1325,8 +1335,7 @@ runs: no training. Code: `mab_ppo_train.py` (`_derived_norm_obs`;
 `rl.obs_normalization` rationale now states both readings),
 `mab_uncertainty.py` (`intrinsic_key(..., draw=arm)`), `mab_test.py` (+2).
 Depends on solver **v0.5.9** (`b893f7b`), which relaxed `key_exprs` to compose
-with period realization — proposed from here, see
-`UPSTREAM_PROPOSAL_keyed_period_seed.md`.
+with period realization — proposed from this campaign and adopted upstream.
 verdict:
  (a) **O1 fixed** — selection now samples the policy, so the criterion the
  checkpoint is chosen by is the criterion the deliverable is scored by.
@@ -1396,8 +1405,8 @@ status: **✗** (hypothesis refuted; attribution confirmed by #E9's diagnosis
 
 ### #E9  2026-07-29 — DIAGNOSIS: after the re-run — where the remaining 147.92 lives
 reads:    #E5–#E8 (protocol audit, derivation fixes, the #E7 re-run, the #E8
-norm_obs refutation); imported w/ provenance (rule 8): topk_id equivariant
-arch win (+0.061 @ honest 8192); topk_id instance-A gate pass via belief-obs
+norm_obs refutation); imported w/ provenance (rule 8): the other project's equivariant
+arch win (+0.061 @ honest 8192); the other project's instance-A gate pass via belief-obs
 + potential shaping.
 observed: crowned path 1314.46 ± 6.27 (85.9% oracle, 89.9% thompson), with
 selection and reporting criteria agreeing on the winner (#E7). The bayes × L1
@@ -1478,7 +1487,7 @@ index at the Thompson target.   status: **✓**
 
 ### #E12  2026-07-29 — DIAGNOSIS: the gap is a training-process deficit; two levers, one mandated
 reads:    #E10 (A1), #E11 (A5 + a0); #E9's pre-decided branches; imports
-already labeled there (topk_id equinet, topk_id shaping pairing).
+already labeled there (the other project's equinet and its shaping pairing).
 observed: capacity refuted — the shipped net sits 111 below what it can
 express. Selection/reporting criteria agree (#E7). norm_obs settled True for
 both modes by isolation (#E10); O1 and O2 both closed. stats branch pruned at

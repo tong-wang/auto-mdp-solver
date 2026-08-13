@@ -304,7 +304,7 @@ class AttentionPolicy(DeepSetsPolicy):
 
     Scope: this is the MINIMAL form of the rung — attention as the pooling
     operator, in the same slot the siblings use, so the ladder keeps changing
-    one lever at a time. topk_id's full tier (multi-head, LayerNorm, and PMA
+    one lever at a time. The full attention tier (multi-head, LayerNorm, and PMA
     learned-query readout) would be a further rung and is not run here."""
 
     _EXTRACTOR = _AttnExtractor

@@ -67,8 +67,9 @@ Round plans are deliberately **not** in this table: they live in `scratch/`
 and are deleted once their findings are in `ESCALATION.md` (see File
 hygiene).
 
-Pinned solver: `~/projects/mdp_solver-stable`, checked out at **v0.6.0**
-(`b3bbcc0`); verify before relying on it.
+Pinned solver: **auto-mdp-solver v0.6.0** (`b3bbcc0`) —
+github.com/tong-wang/auto-mdp-solver. This case was built and gated against
+that tag; verify before relying on it.
 
 ## Commands
 
