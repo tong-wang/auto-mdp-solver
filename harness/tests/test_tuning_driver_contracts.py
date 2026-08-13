@@ -23,6 +23,9 @@ from mdp_tuning.driver import (
 def _run_dir(trial_dir, scenario="simple", run="PPO_20260813_120000_default"):
     d = trial_dir / scenario / run
     d.mkdir(parents=True)
+    # spec §8.4: the train script writes its args log into the run dir, which
+    # is what marks this directory as the run rather than a subdirectory of it
+    (d / f"{scenario}_ppo_args.txt").write_text("--scenario_name simple\n")
     return d
 
 
@@ -74,6 +77,32 @@ def test_no_model_at_all_raises_file_not_found(tmp_path):
     _run_dir(tmp_path)
     with pytest.raises(FileNotFoundError):
         resolve_model(tmp_path, scenario="simple")
+
+
+def test_checkpoints_only_is_a_per_trial_failure_not_a_silent_score(tmp_path):
+    """Training died before the final save. The lone checkpoint must NOT be
+    scored as if it were canonical, and the failure must be FileNotFoundError
+    — caught per trial — rather than aborting the whole study."""
+    run = _run_dir(tmp_path)
+    (run / "checkpoints").mkdir()
+    (run / "checkpoints" / "rl_model_50000_steps.zip").write_bytes(b"c")
+
+    with pytest.raises(FileNotFoundError):
+        resolve_model(tmp_path, scenario="simple")
+    # the operator can still opt into scoring it explicitly
+    assert resolve_model(tmp_path, scenario="simple", mode="final").name \
+        == "rl_model_50000_steps.zip"
+
+
+def test_falls_back_to_depth_when_the_domain_writes_no_args_log(tmp_path):
+    run = tmp_path / "simple" / "PPO_run"
+    run.mkdir(parents=True)
+    model = run / "ppo_x.zip"
+    model.write_bytes(b"final")
+    (run / "checkpoints").mkdir()
+    (run / "checkpoints" / "rl_model_10_steps.zip").write_bytes(b"c")
+
+    assert resolve_model(tmp_path, scenario="simple") == model
 
 
 # --- the eval TSV reader ---------------------------------------------------

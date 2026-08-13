@@ -236,9 +236,25 @@ def resolve_model(trial_dir: Path, scenario: str | None = None,
     if mode != "canonical":
         raise ValueError(f"unknown score-checkpoint mode {mode!r}")
 
-    depth = min(len(p.relative_to(trial_dir).parts) for p in hits)
-    top = sorted(p for p in hits
-                 if len(p.relative_to(trial_dir).parts) == depth)
+    # A run directory is the one carrying the spec-§8.4 args log: the final
+    # model sits there, periodic checkpoints sit in a subdirectory below it.
+    # Relative depth alone would not do — if training died before the final
+    # save, the shallowest zip *is* a checkpoint, and scoring it silently is
+    # the very thing this mode exists to prevent.
+    run_dirs = {p.parent for p in trial_dir.rglob("*_args.txt")}
+    if run_dirs:
+        top = sorted(p for p in hits if p.parent in run_dirs)
+    else:
+        # domain writes no args log: fall back to the shallowest zips
+        depth = min(len(p.relative_to(trial_dir).parts) for p in hits)
+        top = sorted(p for p in hits
+                     if len(p.relative_to(trial_dir).parts) == depth)
+    if not top:
+        raise FileNotFoundError(
+            f"no model at a run-dir top level under {trial_dir}: {len(hits)} "
+            f"zip(s) found, all inside subdirectories — training likely died "
+            f"before the final save. Pass --score-checkpoint final to rank on "
+            f"the newest file instead")
     if len(top) > 1 and scenario:
         named = [p for p in top
                  if p.name.lower() == f"{scenario}_{algo}.zip".lower()]
