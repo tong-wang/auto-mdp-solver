@@ -1360,7 +1360,7 @@ always an escalation.
 |---|---|
 | `gamma` | γ = β. Undiscounted indefinite horizon: γ = 1 − 1/T̄. γ < β only as a logged L2(hp) bias-variance move; γ > β never (more bias *and* more variance). |
 | `gae_lambda` | 0.95; raise toward 0.98+ when action consequences materialize ≫ 1/(1−λ) steps out. |
-| `n_envs`, `n_steps` | rollout = n_steps × n_envs ≥ max(2048 transitions, 10 episodes); n_envs = 4 default, structural, never tuned; long T̄ → raise n_envs before inflating n_steps. |
+| `n_envs`, `n_steps` | rollout = n_steps × n_envs ≥ max(2048 transitions, 10 episodes); n_envs = 4 default, structural, never tuned; long T̄ → raise n_envs before inflating n_steps. That ordering is an **L1 move**, made once when the train script's defaults are written. At L2 it no longer applies: `mdp_tuning` holds n_envs at that default — it is a forced-move lock, not a knob — and meets the same floor from the other side, raising the n_steps lower bound to ⌈10·T̄/n_envs⌉ (`--episode-len`, `--min-rollout-episodes`). |
 | `batch_size` | rollout/32 … rollout/8, power of two. |
 | LR schedule | exogenous noise dominates reward variance (read the IR's uncertainty block) → 1e-4 → 1e-5; near-deterministic dense-reward → 3e-4 → 3e-5. `lr_final = lr_init/10`. |
 | clip schedule | 0.2 → 0.05 (`clip_final = clip_init/4`). |

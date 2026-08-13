@@ -25,8 +25,8 @@ from pathlib import Path
 import optuna
 
 from mdp_tuning.driver import (
-    DomainScripts, EVAL_SEEDS_DESTS, build_cmd, load_domain, newest_model,
-    parse_overrides, resolve_metric, run_logged, tsv_column_means,
+    DomainScripts, EVAL_SEEDS_DESTS, build_cmd, load_domain, parse_overrides,
+    resolve_metric, resolve_model, run_logged, tsv_column_means,
 )
 from mdp_tuning.spaces import OPTIONAL_KNOBS, SPACES
 
@@ -75,6 +75,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="eval episodes used to score each trial")
     p.add_argument("--seed", default=42, type=int,
                    help="fixed training seed + TPE sampler seed")
+    p.add_argument("--score-checkpoint", default="canonical", type=str,
+                   choices=("canonical", "final"),
+                   help="which artifact each trial is scored on: 'canonical' = "
+                        "the run dir's own saved model (spec §8.4), so a "
+                        "periodic checkpoint can never outrank it; 'final' = "
+                        "the newest *.zip under the trial dir")
     p.add_argument("--metric", default="auto", type=str,
                    help="objective column in the eval TSV (default: the first "
                         "*_mean column in header order — the domain's primary "
@@ -236,7 +242,8 @@ def make_objective(scripts: DomainScripts, args: argparse.Namespace,
         try:
             run_logged(build_cmd(scripts.train_script, scripts.train_args, train_assign),
                        trial_dir / "train.log", scripts.directory)
-            model = newest_model(trial_dir)
+            model = resolve_model(trial_dir, scenario=scenario, algo=args.algo,
+                                  mode=args.score_checkpoint)
         except (RuntimeError, FileNotFoundError) as err:
             value = _penalty(trial, err)
             print(f"[trial {trial.number}] training FAILED "
@@ -269,6 +276,7 @@ def make_objective(scripts: DomainScripts, args: argparse.Namespace,
         for k, v in means.items():
             trial.set_user_attr(k, v)
         trial.set_user_attr("model_path", str(model))
+        trial.set_user_attr("score_checkpoint", args.score_checkpoint)
         print(f"[trial {trial.number}] {metric}={means[metric]:.4f}  cfg={cfg}",
               flush=True)
         return means[metric]
@@ -330,6 +338,7 @@ def main() -> None:
     print(f"budget   : {args.n_trials} trials x {args.total_timesteps} steps, "
           f"{args.eval_seeds} eval seeds"
           + (f", timeout {args.timeout}s" if args.timeout else ""))
+    print(f"scored on: {args.score_checkpoint} checkpoint, metric={args.metric}")
     show_space(scripts, args.algo, tier=args.knobs,
                pinned=set(fixed_train), locked=set(args.fix))
 

@@ -32,6 +32,15 @@ REQUIRED_TRAIN_DESTS = ("scenario_name", "total_timesteps", "outdir")
 EVAL_SEEDS_DESTS = ("n_seeds", "episodes", "n_episodes")
 
 
+class ModelResolutionError(Exception):
+    """The trial's artifact is ambiguous — a study-level misconfiguration.
+
+    Deliberately outside the per-trial catch tuples: this fails identically on
+    every trial, so it aborts the study instead of burning the whole budget on
+    trials that would each be penalized as if training had diverged.
+    """
+
+
 @dataclass(frozen=True)
 class ArgSpec:
     """One CLI argument of a domain script."""
@@ -39,6 +48,9 @@ class ArgSpec:
     flag: str            # long option string, e.g. "--learning_rate"
     multi: bool          # nargs list-valued (e.g. --net_arch 64 64)
     default: object
+    takes_value: bool = True     # False for store_true/store_false/BooleanOptionalAction
+    flag_const: object = None    # what a bare `flag` stores when takes_value is False
+    negative_flag: str | None = None  # BooleanOptionalAction's --no-* form
 
 
 @dataclass(frozen=True)
@@ -63,7 +75,22 @@ def _parser_args(parser) -> dict[str, ArgSpec]:
                     action.option_strings[0])
         multi = action.nargs in ("+", "*") or (
             isinstance(action.nargs, int) and action.nargs > 1)
-        out[action.dest] = ArgSpec(flag=flag, multi=multi, default=action.default)
+        # nargs == 0 marks the flag-shaped actions (store_true/store_false,
+        # BooleanOptionalAction, count): they must be emitted bare, never as
+        # "--flag value", which argparse rejects.
+        takes_value = action.nargs != 0
+        negative = None
+        flag_const = None
+        if not takes_value:
+            negative = next((s for s in action.option_strings
+                             if s.startswith("--no-") and s != flag), None)
+            # BooleanOptionalAction carries both forms and no const; the bare
+            # flag means True there. store_true/store_false state it as const.
+            flag_const = True if negative else getattr(action, "const", None)
+        out[action.dest] = ArgSpec(
+            flag=flag, multi=multi, default=action.default,
+            takes_value=takes_value, flag_const=flag_const,
+            negative_flag=negative)
     return out
 
 
@@ -100,9 +127,19 @@ def load_domain(domain_dir: Path, algo: str = "ppo") -> DomainScripts:
     )
 
 
+_BOOL_WORDS = {"1": True, "true": True, "yes": True, "on": True,
+               "0": False, "false": False, "no": False, "off": False}
+
+
 def parse_overrides(pairs: list[str], args_map: dict[str, ArgSpec],
                     label: str) -> dict[str, object]:
-    """Parse repeatable KEY=VALUE overrides, validated against the script CLI."""
+    """Parse repeatable KEY=VALUE overrides, validated against the script CLI.
+
+    A flag-shaped dest (``store_true`` and friends) yields a real ``bool`` —
+    passing its value through as the string ``"True"`` would make ``build_cmd``
+    emit ``--flag True``, which argparse rejects, and the flag would silently
+    keep the script's default.
+    """
     out: dict[str, object] = {}
     for pair in pairs:
         key, sep, value = pair.partition("=")
@@ -112,7 +149,16 @@ def parse_overrides(pairs: list[str], args_map: dict[str, ArgSpec],
             raise ValueError(
                 f"{label} script has no dest {key!r}; available: "
                 f"{sorted(args_map)}")
-        out[key] = value.split(",") if args_map[key].multi else value
+        spec = args_map[key]
+        if not spec.takes_value:
+            parsed = _BOOL_WORDS.get(value.strip().lower())
+            if parsed is None:
+                raise ValueError(
+                    f"{label} dest {key!r} is a boolean flag ({spec.flag}); "
+                    f"pass {key}=true or {key}=false, got {value!r}")
+            out[key] = parsed
+        else:
+            out[key] = value.split(",") if spec.multi else value
     return out
 
 
@@ -121,9 +167,23 @@ def build_cmd(script: Path, args_map: dict[str, ArgSpec],
     cmd = [sys.executable, str(script)]
     for dest, value in assignments.items():
         spec = args_map[dest]
-        if isinstance(value, bool):
-            if value:
+        if not spec.takes_value:
+            want = bool(value)
+            if spec.negative_flag is not None:
+                cmd.append(spec.flag if want else spec.negative_flag)
+            elif not isinstance(spec.flag_const, bool):
+                raise ValueError(
+                    f"{dest} ({spec.flag}) takes no value and stores "
+                    f"{spec.flag_const!r} — mdp_tuning can only set boolean flags")
+            elif want == spec.flag_const:
                 cmd.append(spec.flag)
+            elif want != bool(spec.default):
+                raise ValueError(
+                    f"cannot set {dest}={want} through {spec.flag}: the bare flag "
+                    f"stores {spec.flag_const} and the script's default is "
+                    f"{spec.default!r}, so the other value is unreachable — "
+                    f"declare it with argparse.BooleanOptionalAction")
+            # else: the script's default already is `want` — emit nothing
         elif spec.multi and isinstance(value, (list, tuple)):
             cmd += [spec.flag, *[str(v) for v in value]]
         else:
@@ -151,18 +211,59 @@ def run_logged(cmd: list[str], log_path: Path, cwd: Path) -> None:
             f"see {log_path}")
 
 
-def newest_model(trial_dir: Path) -> Path:
-    """The saved model under the trial dir (run names are timestamped)."""
-    hits = sorted(trial_dir.rglob("*.zip"), key=lambda p: p.stat().st_mtime)
+def resolve_model(trial_dir: Path, scenario: str | None = None,
+                  algo: str = "ppo", mode: str = "canonical") -> Path:
+    """The artifact a trial is scored on.
+
+    ``canonical`` (default) takes the run directory's own saved model — the
+    spec-§8.4 ``{run_dir}/{scenario}_{algo}.zip``. Selecting by mtime instead
+    would let a periodic checkpoint under ``{run_dir}/checkpoints/`` outrank
+    it, so trials in one study could be ranked on artifacts of different kinds
+    — a silent reordering of the study. The final model sits at the run-dir top
+    level and checkpoints sit below it, so depth, not name, is the reliable
+    discriminator: shipped domains disagree on the filename
+    (``ppo_inv_single.zip`` vs ``{scenario}_ppo.zip``), and the name is only a
+    tiebreak here.
+
+    ``final`` restores the newest-by-mtime rule, for a domain whose training
+    genuinely ends on a checkpoint. Ambiguity raises rather than guesses.
+    """
+    hits = list(trial_dir.rglob("*.zip"))
     if not hits:
         raise FileNotFoundError(f"no saved model (*.zip) under {trial_dir}")
-    return hits[-1]
+    if mode == "final":
+        return max(hits, key=lambda p: p.stat().st_mtime)
+    if mode != "canonical":
+        raise ValueError(f"unknown score-checkpoint mode {mode!r}")
+
+    depth = min(len(p.relative_to(trial_dir).parts) for p in hits)
+    top = sorted(p for p in hits
+                 if len(p.relative_to(trial_dir).parts) == depth)
+    if len(top) > 1 and scenario:
+        named = [p for p in top
+                 if p.name.lower() == f"{scenario}_{algo}.zip".lower()]
+        if len(named) == 1:
+            return named[0]
+    if len(top) > 1:
+        raise ModelResolutionError(
+            f"ambiguous model under {trial_dir}: {[p.name for p in top]} all sit "
+            f"at the run-dir top level. Name the final model "
+            f"{scenario or '{scenario}'}_{algo}.zip (spec §8.4), or pass "
+            f"--score-checkpoint final to rank on the newest file instead")
+    return top[0]
 
 
 def tsv_column_means(tsv: Path) -> tuple[list[str], dict[str, float]]:
-    """Mean of every numeric column over the eval TSV's rows, in header order."""
+    """Mean of every numeric column over the eval TSV's rows, in header order.
+
+    Leading ``#`` comment lines are provenance, not data — an eval TSV may
+    carry them, and ``mdp_gates`` already skips them. Feeding them to
+    DictReader would make the first comment the header and turn a completed
+    trial into a crashed one.
+    """
     with tsv.open(newline="") as f:
-        reader = csv.DictReader(f, delimiter="\t")
+        reader = csv.DictReader(
+            (line for line in f if not line.startswith("#")), delimiter="\t")
         cols = list(reader.fieldnames or [])
         rows = list(reader)
     if not rows:
