@@ -108,9 +108,9 @@ prescription: HP — treat coverage = (1/(1-lambda))/T as the DIAGNOSTIC
               against 287 for the scaled arm. At constant coverage the deficit
               is FLAT in T (1.9/2.4/3.3/2.2× thompson), not diverging.
               **SCOPE — do not carry a NUMBER out of this entry.** This
-              campaign's optima sit at ~8-17% coverage; a second campaign in
-              this pipeline (a tile-puzzle domain) pre-registered its own
-              lambda sweep and measured the OPPOSITE direction — 0.98+ losing
+              campaign's optima sit at ~8-17% coverage; **game2048**, a
+              second campaign in this pipeline, pre-registered its own lambda
+              sweep and measured the OPPOSITE direction — 0.98+ losing
               at both scales, its summit at lambda=0.90, optima at ~2-4%
               coverage. Both campaigns confirm the MECHANISM and jointly
               refute any band: an earlier version of this entry proposed

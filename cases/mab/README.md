@@ -217,8 +217,8 @@ reward from 20M steps through 400M while every `scl` seed clears 29k by 60M.
 On this domain the break sits between 0.41% and 0.82%.
 
 > **Do not carry that number to another domain.** These cells put mab's optima
-> at ~8–17% coverage, and a second campaign in this pipeline (a tile-puzzle
-> domain) pre-registered its own λ sweep and measured the *opposite* direction:
+> at ~8–17% coverage, and **game2048** — a second campaign in this pipeline —
+> pre-registered its own λ sweep and measured the *opposite* direction:
 > 0.98+ losing at both scales, its summit at λ=0.90, optima at ~2–4% coverage.
 > Both campaigns confirm the **mechanism** — credit horizon versus where
 > consequences realize — and jointly refute any numeric band. An earlier draft

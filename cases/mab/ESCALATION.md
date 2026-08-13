@@ -3184,7 +3184,7 @@ so the correction is manual — a two-configuration sweep is L2 by the invariant
 Verdict 1's "~1% threshold" and Verdict 3's proposed "floor ~1%, this domain
 wants ~8%" are **mab measurements, not general rules**, and are left in place
 above because they record what this campaign measured. Upstream tested them
-against a tile-puzzle campaign's pre-registered lambda sweep, which measured
+against **game2048**'s pre-registered lambda sweep, which measured
 the opposite direction: 0.98+ losing at both scales, summit at lambda=0.90,
 optima at ~2-4% coverage against mab's ~8-17%. Both campaigns confirm the
 MECHANISM (credit horizon vs where consequences realize, and what the noise
