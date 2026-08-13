@@ -96,6 +96,8 @@ branches were two guarded sources with twenty scalar latent constants).
 | file | role |
 |---|---|
 | `mab_schema.json` | MDP-IR (frozen `mdp` block + gym/rl design axes) |
+| `CLAUDE.md` | the domain's operating brief (spec §1, from the skill's template) — pointer-first: where to look and what will bite |
+| `PLAYBOOK.md` | case-close digest (guide §10): lever entries (context/symptom/diagnosis/prescription/failed), frame moves, modeling rules |
 | `mab_bayes.py` | conjugate posterior mean/sd builtins (shared by IR + gym) |
 | `mab_uncertainty.py` | SamplingContext + Bernoulli/Gaussian payout generators |
 | `mab_scenarios.py` | `MabScenario`, generic `MabScenarioSource` (world-latent composer), `SCENARIOS` |
@@ -432,7 +434,7 @@ in `ESCALATION.md`.
 
 ```bash
 # validate IR + gates
-# (these four run from the REPO ROOT — the same three CI re-runs on a PR)
+# (these run from the REPO ROOT — the first three are what CI re-runs on a PR)
 python -m mdp_ir cases/mab/mab_schema.json
 python -m mdp_conformance cases/mab
 python -m mdp_ir.laws cases/mab [--instance gaussian]   # engine laws + invariants
