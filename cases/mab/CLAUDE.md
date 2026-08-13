@@ -67,7 +67,7 @@ Round plans are deliberately **not** in this table: they live in `scratch/`
 and are deleted once their findings are in `ESCALATION.md` (see File
 hygiene).
 
-Pinned solver: **auto-mdp-solver v0.6.0** (`b3bbcc0`) —
+Pinned solver: **auto-mdp-solver v0.7.0** (`2e50c60`) —
 github.com/tong-wang/auto-mdp-solver. This case was built and gated against
 that tag; verify before relying on it.
 
@@ -86,7 +86,8 @@ pytest mab_test.py
 
 # train / eval  (the record eval is STOCHASTIC — see Traps)
 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python mab_ppo_train.py -s gauss_K10_T1000 -o bayes
-python mab_ppo_eval.py -s gauss_K10_T1000 --stochastic --model-path <run>/gauss_K10_T1000_ppo.zip
+python mab_ppo_eval.py -s gauss_K10_T1000 --stochastic \
+  --model-path results/gauss_K10_T1000/<run>/gauss_K10_T1000_ppo.zip
 ```
 
 ## File hygiene — the folder is the deliverable, not the workbench
@@ -153,6 +154,9 @@ same day**, citing the finding (#E…) that paid for it.
   normalizes each observation *dimension* independently, so arm slots acquire
   different running statistics and the permutation equivariance that is the
   architecture's whole point silently breaks (#E14).
-- **`gae_lambda` is per-instance, not a transferable constant** — set the
-  credit horizon as a *fraction* of the episode (~8%, never below ~1%), or
-  training can fail outright rather than degrade (#E35).
+- **`gae_lambda` is per-instance, not a transferable constant** — re-derive
+  it whenever mean episode length moves, using coverage (`1/(1-λ)` over T) as
+  the lens. On this domain the optima sit at ~8–17% and training failed
+  outright below ~0.8% (#E35) — but that band is mab's, not a rule: a second
+  campaign measured optima at ~2–4% with a *lower* λ winning, so the mechanism
+  transfers and the number does not (upstream issue #4).

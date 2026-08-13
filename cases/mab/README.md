@@ -198,7 +198,7 @@ Carrying a tuned `gae_lambda` to a longer horizon is the one configuration
 mistake that can stop training outright rather than merely degrade it. What
 matters is **coverage** — the credit horizon as a fraction of the episode:
 
-    coverage = (1 / (1 - gae_lambda)) / T          # aim ~8%, never below ~1%
+    coverage = (1 / (1 - gae_lambda)) / T          # the lens, not a target
 
 A8-a's tuned `0.98784` is 82 absolute steps: 8.3% of a 1,000-round episode and
 **0.41%** of a 20,000-round one. Regret at 2048 seeds, three training seeds per
@@ -214,7 +214,19 @@ cell, against a same-path Thompson reference:
 The first three cells cost 20–39% of regret. The fourth is a different failure:
 at 0.41% coverage **two of three seeds never learn**, sitting flat at 21–25k
 reward from 20M steps through 400M while every `scl` seed clears 29k by 60M.
-The threshold is between 0.41% and 0.82%.
+On this domain the break sits between 0.41% and 0.82%.
+
+> **Do not carry that number to another domain.** These cells put mab's optima
+> at ~8–17% coverage, and a second campaign in this pipeline (a tile-puzzle
+> domain) pre-registered its own λ sweep and measured the *opposite* direction:
+> 0.98+ losing at both scales, its summit at λ=0.90, optima at ~2–4% coverage.
+> Both campaigns confirm the **mechanism** — credit horizon versus where
+> consequences realize — and jointly refute any numeric band. An earlier draft
+> of this section proposed "aim ~8%, never below ~1%"; upstream rejected that
+> on the second campaign's evidence, because it would have pushed that domain
+> the wrong way, and restated spec §8.6's λ row as mechanism with no numbers
+> (issue #4). Coverage is the lens and the re-derivation trigger; the number is
+> this domain's.
 
 **It is invisible in the logs you would normally watch.** Selection curves are
 in *reward*, where a 20% regret change is ~1% — so a mis-configured run looks
@@ -299,8 +311,10 @@ is the tripwire that fires if an IR edit invalidates that.
 
 **Use `GridSim`** only when the experiment is infeasible through the others —
 in practice, sweeps whose cost is (policies × cells × seeds × T) rather than a
-single evaluation: #E26's quantile sweep, #E31's floor sweep, #E32's 21-cell
-grid with a per-cell (c, p) re-tune. It abandons the domain's seed scheme for
+single evaluation: **#E32's** 21-cell grid with a per-cell (c, p) re-tune.
+(#E26's quantile sweep and #E31's floor sweep ran on `VecSim`, not this — they
+sweep policies over ONE cell, which the bit-exact replica already makes cheap.
+GridSim earns its licence only when the CELL is what varies.) It abandons the domain's seed scheme for
 a vectorized per-step draw, so **it can never be diffed episode-by-episode
 against the domain, and its absolute levels are not comparable to committed
 numbers** — only its *paired* differences are. #E32 shows the failure mode

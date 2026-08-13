@@ -154,17 +154,22 @@ search.
 What remains open across T1: the **★-crown / packaging call** (operator's;
 three candidates tabled under §Current best bundle — #E32 hands the rule
 candidate a scaling law and #E34 hands it a stated domain of validity), the
-A12 tail lever now measured across the whole ladder (#E34), **A4 — the T2
-bernoulli bar**, the campaign's one coverage debt and now also the only
-tractable route to the **finite-horizon Bayes-optimal anchor** (#E34 Verdict 5,
-the largest open measurement: every number here is anchored to thompson, not
-to optimal). The #E32 corner read-back is superseded — the corner runs
+A12 tail lever now measured across the whole ladder (#E34). **A4 is not on
+this list** — S2 was taken out of scope by decision, not left open (see
+Frontier item 7). What that decision FORGOES belongs on the record though, and
+it is the sharpest thing lost: bernoulli was the only tractable route to a
+**finite-horizon Bayes-optimal anchor** (#E34 Verdict 5), so every number in
+this campaign stays anchored to thompson rather than to optimal, and the size
+of that gap is now permanently unmeasured here. The #E32 corner read-back is
+superseded — the corner runs
 inherited HPs tuned at a different cell, so they cannot test H-gap as designed.
 
 **#E35 then repaired that read and closed it.** Re-running the long horizons
 with `gae_lambda` swept rather than inherited: the credit horizon must be set
-as a *fraction* of the episode, and below ~1% coverage it stops being a tuning
-penalty and becomes a training failure (2 of 3 seeds never learned at 0.41%).
+as a *fraction* of the episode; on this domain, below ~0.8% coverage it stops
+being a tuning penalty and becomes a training failure (2 of 3 seeds never
+learned at 0.41%). The band is mab's own — a second campaign refuted any
+general one (see #E35's 2026-08-13 amendment).
 With coverage held at 8.33%, PPO sits at a **flat 2–3× thompson across
 T ∈ {2,000 … 20,000} and does not diverge** — so #E32's corner collapse was
 part misconfiguration and part a constant-factor deficit, not the widening gap
@@ -462,9 +467,11 @@ the interesting remaining question lives one level up.**
    +221/episode on 17.9% of seeds; #E27 showed uniform over-exploration is
    the wrong way to buy it. Tripwire: only if T1 is reopened for a deliverable.
 
-- **S2 T2 bernoulli is *not* parked** — postponed coverage debt with a
-  scheduled return (see the tree). Listed here only so it is not mistaken for
-  a pruned branch; `⏸` in the guide's sense means *may never run*.
+- **S2 T2 bernoulli is *not* parked and was never pruned** — it is OUT OF
+  SCOPE by decision (see the tree, and Frontier item 7). Listed here so it is
+  read as neither: not a `⏸` park awaiting a tripwire, not a `✗` prune, but a
+  branch deliberately left unevaluated with the consequence stated on every
+  T1 claim.
 - ⏸ **DQN / value-based switch** — ε-greedy is *undirected* exploration in its
   crudest form (state-independent uniform noise), a downgrade from the
   learnable stochastic policy the whole protocol is built on (D5/D7), and an
@@ -509,8 +516,8 @@ the interesting remaining question lives one level up.**
 
 ### Current best bundle — the ★ path
 
-The crown forks at the root S-split — this is T1's path; **T2 has no ★ yet**
-(coverage debt, A4).
+The crown forks at the root S-split — this is T1's path; **T2 has no ★ and
+will not get one** (out of scope by decision, A4).
 
 `ROOT → S1 T1 gaussian → obs=bayes → level L1 backbone → policy=index
 (L2(arch))` is the path every candidate below sits on — including the rule,
@@ -3173,9 +3180,26 @@ softened); both revisions are recorded in place rather than edited away.
 Bookkeeping: all 24 runs annotated `#E35` @ `l2(arch+hp)` (2026-08-11). The
 script derives `l2(arch)` from `--policy index` and cannot see §8.6's hp layer,
 so the correction is manual — a two-configuration sweep is L2 by the invariant.
-prescription: the coverage floor is a spec-level finding, not a mab one —
-upstream issue #4 (https://github.com/tong-wang/auto-mdp-solver/issues/4) (§8.6's lambda row restated in
-coverage, with the rollout row's mirror-image defect). No new frontier item:
+*Amended 2026-08-13 — the numeric band did not survive a second campaign.*
+Verdict 1's "~1% threshold" and Verdict 3's proposed "floor ~1%, this domain
+wants ~8%" are **mab measurements, not general rules**, and are left in place
+above because they record what this campaign measured. Upstream tested them
+against a tile-puzzle campaign's pre-registered lambda sweep, which measured
+the opposite direction: 0.98+ losing at both scales, summit at lambda=0.90,
+optima at ~2-4% coverage against mab's ~8-17%. Both campaigns confirm the
+MECHANISM (credit horizon vs where consequences realize, and what the noise
+costs) and jointly refute any band — so spec §8.6's lambda row landed as
+mechanism with no numbers, and the two measurements ship in their campaigns'
+playbooks as a bracketing pair (upstream issue #4's disposition). Nothing
+measured here is retracted; the generalization proposed from it is.
+
+prescription: filed as upstream issue #4
+(https://github.com/tong-wang/auto-mdp-solver/issues/4) — §8.6's lambda row and
+the rollout row's mirror-image defect. **Disposition: ACCEPT, substantially
+revised** — the units argument and the rollout-floor derivation landed; the
+numeric prescriptions did not (see the amendment above). The row now states
+mechanism with no numbers, and the tuner's range was widened while kept
+absolute rather than re-parameterized in coverage units. No new frontier item:
 this closes the operator's HP-transfer question from #E32, and the residual
 2-3x is a constant factor, which #E34 Verdict 3 already stopped policy search
 on.

@@ -100,20 +100,31 @@ diagnosis:    gae_lambda fixes an ABSOLUTE credit horizon of 1/(1-lambda)
               FRACTION of the episode — so one lambda means different things
               at different T. Probe: a ladder with lambda fixed vs lambda
               holding coverage = (1/(1-lambda))/T constant.
-prescription: HP — set coverage ~8% of episode length, floor ~1%. Cuts
-              regret 20-39% in the mild cells. Below the floor it stops being
-              a rate and becomes a THRESHOLD: at 0.41% coverage 2 of 3 seeds
-              NEVER LEARN — flat at 21-25k reward from 20M steps through 400M
-              — giving regret 4003 against 287 for the scaled arm. At
-              constant coverage the deficit is FLAT in T (1.9/2.4/3.3/2.2×
-              thompson), not diverging. SCOPE: the ~1% floor is measured
-              where all reward is deferred; dense-reward domains should
-              tolerate less.
+prescription: HP — treat coverage = (1/(1-lambda))/T as the DIAGNOSTIC
+              LENS, and re-derive lambda whenever mean episode length moves.
+              Here that meant raising lambda with T: 20-39% regret cut in the
+              mild cells, and at 0.41% coverage 2 of 3 seeds NEVER LEARNED —
+              flat at 21-25k reward from 20M steps through 400M, regret 4003
+              against 287 for the scaled arm. At constant coverage the deficit
+              is FLAT in T (1.9/2.4/3.3/2.2× thompson), not diverging.
+              **SCOPE — do not carry a NUMBER out of this entry.** This
+              campaign's optima sit at ~8-17% coverage; a second campaign in
+              this pipeline (a tile-puzzle domain) pre-registered its own
+              lambda sweep and measured the OPPOSITE direction — 0.98+ losing
+              at both scales, its summit at lambda=0.90, optima at ~2-4%
+              coverage. Both campaigns confirm the MECHANISM and jointly
+              refute any band: an earlier version of this entry proposed
+              "~8%, floor ~1%", which upstream rejected on that evidence
+              because it would have pushed the other campaign the wrong way.
+              Read the two as a bracketing pair. What transfers is the lens
+              and the re-derivation trigger, not the number.
 failed:       the inherited value (0.98784, tuned at T=1000) as-is — that IS
               the failing arm. A partial draft of this round also
               extrapolated "the gap grows with T" from three cells; the
               fourth refuted it.
-evidence:     #E35
+evidence:     #E35; the refutation of the numeric band is upstream issue #4's
+              disposition, which restated spec §8.6's lambda row as mechanism
+              with no numbers.
 ```
 
 ### LV5 — read effects in the decision units, not the logged units
@@ -365,9 +376,11 @@ children are two halves of ONE problem (S: each owns its protocol, bar and
 leaderboard, neither prunable, completing one does not discharge the other) or
 competing designs on one leaderboard (P: crown one, prune the rest). *Paid off
 at the 2026-07-29 re-typing*: it converted "bernoulli, later" from a parked
-option into a permanent obligation, and the campaign ultimately had to close
-**with that debt unpaid and every claim scoped to Gaussian** — which is only
-sayable because the split was typed.
+option into a permanent obligation rather than a vague "later" — so when the
+campaign did close on T1 alone, it had to do so **as an explicit scope
+decision, with every claim reported bounded to Gaussian**, instead of quietly
+never mentioning the other half. Typing the split is what made the boundary
+sayable; an untyped one would simply have gone unstated.
 
 **FM4 — a prune is conditional on the centre it was measured at.** When the
 centre moves, previously pruned siblings must be re-tested before the prune is
