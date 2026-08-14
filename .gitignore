@@ -5,6 +5,12 @@ __pycache__/
 *.pkl
 .DS_Store
 *.xlsx
+# Source papers are cited, never redistributed: a `replicate`-mode case is
+# built from a published article whose copyright the publisher holds, and an
+# author's own copy is usually a courtesy copy carrying exactly that
+# restriction. Cite it in the case README (authors, venue, DOI); do not commit
+# it. Committed figures are the domain's own — see spec §14.3.
+*.pdf
 tensorboard_*/
 results/
 .venv/
