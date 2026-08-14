@@ -85,21 +85,21 @@
         "type": {
           "value": "continuous",
           "suggested": "continuous",
-          "source": "derived",
+          "source": "human_confirmed",
           "rationale": "order quantities are continuous non-negative reals in the MMFE ordering problem"
         },
         "dim": 1,
         "bounds": {
           "value": [
             0.0,
-            3.0
+            "order_max"
           ],
           "suggested": [
             0.0,
             3.0
           ],
-          "source": "derived",
-          "rationale": "additive MMFE with mu=1 and stdev<=0.3: mean demand ~ 1, so an upper bound of ~3 (mu + several stdevs, spread over N orders) covers the useful action scale"
+          "source": "human_override",
+          "rationale": "Overrides the derived literal [0, 3]. That bound was reasoned from the ADDITIVE branch only ('mu=1, stdev<=0.3, so ~3 covers the useful action scale'), but the IR also carries a multiplicative instance whose own action ceiling is exp(mu + 5*stdev) = 7.39 -- so the differential drew decisions from [0, 3] while the domain's reachable range ran to 7.39, leaving everything above 3 unverified on that instance. Naming the scenario constant `order_max` makes the bound resolve per instance and match the gym's action_space high in both branches."
         },
         "feasibility": [
           "non_negative"
@@ -244,6 +244,12 @@
           ],
           "axis": "",
           "desc": "DERIVED, pre-resolved per-period signal volatility (length N+1): signal_stdevs[n] = sqrt(tau[n+1]-tau[n]) * stdev, tau = concat([0], linspace(0, t_last, N), [1]). Baked as exact float reprs so the interpreter's normal draw matches the domain's bit-for-bit; the domain re-derives it from stdev/t_last/N (see assumptions_log)."
+        },
+        {
+          "name": "order_max",
+          "value": 1.5,
+          "axis": "",
+          "desc": "DERIVED, pre-resolved per-scenario order ceiling: the ~5-sigma demand ceiling, order_max = mu + 5*stdev (additive) or exp(mu + 5*stdev) (multiplicative). Upper bound of the `order` decision. With no salvage value, ordering past the highest plausible demand is strictly dominated -- the marginal unit cannot be sold -- so this is the useful action scale, not a safety margin. Baked per scenario like signal_stdevs because the link is mode-dependent and bound entries name a constant rather than carry an expression; an instance that changes mu, stdev or mmfe_mode must re-bake it (the 'mmmfe' instance does). Matches FnvEnv's action_space high exactly, so the IR bound and the gym bound derive from one argument."
         }
       ],
       "instances": {
@@ -255,7 +261,8 @@
             0.1341640786499874,
             0.1341640786499874,
             0.06324555320336758
-          ]
+          ],
+          "order_max": 7.38905609893065
         }
       }
     },
@@ -300,14 +307,25 @@
         "default": true,
         "features": [
           {
+            "derived": "stdev",
+            "expr": "stdev"
+          },
+          {
+            "derived": "t_last",
+            "expr": "t_last"
+          },
+          {
+            "derived": "lamb",
+            "expr": "lamb"
+          },
+          {
+            "ref": "period"
+          },
+          {
             "ref": "inventory"
           },
           {
             "ref": "information"
-          },
-          {
-            "derived": "orders_to_go",
-            "expr": "N - period + 1"
           }
         ]
       }
@@ -320,7 +338,7 @@
         "type": "continuous",
         "bounds": [
           0.0,
-          3.0
+          "order_max"
         ],
         "transform": "",
         "feasibility_strategy": "clip",
@@ -360,6 +378,8 @@
     "1-INDEXED HORIZON: the N=3 ordering periods run on a 1-indexed clock (1..N); the interpreter terminates when the post-increment clock reaches horizon.T, so the terminal clock value is N+1 = 4 (horizon.T = 4, not N). The demand-signal seed key uses period directly (1..N), matching the domain's state.period, so trajectories diff bit-exactly under seed scheme v2 ([period, source_id, 1, episode_seed, seed_salt]).",
     "TERMINAL REALIZATION: demand and sales are realized under the `period == N` guard (event R), before the period increment; they are 0 on every non-terminal row. Objective total = -cost + revenue accumulates to profit = revenue - total_cost.",
     "MMFE LINK IS A CONSTANT SELECTION: additive (D = mu + I) and multiplicative (D = exp(mu + I)) use the same demand-signal family (the `signal` slot's generator is identical); they diverge only in the deterministic terminal link, applied once at the horizon in the R event. That link is not an uncertainty candidate but a constant-conditioned dynamics expression, keyed on the categorical `mmfe_mode` constant ('additive' | 'multiplicative'). The base scenario is 'additive'; the 'mmmfe' instance selects 'multiplicative' AND independently widens the signal (stdev 0.1 -> 0.2, with the derived signal_stdevs schedule re-baked to match) \u2014 showing both a mode selector and a derived-constant re-bake under one instance override. Both are differentially verified by the covering-set sweep (--all-instances): base = aMMFE, instance mmmfe = mMMFE.",
-    "DESIGN GRIDS (PARAMETER SWEEPS) OUT OF IR SCOPE: the mode is now in-IR (the `additive` selector), but the aMMFE / mMMFE parameter sweeps (stdev x t_last x lamb ranges) remain experiment-design grids (spec \u00a75.6), consumed only by training/eval drivers. The IR formalizes concrete scenarios (base + instances); grid coverage is verified structurally by the conformance harness."
+    "DESIGN GRIDS (PARAMETER SWEEPS) OUT OF IR SCOPE: the mode is now in-IR (the `additive` selector), but the aMMFE / mMMFE parameter sweeps (stdev x t_last x lamb ranges) remain experiment-design grids (spec \u00a75.6), consumed only by training/eval drivers. The IR formalizes concrete scenarios (base + instances); grid coverage is verified structurally by the conformance harness.",
+    "ORDER BOUND IS THE 5-SIGMA DEMAND CEILING: the `order` decision's upper bound is the scenario constant `order_max` = mu + 5*stdev (additive) / exp(mu + 5*stdev) (multiplicative), re-baked per instance. Rationale: with no salvage value an order beyond the highest plausible demand is strictly dominated, so this is the useful action scale. Replaces the literal [0, 3], which was derived from the additive branch alone and silently under-covered the multiplicative instance in the differential (reachable to 7.39). Bound entries name a scenario constant rather than carry an expression, which is why the mode-dependent link is resolved at bake time; gym.action_modes names the same constant so the model bound and the agent-facing encoding cannot drift.",
+    "OBSERVATION CARRIES THE SCENARIO CONSTANTS: the `vec` mode is [stdev, t_last, lamb, period, inventory, information] -- the three scenario constants first, then the clock and the two physical state variables, matching FnvEnv._get_obs exactly. The constants are present because one policy is trained across a whole design grid (spec 5.6) and must condition on which cell it is in: the optimal offsets b_n move substantially with stdev, t_last and lamb, so a policy blind to them cannot be optimal grid-wide -- it can only learn one compromise action over all 540 cells. `period` is carried raw rather than as the derived orders_to_go = N - period + 1; the two are bijective for fixed N, so this is an encoding choice and the code's encoding wins. Corrects an earlier 3-feature list [inventory, information, orders_to_go] that the implementation never emitted; no gate caught the divergence because the differential verifies the mdp layer and never reads the observation."
   ]
 }
