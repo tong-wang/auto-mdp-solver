@@ -179,8 +179,15 @@ done
 
 Protocol tier: 540 cells × 2048 CRN seeds, seed block 0…2047, identical for
 every arm, so the Δ column is a **paired** per-cell comparison. Grid-mean
-profit weights each cell equally. Every `±` is the std of the 540 cell-level Δs
-divided by √540 — not a per-seed grid-mean SE, which would be ~5× larger.
+profit weights each cell equally.
+
+**On the `±` in this file:** it is the std of the 540 cell-level Δs divided by
+√540. Because the grid is *enumerated* rather than sampled, that is a dispersion
+measure, not a sampling error — the honest SE for a grid-mean claim uses seeds
+as the replication unit and runs ~1.8× larger where measured. No ladder
+conclusion changes at that factor (the smallest, Δ(L1−L0), is ~14 SE either
+way), but one §14.2 claim did — see `INTERPRET.md`. Report the median and a
+sign test beside any grid mean whose per-cell deltas are heavy-tailed.
 
 | arm | what it is | profit | Δ vs optimum | % of bar |
 |---|---|---|---|---|
@@ -249,15 +256,17 @@ DP's `b_n`, action agreement, and feature-sensitivity slopes. It then scores the
 fitted rule as a policy on the same CRN block and reports the trio
 reference / fitted rule / raw net with paired Δs.
 
-**On m-MMFE the fitted rule beat the net it was read from**, by
-**+0.002426 ± 0.000746** (3.3 SE, +0.106% of the bar) over the 508 cells where
-the fit covers every period — so three constants per cell are a shippable
-artifact there, not merely an explanation. On a-MMFE it ties
-(−0.000126 ± 0.000049, −0.014%). Both satisfy §14.2's verdict branch 1.
+**The fitted rule ties the net on both branches — it does not beat it.**
+Grid-mean Δ is −0.000126 (a-MMFE) and +0.002426 (m-MMFE), but the m-MMFE figure
+is **not** a win: the across-seed SE is 0.001365 (1.78 SE), the **median** cell
+Δ is −0.0011, only **38% of cells** favour the rule, and ~20 cells at
+`stdev=0.6, T=0.9` supply 111% of the positive total. Both branches do satisfy
+§14.2's verdict branch 1 (|fitted − net| ≤ 1% of the bar), so the structural
+claim stands; only the improvement claim is retracted. See `INTERPRET.md`.
 
 Coverage is itself a result: the full-horizon assertion drops **331 of 540**
 a-MMFE cells because the policy never orders at period 2 there, leaving `b̂₂`
-unidentifiable — against only 32 on m-MMFE. See `INTERPRET.md`.
+unidentifiable — against only 32 on m-MMFE.
 
 ```bash
 python fnv_benchmark_fitted.py --model-path <ckpt> -s FNV-aMMFE

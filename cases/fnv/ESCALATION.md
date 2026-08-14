@@ -293,11 +293,13 @@ runs: `fnv_benchmark_fitted.py` distils each branch's best confirmed checkpoint
 | m-MMFE | **508 / 540** | 2.285018 | **2.275206** | 2.272780 | **+0.002426 ± 0.000746 (+0.106%)** |
 
 verdict: **§14.2 branch 1 on both** — |fitted − net| ≤ 1% of the bar, so the
-  net does implement the predicted structure. On m-MMFE the fitted rule
-  **beats the network it was read from** (3.3 SE): three constants per cell
-  outscore the policy they were distilled from, which is the shippable-artifact
-  case §14.2 anticipates. On a-MMFE it ties (marginally below, 2.6 SE but
-  −0.014% in absolute terms).   status: ✓
+  net does implement the predicted structure. The rule **ties** the net on both
+  branches.   status: ✓
+CORRECTION 2026-08-14 (see #E11): this entry first read "the fitted rule beats
+  the network it was read from (3.3 SE)" on m-MMFE. Retracted — the 3.3 SE used
+  a cell-dispersion denominator, the median cell Δ is negative, and 4% of cells
+  carried the mean. The structural claim is unaffected; the improvement claim is
+  withdrawn.
 note: **the coverage split is the finding.** The full-horizon assertion dropped
   **331 of 540 aMMFE cells** — the policy never orders at period 2 there, so
   `b̂_2` is not identifiable and the rule cannot be completed at all. On m-MMFE
@@ -327,3 +329,26 @@ observed: the same policy, the same cell (`stdev=0.15,T=0.5,lamb=0.1`), four
 missing: how much of the residual slope excess above 1 is truncation bias from
   the kink vs genuine over-response — still open (Frontier A3).
 plan: none; the fourth design is the one the figure and every quoted slope use.
+
+### #E11  2026-08-14 — DIAGNOSIS: an equal-weight grid mean hid a sign flip
+reads: #E9, and the per-seed dump the earlier entries never produced
+  (`--per-seed-out`, 1,040,384 paired rows on m-MMFE).
+observed: three defects in one published number, Δ(fitted − net) = +0.002426:
+
+| check | value | reads as |
+|---|---|---|
+| across-cell SE / √540 | 0.000746 → 3.25 SE | **wrong denominator** — the grid is enumerated, so cell spread is dispersion, not sampling error |
+| across-seed SE / √2048 | **0.001365 → 1.78 SE** | seeds are the only replication unit; below the 2-SE bar |
+| median cell Δ | **−0.001105** | the net wins the typical cell |
+| cells favouring the rule | **193 / 508 (38%)** | a minority |
+| top-20 cells' share of the total | **111%** | ~4% of cells carry the whole mean |
+| mean over the other 488 cells | −0.000290 | sign flips without them |
+
+  The tail cells are all `stdev=0.6, T=0.9` — the largest-scale corner of a
+  branch whose demand is `exp(mu+I)`, where Δ reaches +0.138.
+missing: nothing for this claim; the ladder contrasts were re-checked against
+  the same tests and hold (L1′ vs L0 69% of cells, L1′ vs L1 89%, L0 vs L1 66%,
+  top-20 shares 16–43%, profit scale only 1.5× across cells).
+plan: report median + sign test beside every grid mean; use seeds as the
+  replication unit for any grid-mean SE. Both now stated in README and
+  PLAYBOOK LV8.

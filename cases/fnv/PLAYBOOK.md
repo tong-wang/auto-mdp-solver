@@ -9,7 +9,10 @@ uncertainty resolves at the horizon.
 seeds per cell, seed block 0…2047 shared by every arm, paired per cell. Every
 `±` is the std of the 540 cell-level Δs divided by √540 (a per-CRN-seed
 grid-mean SE would be ~5× larger and is not what is quoted);
-grid-mean profit weights cells equally. Reference = the paper's exact optimum
+grid-mean profit weights cells equally — **read LV8 before trusting a grid mean
+on its own**; every `±` is a cell-dispersion figure, and the honest grid-mean SE
+takes seeds as the replication unit (~1.8× larger where measured). Reference =
+the paper's exact optimum
 (Wang, Atasu & Kurtuluş 2012, Prop 2), computed two independent ways that agree
 to 2.4e-05. Two branches, separate boards: a-MMFE bar 0.888334, m-MMFE bar
 2.291618. Campaign 2026-08-13/14, closed after 18 training runs.
@@ -95,26 +98,29 @@ prescription: lever layer **process**. Park a structural finding behind an
 failed: —
 evidence: #E4 (parked), #E8 (fired).
 
-## LV5 — the fitted rule can beat the net, and its coverage is a diagnostic
+## LV5 — score the fitted rule, and read its coverage as the real signal
 
 context: §14.2 readback, after the structure was confirmed on both branches.
-symptom: distilling each policy into per-cell constants `b̂_1..b̂_N` and scoring
-  them on the same CRN block: m-MMFE **+0.002426 ± 0.000746 (3.3 SE)** for the
-  rule over the net it came from; a-MMFE a tie (−0.000126 ± 0.000049,
-  −0.014% of bar). **Protocol delta from the header:** these are means over the
-  *fitted* cells only — 508 (m) and 209 (a) of 540 — against the reference
-  restricted to the same cells (2.285018 / 0.871613), not the full-grid bar.
-diagnosis: fitting constants deletes the raggedness the network carries. Three
-  numbers per cell replace a neural policy and score at least as well.
+symptom: distilled per-cell constants `b̂_1..b̂_N`, scored on the same CRN block,
+  **tie** the net on both branches — grid-mean Δ −0.000126 (a) and +0.002426
+  (m), the latter at 1.78 across-seed SE with a *negative* median cell Δ. The
+  coverage split is far louder: the full-horizon assertion fits **209/540**
+  a-MMFE cells against **508/540** m-MMFE.
+diagnosis: fitting constants deletes the raggedness the network carries, which
+  is enough to *match* the net but — here — not to beat it. The interesting
+  quantity is not the score but whether the fit closes at all: an offset is
+  identifiable only in periods where the policy actually orders.
 prescription: lever layer **interpretation**. Always score the fitted rule as a
-  policy — and treat **coverage of the fit as a first-class signal**. The
-  full-horizon assertion dropped **331 of 540 a-MMFE cells** (the policy never
+  policy — but expect a tie, not a win, and treat **coverage of the fit as the
+  first-class signal**. The full-horizon assertion dropped **331 of 540 a-MMFE cells** (the policy never
   orders at period 2 there, so `b̂_2` is unidentifiable) against only 32 on
   m-MMFE. A policy that abandons an ordering opportunity **cannot be distilled
   into a rule over it**, however well it scores — the coverage number states
   the structural gap in LV3 more sharply than the profit gap does.
-failed: —
-evidence: #E9.
+failed: claiming the win from the equal-weight grid mean (+0.002426, "3.3 SE").
+  Retracted in #E11 — see LV8; the improvement claim did not survive, the
+  structural and coverage claims did.
+evidence: #E9, #E11.
 
 ## LV6 — identify a censored rule only where it is uncensored
 
@@ -152,6 +158,31 @@ prescription: lever layer **interpretation**. Map to the structural coordinate
   against I, intercept `mu + b_n`.
 failed: —
 evidence: #E7.
+
+## LV8 — an equal-weight grid mean over heavy-tailed deltas is a scale-weighted average in disguise
+
+context: reporting §14.2's fitted-rule comparison over a 540-cell design grid,
+  after the ladder contrasts had been reported the same way without trouble.
+symptom: grid-mean Δ **+0.002426** while the **median** cell Δ was **−0.001105**
+  and only **38%** of cells favoured the arm the mean flattered.
+diagnosis: two independent faults that a single mean hides. (i) The grid is
+  *enumerated*, not sampled, so `std(cell Δs)/√n_cells` is a dispersion measure
+  and not a sampling error — seeds are the only replication unit, and the
+  across-seed SE was 1.8× larger, dropping 3.25 SE to 1.78. (ii) On a branch
+  whose demand is `exp(mu+I)`, absolute profit differences scale with the cell,
+  so ~20 of 508 cells contributed **111%** of the total and equal weight handed
+  them the verdict.
+prescription: lever layer **protocol**. Report the **median and a sign test
+  beside every grid mean**, and take the SE across **seeds**, not cells. Cheap
+  test that would have caught it on sight: the fraction of cells favouring the
+  arm — 38% against a positive mean is the whole story in one number. The
+  per-seed dump (`--per-seed-out`) already existed and had never been used.
+  Scope: any enumerated design grid; the risk grows with the spread of the
+  objective's *scale* across cells (harmless at 1.5×, decisive at 100×).
+failed: quoting the mean alone with a cell-dispersion SE — it passed maintainer
+  review and CI, because both check consistency, not the choice of statistic.
+evidence: #E9, #E11; the ladder contrasts (#E1, #E3, #E6) were re-checked
+  against the same tests and hold at 66–89% of cells.
 
 ---
 
