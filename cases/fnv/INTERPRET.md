@@ -4,8 +4,7 @@ Spec §14 anchored readback. **Both branches run**, 9 trained policies each
 (L0 / L1 / L1′ × 3 seeds), each its best confirmed checkpoint.
 
 **Short answer: yes.** The a-MMFE policies recover `S = mu + I + b` at the final
-order (slope 1.109 ± 0.122 over 36 fits, r² 0.966); the m-MMFE policies recover
-the log-linear form `log S = mu + I + b` (r² 0.976–0.999, slope → 0.98 in the
+order (slope 1.109 ± 0.122 over 36 fits, r² 0.966); the m-MMFE policies recover the log-linear form `log S = mu + I + b` (r² 0.976–0.999, slope → 0.98 in the
 information-rich cells). The one structural failure — abandoning the middle
 ordering opportunity — turns out to be **specific to the additive branch**.
 
@@ -134,28 +133,38 @@ readback separately from the policy.
 The recovered constants are themselves a policy, so they are scored on the same
 CRN block as every other arm (`fnv_benchmark_fitted.py` → `fnv_benchmark_dp_eval.py`).
 
-| branch | cells fitted | reference | fitted rule | raw net | Δ fitted − net |
+| branch | cells fitted | grid-mean Δ vs net | **median** Δ | cells favouring the rule | across-seed SE |
 |---|---|---|---|---|---|
-| a-MMFE | 209 / 540 | 0.871613 | 0.869086 | 0.869212 | −0.000126 ± 0.000049 (−0.014%) |
-| m-MMFE | 508 / 540 | 2.285018 | **2.275206** | 2.272780 | **+0.002426 ± 0.000746 (+0.106%)** |
+| a-MMFE | 209 / 540 | −0.000126 | −0.000297 | 65 / 209 (31%) | — |
+| m-MMFE | 508 / 540 | +0.002426 | **−0.001105** | **193 / 508 (38%)** | 0.001365 → **1.78 SE** |
 
-Means are over the *fitted* cells only, against the reference restricted to the
-same cells — hence a different bar from the full-grid leaderboard.
+**Verdict: the fitted rule ties the net on both branches. It does not beat it.**
 
-**On m-MMFE the fitted rule beats the network it was read from** (3.3 SE): three
-constants per cell outscore the policy they were distilled from, which is the
-shippable-artifact case §14.2 anticipates. On a-MMFE it ties (marginally below,
-2.6 SE, −0.014% in absolute terms). Both land in §14.2's **verdict branch 1** —
-|fitted − net| ≤ 1% of the bar — so the net does implement the predicted
-structure.
+An earlier version of this file claimed a win on m-MMFE (+0.002426 ± 0.000746,
+"3.3 SE"). That was wrong three ways, and the correction is instructive:
 
-**Coverage is the sharper diagnostic.** The full-horizon assertion dropped
+1. **The SE was the wrong statistic.** The grid is enumerated exhaustively, so
+   there is no cell-sampling error to estimate; seeds are the only replication
+   unit. Across 1,040,384 paired rows the across-seed SE is **0.001365**, not
+   0.000746 — so 1.78 SE, below the 2-SE bar.
+2. **The sign flips at the median.** The net wins the typical cell (median
+   −0.0011) and 62% of all cells; the positive *mean* comes from ~20 cells at
+   `stdev=0.6, T=0.9` where Δ reaches +0.138.
+3. **An equal-weight mean over heavy-tailed per-cell deltas is a
+   scale-weighted average in disguise.** Those top 20 cells contribute 111% of
+   the total; drop them and the mean is −0.00029.
+
+Both branches still satisfy §14.2's **verdict branch 1** (|fitted − net| ≤ 1% of
+the bar), so the net does implement the predicted structure — the readback's
+central claim is unaffected. What is retracted is only the stronger claim that
+the distilled constants *improve* on the network.
+
+**Coverage remains the sharper diagnostic.** The full-horizon assertion dropped
 **331 of 540** a-MMFE cells: the policy never orders at period 2 there, so `b̂₂`
 is unidentifiable and the rule cannot be completed. Only 32 cells fail on
 m-MMFE. A policy that abandons an ordering opportunity **cannot be distilled
 into a rule over it**, however well it scores — and that states the structural
-gap more sharply than the profit gap does. Without the assertion those 331 cells
-would have taken a defaulted offset and returned a plausible number.
+gap more sharply than any profit gap does.
 
 ## Limits
 
