@@ -308,7 +308,7 @@ def run_self_test(cells: list[tuple[str, FnvScenario]], n_grid: int, n_quad: int
 
 
 def main() -> None:
-    args  = parse_args = _build_arg_parser().parse_args()
+    args  = _build_arg_parser().parse_args()
     cells = resolve_cells(args.scenario_name)
 
     # §8.4: benchmark solution tables live at

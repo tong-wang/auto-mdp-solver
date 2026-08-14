@@ -30,7 +30,7 @@ Emits the same offsets TSV that fnv_benchmark_dp_eval.py consumes.
 
 Example usage:
     python fnv_benchmark_myopic.py -s FNV-aMMFE
-    python fnv_benchmark_dp_eval.py --dp-solutions results/FNV-aMMFE/myopic/FNV-aMMFE.txt -s FNV-aMMFE
+    python fnv_benchmark_dp_eval.py --dp-solutions results/FNV-aMMFE/benchmark/myopic/FNV-aMMFE.txt -s FNV-aMMFE
 """
 
 import argparse

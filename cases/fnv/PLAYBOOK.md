@@ -6,7 +6,9 @@ martingale (MMFE); the decision is one continuous order per period and all
 uncertainty resolves at the horizon.
 
 **Protocol every number below is quoted at:** 540-cell design grid × 2048 CRN
-seeds per cell, seed block 0…2047 shared by every arm, paired per cell;
+seeds per cell, seed block 0…2047 shared by every arm, paired per cell. Every
+`±` is the std of the 540 cell-level Δs divided by √540 (a per-CRN-seed
+grid-mean SE would be ~5× larger and is not what is quoted);
 grid-mean profit weights cells equally. Reference = the paper's exact optimum
 (Wang, Atasu & Kurtuluş 2012, Prop 2), computed two independent ways that agree
 to 2.4e-05. Two branches, separate boards: a-MMFE bar 0.888334, m-MMFE bar
@@ -55,7 +57,7 @@ prescription: lever layer **HP**. Treat sustained `approx_kl` an order of
 failed: —
 evidence: #E2, confirmed by the same pattern on the second branch (#E6).
 
-## LV3 — a policy 0.2% from optimal can be qualitatively wrong
+## LV3 — a policy 0.2% from optimal can be qualitatively wrong (narrowed by LV4)
 
 context: after the ladder, both branches sat within 0.2–0.5% of the exact bar
   and cleared the must-beat baseline comfortably.
@@ -99,7 +101,9 @@ context: §14.2 readback, after the structure was confirmed on both branches.
 symptom: distilling each policy into per-cell constants `b̂_1..b̂_N` and scoring
   them on the same CRN block: m-MMFE **+0.002426 ± 0.000746 (3.3 SE)** for the
   rule over the net it came from; a-MMFE a tie (−0.000126 ± 0.000049,
-  −0.014% of bar).
+  −0.014% of bar). **Protocol delta from the header:** these are means over the
+  *fitted* cells only — 508 (m) and 209 (a) of 540 — against the reference
+  restricted to the same cells (2.285018 / 0.871613), not the full-grid bar.
 diagnosis: fitting constants deletes the raggedness the network carries. Three
   numbers per cell replace a neural policy and score at least as well.
 prescription: lever layer **interpretation**. Always score the fitted rule as a
@@ -132,7 +136,7 @@ prescription: lever layer **interpretation**. Regress the realized
 failed: free inventory sweep at fixed I (off-manifold); reachable-states-only
   (censored, reported a false zero); affine plane `A + B·I + C·x` (fights the
   censoring kink, R² 0.82).
-evidence: #E5, #E7.
+evidence: #E5, #E7, and #E10 for the four probe designs above.
 
 ## LV7 — fit the branch in the coordinate its structure is linear in
 

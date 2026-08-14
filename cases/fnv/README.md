@@ -28,6 +28,8 @@ anything here.
 
 | File | Layer | Purpose |
 |---|---|---|
+| `fnv_schema.json` | IR | **the frozen problem definition** — authoritative |
+| `fnv.restatement.md` | IR | the Phase-A plain-English restatement + annotated trajectories |
 | `fnv_uncertainty.py` | uncertainty | `SamplingContext`, `DemandSignalGenerator`, `NormalDemandSignal`, `intrinsic_key` |
 | `fnv_scenarios.py` | world | `FnvScenario` + the `SCENARIOS` registry |
 | `fnv_grids.py` | design | `FnvScenarioGrid`, `FnvGridTrainingSampler`, the `GRIDS` registry (§5.6) |
@@ -42,6 +44,7 @@ anything here.
 | `fnv_benchmark_prop2.py` | benchmark | the **paper's** Proposition 2 recursion → the same offsets, derived independently |
 | `fnv_benchmark_myopic.py` | benchmark | myopic safety stocks `b̂_n` (ignore future ordering) — the must-beat baseline |
 | `fnv_benchmark_dp_eval.py` | benchmark | evaluate any offsets file, same columns and seed block |
+| `fnv_benchmark_fitted.py` | benchmark | §14.2 — distils a trained net into offsets, to be scored as a policy |
 | `fnv_policy.py` | package | §12 deployable policy wrapper (`FnvPolicy.act`) |
 | `fnv_policy_probe.py` | interpret | §14 anchored readback: structure fit, agreement, fitted-rule scoring |
 | `fnv_plot_policy.py` | interpret | §14.3 overlay figure, static PNG + interactive HTML |
@@ -154,14 +157,30 @@ point, and much cheaper than re-solving a 2-D DP per state.
 |---|---|---|
 | `--self-test` (DP) | the recursion reproduces the exact newsvendor last period, `b_N = σ_{N+1}Φ⁻¹(1−c_N/r)` | ≤ 4.5e-04 |
 | `--check-invariants` (Prop 2) | Corollary 1's `b_n ≤ b̂_n`, and that `b_n` is MMFE-mode-independent (eqs 6–7 never reference the mode) | −3.9e-09 margin; |Δ| exactly 0 |
-| `--cross-check` (§1.2) | the two solvers, derived independently, land on the same offsets | max 2.6e-03 over all 540 cells (mean 3e-04) |
-| scored policies | the offsets' *behaviour* agrees, not just their values | max 2.4e-05 profit over 540 cells — ~180× below the eval's own SE (4.3e-03) |
+| `--cross-check` (§1.2) | the two solvers, derived independently, land on the same offsets | max **1.7e-03** (a-MMFE) / **3.3e-03** (m-MMFE) over a **26-cell subsample** |
+| scored policies | the offsets' *behaviour* agrees, not just their values | max **2.4e-05** profit over all 540 cells — ~180× below the eval's own SE (4.3e-03) |
+
+`--cross-check` deliberately subsamples (`cells[::len(cells)//25]` → 26 cells) so
+it stays a fast pre-flight check; its tolerance scales with the DP's grid step.
+The all-540-cell agreement is the *scored* one on the last row, and it is
+produced by diffing the two solvers' eval TSVs:
+
+```bash
+python fnv_benchmark_dp.py    -s FNV-aMMFE --self-test
+python fnv_benchmark_prop2.py -s FNV-aMMFE --check-invariants --cross-check
+for m in dp prop2; do
+  python fnv_benchmark_dp_eval.py --dp-solutions results/FNV-aMMFE/benchmark/$m/FNV-aMMFE.txt \
+      -s FNV-aMMFE --n-seeds 2048
+done
+# then diff the two profit_mean columns on (stdev, T, lamb) -> max 2.4e-05
+```
 
 ## Leaderboard — `FNV-aMMFE`
 
 Protocol tier: 540 cells × 2048 CRN seeds, seed block 0…2047, identical for
 every arm, so the Δ column is a **paired** per-cell comparison. Grid-mean
-profit weights each cell equally.
+profit weights each cell equally. Every `±` is the std of the 540 cell-level Δs
+divided by √540 — not a per-seed grid-mean SE, which would be ~5× larger.
 
 | arm | what it is | profit | Δ vs optimum | % of bar |
 |---|---|---|---|---|
@@ -177,8 +196,14 @@ because their agreement **is** the §1.2 second-implementation gate: if they eve
 diverge, the bar itself is in question and no arm below it means anything.
 
 The learned policy sits **0.21% under the exact optimum** and beats the myopic
-baseline by +0.0077 ± 0.0005 paired. All nine trained models clear the
-baseline; the spread across them is 0.8825–0.8864.
+baseline by +0.0077 ± 0.0005 paired. All nine trained models clear the baseline;
+the spread across them is 0.8825–0.8864.
+
+**That 0.21% is the best of 9 retrains, and it is an L0 seed.** The
+ship-by-default arm is L1′ (the corrected derivation, `ESCALATION.md` #E3),
+whose across-seed mean is 0.885487 — **−0.32% of the bar**. Quote whichever
+matches your claim; #E3 explains why best-of-9 flatters the higher-variance
+arm.
 
 Two caveats that the single number hides:
 
@@ -202,7 +227,8 @@ different scale and are never comparable with the aMMFE table above.
 | `myopic` | must-beat baseline | 2.240843 | −0.050776 ± 0.002640 | −2.22% |
 
 All nine models clear the baseline. The learned policy lands **0.51% under the
-optimum**, and unlike the additive branch it does use the middle ordering
+optimum** (again best-of-9; the L1′ across-seed mean of 2.277242 is
+**−0.63%**), and unlike the additive branch it does use the middle ordering
 opportunity — 0.17–0.43 of episodes against the optimum's 0.47.
 
 ## The readback (§14)
@@ -210,16 +236,34 @@ opportunity — 0.17–0.43 of episodes against the optimum's 0.47.
 FNV ships a DP reference, so the **anchored** form is required.
 
 ```bash
-python fnv_policy_probe.py --model-path <ckpt> -s FNV-aMMFE
-python fnv_plot_policy.py --probe-dir results/FNV-aMMFE/PPO_<run>/probe -s FNV-aMMFE
+python fnv_plot_policy.py   --model-path <ckpt> -s FNV-aMMFE   # slopes + the figure
+python fnv_policy_probe.py  --model-path <ckpt> -s FNV-aMMFE   # surfaces, sensitivity
 ```
+
+`fnv_plot_policy.py` needs **plotly** (and `kaleido` for the static render),
+which the `[domain]` extra does not install: `pip install plotly kaleido`.
 
 The probe reports, per period: the raw action surface, an order-up-to
 **flatness** statistic (0 = exact base-stock), the recovered `b_hat` against the
 DP's `b_n`, action agreement, and feature-sensitivity slopes. It then scores the
 fitted rule as a policy on the same CRN block and reports the trio
-reference / fitted rule / raw net with paired Δs — the fitted rule can beat the
-net it was read from, in which case `N` numbers are the shippable artifact.
+reference / fitted rule / raw net with paired Δs.
+
+**On m-MMFE the fitted rule beat the net it was read from**, by
+**+0.002426 ± 0.000746** (3.3 SE, +0.106% of the bar) over the 508 cells where
+the fit covers every period — so three constants per cell are a shippable
+artifact there, not merely an explanation. On a-MMFE it ties
+(−0.000126 ± 0.000049, −0.014%). Both satisfy §14.2's verdict branch 1.
+
+Coverage is itself a result: the full-horizon assertion drops **331 of 540**
+a-MMFE cells because the policy never orders at period 2 there, leaving `b̂₂`
+unidentifiable — against only 32 on m-MMFE. See `INTERPRET.md`.
+
+```bash
+python fnv_benchmark_fitted.py --model-path <ckpt> -s FNV-aMMFE
+python fnv_benchmark_dp_eval.py --dp-solutions results/FNV-aMMFE/benchmark/fitted/FNV-aMMFE.txt \
+    -s FNV-aMMFE --n-seeds 2048
+```
 
 Figures follow §14.3: the committed static SVG lands in `fnv/figures/`, the
 interactive HTML in `results/{scenario}/figures/` (gitignored). The location

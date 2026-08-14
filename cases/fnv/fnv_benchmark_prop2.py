@@ -44,7 +44,7 @@ paper's policy is evaluated by the existing benchmark eval unchanged.
 Example usage:
     python fnv_benchmark_prop2.py -s FNV-aMMFE --cross-check
     python fnv_benchmark_prop2.py -s simple
-    python fnv_benchmark_dp_eval.py --dp-solutions results/FNV-aMMFE/prop2/FNV-aMMFE.txt -s FNV-aMMFE
+    python fnv_benchmark_dp_eval.py --dp-solutions results/FNV-aMMFE/benchmark/prop2/FNV-aMMFE.txt -s FNV-aMMFE
 """
 
 import argparse

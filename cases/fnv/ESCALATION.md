@@ -1,8 +1,9 @@
 # fnv — escalation log
 
 Campaign opened 2026-08-13 on the `FNV-aMMFE` branch (additive MMFE, 540-cell
-design grid, generalist policy). `FNV-mMMFE` is a **separate board** and has not
-been started. Protocol throughout: 540 cells × 2048 CRN seeds, seed block
+design grid, generalist policy) and replicated on `FNV-mMMFE` — a **separate
+board**, never compared. Both branches have run; the campaign closed
+2026-08-14. Protocol throughout: 540 cells × 2048 CRN seeds, seed block
 0…2047, identical for every arm; comparisons are paired per cell.
 
 ## MAP  (as of 2026-08-14, both branches run)
@@ -21,13 +22,15 @@ graph TD
     T2 ==>|"P1 ★"| M1["config layer: L1' — 2.277242, BEATS L0 by +0.00365 #E6"]
     T2 -.->|"∅"| M2["config layer: L1 — 2.272065; REFUTED again #E6"]
     T2 ==>|"P1 ★"| M3["structure: log-linear recovered, r2 0.976-0.999 #E7"]
+    T1 ==>|"P3 ★"| F1N["interpretation: fitted rule ties the net, 209/540 cells fitted #E9"]
+    T2 ==>|"P3 ★"| F2N["interpretation: fitted rule BEATS the net +0.0024, 508/540 fitted #E9"]
 ```
 
 ### Frontier
 
 1. ~~A1 — read back the m-MMFE branch~~ **done** (#E6, #E7, #E8).
-2. **A2 — score the fitted rule as a policy @ T1/C4** queued — §14.2 arm; the
-   recovered `b̂₃` constants may beat the net they came from; cost ~20 min.
+2. ~~A2 — score the fitted rule as a policy~~ **done** (#E9): it beats the net
+   on m-MMFE, ties on a-MMFE.
 3. **A3 — separate truncation bias from genuine over-response @ T1/C4** queued
    — the readback slope is 1.109 ± 0.122, systematically above 1, and the
    censoring kink is a known upward bias; cost ~30 min.
@@ -46,7 +49,9 @@ graph TD
 
 ### Current best bundle
 
-**L1′, the corrected derivation**, on both branches:
+The shipped deliverable is **the readback**, not the network: on m-MMFE the
+distilled constants outscore the policy they came from (#E9). Best *learned*
+arm, both branches:
 
 | branch | L1′ | vs L0 | best single arm | % of bar |
 |---|---|---|---|---|
@@ -68,6 +73,8 @@ with far better reproducibility on a-MMFE. The configuration layer is worth
 2026-08-14  CONFIRMED   L1 < L0 replicates on a second branch                   (#E6)
 2026-08-14  NARROWED    L1' beats L0 outright on m-MMFE, not merely ties        (#E6)
 2026-08-14  UN-PARKED   the middle-order collapse is aMMFE-specific, not general (#E8)
+2026-08-14  INTRODUCED  fit COVERAGE is a structural diagnostic, not bookkeeping (#E9)
+2026-08-14  CONFIRMED   the distilled rule is a shippable artifact on m-MMFE     (#E9)
 ```
 
 ## IR-CHANGELOG
@@ -299,3 +306,24 @@ note: **the coverage split is the finding.** The full-horizon assertion dropped
   distilled into a rule over it**, no matter how well it scores. Without the
   assertion those 331 cells would have silently taken a defaulted offset and
   returned a plausible number.
+
+### #E10  2026-08-14 — DIAGNOSIS: three probe designs, three different verdicts
+reads: #E5, #E7; the readback's own measurement history, logged here because
+  PLAYBOOK LV6 cites this detail and guide §10 lets a digest cite rather than
+  copy only if the ledger actually holds it.
+observed: the same policy, the same cell (`stdev=0.15,T=0.5,lamb=0.1`), four
+  probe designs:
+
+| design | result | why it was wrong |
+|---|---|---|
+| free inventory sweep at fixed I | slopes **1.24 / 0.94 / 0.87**, flatness 0.30–0.49 | mostly **off-manifold**: `I₁ ≡ 0` makes the period-1 action deterministic, so reachable inventory collapses to a single trajectory prefix — `x₂ = x₃ = 0.9501` exactly, not a distribution |
+| reachable states only | period-2 slope **0.00** — "ignores information" | at its reachable `x₂` the policy orders **nothing**; `q = 0` is censored and certifies only `S₂ ≤ x`, identifying no slope. Conflated the order quantity `q` with the level `S` |
+| affine plane `post = A + B·I + C·x` | B ≈ 0.96–1.16 but **R² only 0.82–0.85** | fits a plane through a surface with a censoring kink in it |
+| realized trajectories, acting periods only, per cell | slope **1.109 ± 0.122**, r² **0.966** | on-distribution by construction; censoring excluded rather than modelled |
+
+  `B + C = 1.003` at period 3 in the third design — the partial-adjustment
+  signature — which is what first suggested the kink was structural rather than
+  noise.
+missing: how much of the residual slope excess above 1 is truncation bias from
+  the kink vs genuine over-response — still open (Frontier A3).
+plan: none; the fourth design is the one the figure and every quoted slope use.

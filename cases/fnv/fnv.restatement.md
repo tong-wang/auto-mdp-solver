@@ -21,9 +21,8 @@ old pair. Owes a §IR-CHANGELOG entry once a campaign log exists.)*
 > **The Phase-A confirmables are now resolved (2026-08-13).** They were not:
 > `mdp.decisions[0].type` and `.bounds` were both `source: derived`, so
 > `unconfirmed()` was non-empty and the `mdp` block had never been formally
-> frozen. Resolving them **forked `fnv_schema.json` from upstream** — the
-> other seven IR-half files remain byte-identical, and the patch is owed back
-> to `cases/fnv/`. See **Open items**.
+> frozen. The fix was carried downstream while this case's IR half lived here
+> alone, and landed with the solve-leg contribution. See **Open items**.
 
 ## The problem
 
@@ -268,13 +267,10 @@ python -m mdp_ir.interpreter fnv/fnv_schema.json --instance mmmfe --decision ord
 ## Open items
 
 1. ~~**Two confirmables unresolved**~~ — **resolved 2026-08-13**;
-   `unconfirmed()` is now empty and all four gates pass. The cost is that
-   **`fnv_schema.json` is forked from upstream** `cases/fnv/`: the patch
-   (`fnv_order_max.patch`, verified to apply cleanly there) is owed back, and
-   until it lands a naive re-port would silently revert the bound and re-open
-   the confirmables.
+   `unconfirmed()` is now empty and all four gates pass.
 2. ~~**IR `gym` block is stale**~~ — **fixed 2026-08-13**; the IR now declares
    the 6 features the gym emits. Part of the same owed-upstream fork as (1);
    moved no fingerprint.
-3. **No `ESCALATION.md` / `INTERPRET.md`** yet — the solve leg has only just
-   been built and its first ladder is running.
+3. The campaign that followed this restatement is in `ESCALATION.md`
+   (§LEDGER #E1–#E10), its readback in `INTERPRET.md`, and its digest in
+   `PLAYBOOK.md`.

@@ -129,14 +129,39 @@ So a policy 0.2% from optimal still misses one of three ordering opportunities,
 and no leaderboard number distinguishes it. That is the case for scoring the
 readback separately from the policy.
 
+## §14.2 — the fitted rule scored as a policy
+
+The recovered constants are themselves a policy, so they are scored on the same
+CRN block as every other arm (`fnv_benchmark_fitted.py` → `fnv_benchmark_dp_eval.py`).
+
+| branch | cells fitted | reference | fitted rule | raw net | Δ fitted − net |
+|---|---|---|---|---|---|
+| a-MMFE | 209 / 540 | 0.871613 | 0.869086 | 0.869212 | −0.000126 ± 0.000049 (−0.014%) |
+| m-MMFE | 508 / 540 | 2.285018 | **2.275206** | 2.272780 | **+0.002426 ± 0.000746 (+0.106%)** |
+
+Means are over the *fitted* cells only, against the reference restricted to the
+same cells — hence a different bar from the full-grid leaderboard.
+
+**On m-MMFE the fitted rule beats the network it was read from** (3.3 SE): three
+constants per cell outscore the policy they were distilled from, which is the
+shippable-artifact case §14.2 anticipates. On a-MMFE it ties (marginally below,
+2.6 SE, −0.014% in absolute terms). Both land in §14.2's **verdict branch 1** —
+|fitted − net| ≤ 1% of the bar — so the net does implement the predicted
+structure.
+
+**Coverage is the sharper diagnostic.** The full-horizon assertion dropped
+**331 of 540** a-MMFE cells: the policy never orders at period 2 there, so `b̂₂`
+is unidentifiable and the rule cannot be completed. Only 32 cells fail on
+m-MMFE. A policy that abandons an ordering opportunity **cannot be distilled
+into a rule over it**, however well it scores — and that states the structural
+gap more sharply than the profit gap does. Without the assertion those 331 cells
+would have taken a defaulted offset and returned a plausible number.
+
 ## Limits
 
 - The slope is systematically **above** 1 (1.109 ± 0.122, mean of 36 fits), not
   centered on it. Some of that is truncation bias from the censoring kink; how
   much is not yet separated.
-- The §14.2 arm — scoring the fitted rule `b̂` as a policy against the net and
-  the optimum — has not been run, so it is not yet known whether the recovered
-  constants beat the network they came from.
 
 ---
 

@@ -12,7 +12,7 @@ against) rather than a must-beat `--baseline`.
 
 Example usage:
     python fnv_benchmark_dp.py -s FNV-aMMFE                       # solve first
-    python fnv_benchmark_dp_eval.py --dp-solutions results/FNV-aMMFE/dp/FNV-aMMFE.txt -s FNV-aMMFE
+    python fnv_benchmark_dp_eval.py --dp-solutions results/FNV-aMMFE/benchmark/dp/FNV-aMMFE.txt -s FNV-aMMFE
     python fnv_benchmark_dp_eval.py --dp-solutions ... -s simple --n-seeds 8192
 """
 

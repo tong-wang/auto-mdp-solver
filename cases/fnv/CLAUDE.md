@@ -133,12 +133,74 @@ and deliberate.
 Seeded by the pipeline; **every trap the campaign pays for is added here the
 same day**, citing the finding (#E…) that paid for it.
 
+- **`fnv_policy.py` reproduces the action clip** rather than importing a helper
+  from `fnv_gym.py` — an artifact of the period when the IR half was kept
+  byte-identical to a downstream copy. Harmless, and asserted against the gym in
+  that file's `__main__` smoke test.
 - **The record eval is the deterministic argmax here** — the action is a
   single continuous order quantity and exploration plays no role at
   inference, so `deterministic=True` is the deployment mode. A stochastic
   eval would be a separate, labelled figure and never a record.
-- **`fnv_policy.py` reproduces the action clip** rather than importing a helper
-  from `fnv_gym.py` — a historical artifact of the period when the IR half was
-  kept byte-identical to an upstream copy. Harmless, and asserted against the
-  gym in that file's `__main__` smoke test.
-
+- **The observation is a SOLUTION lever, not part of the problem.** Only the
+  `mdp` block freezes; `gym`/`rl` are Phase-B mutable, and the skill is
+  explicit that "observation/architecture levers are NOT IR changes — they
+  live in the gym / train script with their own executable gate; only the
+  *problem* goes through the schema." So `gym.observation_modes` **records**
+  the current encoding; it does not bind `_get_obs`, and no gate compares them
+  — correctly. A new observation mode is tried in the gym and judged by
+  whether it scores better, never by editing the IR to match. Do not read a
+  gap between the two as a defect, and do not "fix" it by constraining the
+  gym.
+- **Grids are not scenarios.** `SCENARIOS` holds one concrete scenario
+  (`simple`); the aMMFE/mMMFE parameter sweeps are `GRIDS` (§5.5–§5.6).
+  Training takes `grid.as_sampler()`; evaluation enumerates cells. A grid
+  must never be passed where a scenario source belongs.
+- **A generalist is screened over its whole grid, never one cell** (#E1).
+  `fnv_select.py` screens through the grid's sampler for exactly this
+  reason; ranking a generalist on a single cell selects for that cell.
+- **The DP solver's grid must extrapolate, not clamp** (#E-pre, F1-era). `W_n(z) = c_n z +
+  const` below the maximizer, so a clamped table lookup inflates the
+  continuation value at low `z`, drags the next period's argmax onto the
+  grid edge, and silently emits "never order" offsets — which cost up to 6%
+  of the bar before it was caught. `_interp` extrapolates and
+  `_argmax_interior` refuses an edge maximizer; keep both.
+- **Two solvers compute the same offsets; keep them independent.**
+  `fnv_benchmark_dp.py` maximizes a reduced value function on a grid,
+  `fnv_benchmark_prop2.py` solves the paper's first-order conditions for the
+  thresholds. That independence *is* the §1.2 gate — do not refactor them onto
+  shared numerics to remove duplication, or `--cross-check` stops proving
+  anything. They agree to ≤2.6e-03 over all 540 cells; a regression past the
+  grid-step tolerance means one of them is wrong, and neither ships until it
+  is resolved.
+- **`b_n` must not depend on the MMFE mode.** Equations (6)–(7) never reference
+  it, so `--check-invariants` asserts exact equality across additive and
+  multiplicative. A nonzero Δ there means mode has leaked into the recursion.
+- **`202506/` is a pre-IR archive** (June–July 2025, old seed scheme). Its
+  `fnv_dp_test.log` is a useful DP reference — the current solver matches it
+  on 540/540 cells within 3·SE — but its `.zip` models predate the current
+  observation contract and must not be loaded by today's scripts.
+- **Slopes are truncation-biased upward where the policy rarely acts** (#E5,
+  #E7). In information-poor cells it orders only in the upper tail of `I`, so a
+  slope fitted over that range reads high (1.38 / 1.85 vs a true ~1). Report the
+  acting count beside every slope; exclude such cells from averages and say so.
+- **`b̂_n` is unidentifiable wherever the policy never acts** (#E9). On a-MMFE
+  the full-horizon assertion drops 331/540 cells for exactly this reason. Never
+  default a missing offset — `fnv_benchmark_fitted.py` refuses the cell instead,
+  because a defaulted offset returns a plausible-looking garbage score.
+- **Selection and terminal artifacts are different networks**
+  (`{scenario}_ppo.zip` vs a `checkpoints/*.zip` chosen by the screen,
+  spec §8.4) — say which one a number came from.
+- **Compute sites/venues are cited by alias, never hostname** — venue
+  config lives at the repo root; a venue change is a confound to record,
+  not a detail.
+- **`q` is not `S`** (#E5, #E10, PLAYBOOK LV6). The order quantity is `q = max(0, S - x)`, censored at
+  zero: a period with no order certifies only `S <= x` and identifies no
+  order-up-to level. Fit the structure on ACTING periods only, from the
+  policy's own trajectories, one fit per cell — pooling cells smears the
+  per-cell intercept `mu + b_n`. Three earlier probe designs each returned a
+  different wrong answer here.
+- **Fit m-MMFE in logs** (#E7, PLAYBOOK LV7). The structure is `log S = mu + I + b` on that
+  branch; regressing the raw level finds a curve and reports a meaningless
+  slope.
+- **Never use `param`, `params`, or `param_*`** anywhere (conformance
+  fails).
