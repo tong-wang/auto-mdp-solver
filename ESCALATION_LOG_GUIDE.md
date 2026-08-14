@@ -19,7 +19,12 @@ distillation lands as an in-folder `PLAYBOOK.md` of digest entries
 (context / symptom / diagnosis / prescription / failed attempts — experiences,
 not rules; real names and numbers, ledger cited not copied); the three onward
 promotions named (contribution / curation / graduation-to-rule); mid-campaign
-upstream proposals split out to the mdp-propose skill.*
+upstream proposals split out to the mdp-propose skill.
+2026-08-14 (fifth revision): §6 — multi-arm verdicts are tables, not prose,
+and §11 gains a multi-arm entry shape. Proposed from the `game2048` campaign
+(issue #16), which measured the cost of the prose form: numbers had to be
+re-extracted by hand when a later diagnosis entry consolidated dozens of
+runs, and two ledger corrections traced to transcription from prose.*
 
 ## 1. Why this format
 
@@ -303,6 +308,21 @@ verdict in place). Per entry:
   comparison that gives them meaning. **Neutral and negative verdicts are
   first-class** ("roughly free, not yet proven positive" is a verdict; so is
   "8M ≈ 4M — not undertrained").
+  **Three or more arms, or any readout the reader must scan across, goes in
+  a table** — arm | metric | delta | z-or-band — with prose kept for
+  mechanism, scope conditions and interpretation. One or two numbers stay
+  inline; a table for a single contrast is ceremony. The reason is not
+  tidiness: cross-entry contrasts at a shared protocol are the campaign's
+  core operation, and a table aligns them by construction while prose
+  leaves them to be re-extracted by hand — a real cost when a later
+  diagnosis entry consolidates dozens of runs, and a source of
+  transcription errors when it is paid. This does **not** contradict §3.3's
+  "generate slice views, never maintain them": that rule governs *standing
+  state* which can drift out of sync with the tree. A verdict is
+  event-shaped and append-only, so a table inside one is part of the
+  immutable record, not a second source of truth. The same applies to
+  `README.md` leaderboards and to multi-arm effects in a `PLAYBOOK.md`
+  `prescription:` (§10).
 - **status** — `✓ / ✗ / ~ (neutral) / ▶`.
 
 **Diagnosis entries.** Not every ledger entry tests a hypothesis. At a
@@ -520,6 +540,18 @@ rule: {trigger-first generalization}
 address: {tree path} / A{n}
 runs: {commands or paths}
 verdict: {numbers @ protocol; comparison}   status: {✓|✗|~|▶}
+
+### #{id} {date} — {one-line hypothesis, multi-arm}
+address: {tree path} / A{n}
+runs: {commands or paths}
+verdict: {what the arms share — protocol, seeds, common start}
+         | arm        | {metric} | delta  | z    |
+         |------------|----------|--------|------|
+         | {control}  |    {x}   |    —   |   —  |
+         | {arm 1}    |    {x}   |  {+/-} | {z}  |
+         | {arm 2}    |    {x}   |  {+/-} | {z}  |
+         {one line of mechanism — the table carries the numbers}
+         status: {✓|✗|~|▶}
 
 ### #{id} {date} — DIAGNOSIS: {checkpoint one-liner}
 reads:    {#E ids + imported evidence w/ provenance}

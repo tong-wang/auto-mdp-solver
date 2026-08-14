@@ -1697,6 +1697,14 @@ quotes):
 A smoke eval (train-script tail, ~50 episodes, "did it learn anything")
 stays outside the layers and is never quoted.
 
+**The leaderboard is a table**, in the domain `README.md`: one row per arm —
+the trained policy, every baseline, the reference/oracle if one exists —
+with the metric, the paired delta against the stated comparison, and its
+significance, plus a column or note carrying each row's scope where arms
+differ in it. Numbers a reader must compare across arms do not belong in
+prose; the same applies to any multi-arm readout in the campaign docs
+(ESCALATION_LOG_GUIDE §6).
+
 The screen layer is affordable because the **selection evaluator is
 vectorized over episodes** — the old "~256–512 seeds" tier reflected a
 scalar `predict`-per-step loop's budget, not a statistical judgment; batched
