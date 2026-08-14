@@ -806,7 +806,11 @@ optimizes means something. Classify a candidate axis by which it breaks
   silently becomes the training objective — and the checkpoint-selection
   criterion. The horizon does this by construction; so does any cost axis
   spanning orders of magnitude. Report **per cell** (§9.6) and state the
-  weighting; never quote a single aggregate as the generalist's score.
+  weighting; never quote a single aggregate as the generalist's score. This
+  binds *any* comparison over the grid, not only the generalist's own score —
+  §9.7 carries the reporting rules, including the one failure this rider does
+  not cover (the SE's replication unit, which bites a scale-homogeneous grid
+  just as hard).
 
 ---
 
@@ -1710,6 +1714,27 @@ vectorized over episodes** — the old "~256–512 seeds" tier reflected a
 scalar `predict`-per-step loop's budget, not a statistical judgment; batched
 eval runs 20–100× cheaper per step than training, and the seed count stops
 being the constraint.
+
+**Comparing two arms over a grid.** When the eval enumerates a §5.6 grid, the
+comparison is per cell (§5.6 Rider 2: report per cell, never quote a single
+aggregate as the score) — and if an aggregate is unavoidable, three things
+govern it:
+
+- **The replication unit is the seed, not the cell.** The grid is *enumerated*,
+  so `std(cell Δs)/√n_cells` is a dispersion measure, not a sampling error:
+  it estimates how much the answer would move on a fresh draw of cells, which
+  is not the claim being made. Take the SE across seeds over the pooled paired
+  rows. The two differ by more than rounding — CRN correlates the cells, and a
+  campaign measuring both found the cell-based form understating the SE by
+  ~1.8× on three separate arms, enough to turn a 3.3 SE result into 1.8 SE.
+- **State the weighting, because equal weight is one.** Where cells differ in
+  scale — any multiplicative link, any cost or horizon axis — an equal-weight
+  mean of absolute deltas is a scale-weighted vote, and the largest corner
+  decides. Normalize per cell, or weight deliberately, or don't aggregate.
+- **Report the median and the fraction of cells favouring the arm beside the
+  mean.** A mean whose median has the opposite sign is not a weak result, it
+  is a different result; the fraction favouring is the cheapest one-number
+  tell that this has happened.
 
 Sizing: from a ~500-episode pilot SD σ, `n ≈ (2σ/ε)²` for the smallest delta
 ε worth resolving. Make comparative claims on **per-seed paired differences**
