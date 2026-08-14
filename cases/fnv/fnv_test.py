@@ -146,5 +146,67 @@ def test_demand_is_positive_under_the_multiplicative_link():
         assert rows[-1]["demand"] > 0
 
 
+# ---------------------------------------------------------------------------
+# Benchmark equivalence gates (spec §1.2)
+#
+# These ran only behind manual --self-test / --check-invariants / --cross-check
+# flags, which repeats mab's own LV12: "a gate that runs when someone remembers
+# it is not a gate." The bar every leaderboard number is quoted against comes
+# from these two solvers, so their agreement belongs in the tracked suite.
+# Kept to a handful of cells so the suite stays fast.
+# ---------------------------------------------------------------------------
+
+def _sample_cells(grid_name, k=6):
+    from fnv_grids import GRIDS
+    cells = list(GRIDS[grid_name])
+    return cells[:: max(1, len(cells) // k)]
+
+
+@pytest.mark.parametrize("grid", ["FNV-aMMFE", "FNV-mMMFE"])
+def test_dp_last_period_matches_the_closed_form(grid):
+    """The exactly-solvable rung: b_N = sigma_{N+1} * Phi^-1(1 - c_N/r)."""
+    from fnv_benchmark_dp import closed_form_last_offset, solve_offsets
+    for _, sc in _sample_cells(grid):
+        b = solve_offsets(sc)
+        step = 20.0 * sc.stdev / 4000        # the solver's own grid resolution
+        assert abs(b[sc.N - 1] - closed_form_last_offset(sc)) <= max(step, 1e-3)
+
+
+@pytest.mark.parametrize("grid", ["FNV-aMMFE", "FNV-mMMFE"])
+def test_two_independent_solvers_agree(grid):
+    """§1.2 second implementation: the value-function DP and the paper's
+    threshold recursion must land on the same offsets."""
+    from fnv_benchmark_dp import solve_offsets as dp_solve
+    from fnv_benchmark_prop2 import solve_offsets as p2_solve
+    for _, sc in _sample_cells(grid):
+        a, b = dp_solve(sc), p2_solve(sc)
+        tol = max(40.0 * sc.stdev / 4000, 2e-3)
+        assert max(abs(x - y) for x, y in zip(a, b)) <= tol
+
+
+@pytest.mark.parametrize("grid", ["FNV-aMMFE", "FNV-mMMFE"])
+def test_corollary_1_safety_stock_bound(grid):
+    """The paper's Corollary 1: future ordering opportunities can only lower
+    the safety stock, so b_n <= b_hat_n everywhere."""
+    from fnv_benchmark_myopic import myopic_offsets
+    from fnv_benchmark_prop2 import solve_offsets
+    for _, sc in _sample_cells(grid):
+        for b, b_hat in zip(solve_offsets(sc), myopic_offsets(sc)):
+            assert b <= b_hat + 1e-6
+
+
+def test_offsets_do_not_depend_on_the_mmfe_mode():
+    """Equations (6)-(7) never reference the mode, so the same (sigma schedule,
+    cost ladder) must give identical b_n on both branches — only the link from
+    b_n to the stock level differs."""
+    from fnv_benchmark_prop2 import solve_offsets
+    from fnv_scenarios import FnvScenario
+    for _, sc in _sample_cells("FNV-aMMFE", k=4):
+        flipped = FnvScenario(
+            stdev=sc.stdev, T=sc.T, lamb=sc.lamb, N=sc.N, r=sc.r, c1=sc.c1,
+            mu=sc.mu, mmfe_mode="multiplicative", seed_salt=sc.seed_salt)
+        assert solve_offsets(sc) == pytest.approx(solve_offsets(flipped), abs=1e-9)
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))
