@@ -8,7 +8,8 @@ them). Checks fall into two groups:
   and ``@dataclass(slots=True)`` on the state.
 - **Behavioral** — construct the gym and run the simulator: scenarios build,
   ``init_state`` invariants, the Gymnasium reset/step contract, whole-episode
-  determinism, ``advance`` purity, and the per-generator RNG seeding contract.
+  determinism, episode-seed provenance across resets (§7), ``advance`` purity,
+  and the per-generator RNG seeding contract.
 
 Behavioral checks drive the domain through its gym wrapper so that single-step
 (``advance``) and two-step (``advance1``/``advance2``) domains are handled
@@ -365,6 +366,74 @@ def check_determinism(h: DomainHandle) -> CheckResult:
     guard = "" if done_a and done_b else " (hit step cap, not terminated)"
     return CheckResult("behavior.determinism", "PASS",
                        f"identical over {len(a)-1} steps{guard}")
+
+
+def _episode_trace(env, seed: int | None, action_seed: int, max_steps: int) -> list:
+    """One episode as (obs, reward) per step, under a reproducible action stream.
+
+    Reward rides along with the observation because a censored domain may not
+    show its exogenous draw in the obs at all (a bandit shows only the arm it
+    pulled) — the payoff still moves with the draw, so including it keeps the
+    trace a faithful signature of the episode without any domain knowledge.
+    """
+    obs, _ = env.reset(seed=seed)
+    env.action_space.seed(action_seed)
+    trace = [(obs, 0.0)]
+    done, steps = False, 0
+    while not done and steps < max_steps:
+        obs, reward, terminated, truncated, _ = env.step(env.action_space.sample())
+        trace.append((obs, float(reward)))
+        done = bool(terminated or truncated)
+        steps += 1
+    return trace
+
+
+def _traces_eq(a: list, b: list) -> bool:
+    return len(a) == len(b) and all(_eq(x, y) for x, y in zip(a, b))
+
+
+def check_gym_reseed(h: DomainHandle) -> CheckResult:
+    """Unseeded ``reset()`` must draw a FRESH episode seed (spec §7).
+
+    The mandated pattern's ``else`` branch is what makes that true. Omitting it
+    leaves ``_episode_seed`` untouched on the auto-reset path SB3 takes, so every
+    training episode after the first replays one exogenous path. The deviation is
+    silent in both directions that usually catch things: training only degrades,
+    and evaluation is unaffected because §9 seeds every episode explicitly — so
+    the leaderboard stays a valid measurement while the training distribution is
+    wrong. ``behavior.determinism`` is the mirror property (same explicit seed ⇒
+    identical) and passes happily alongside the bug.
+    """
+    max_steps = _max_steps(_concrete(_pick_scenario(h)))
+    env = _build_env(h)
+    # Is the episode seed even legible in the trace? Two different EXPLICIT
+    # seeds must part ways before "unseeded resets replay" means anything. This
+    # asks the env rather than introspecting generators, so a state-conditioned
+    # or censored domain is judged on the path that actually runs.
+    if _traces_eq(_episode_trace(env, 1, 321, max_steps),
+                  _episode_trace(env, 2, 321, max_steps)):
+        return CheckResult("behavior.gym_reseed", "SKIP",
+                           "episode seed does not move the (obs, reward) trace: "
+                           "deterministic dynamics, or the draw is invisible "
+                           "from outside — nothing to assert")
+    env.reset(seed=0)  # seed np_random first, as SB3 does at training start
+    traces = [_episode_trace(env, None, action_seed=321, max_steps=max_steps)
+              for _ in range(3)]
+    if all(_traces_eq(t, traces[0]) for t in traces[1:]):
+        return CheckResult("behavior.gym_reseed", "FAIL",
+                           "3 unseeded reset()s replayed one episode — reset() "
+                           "must draw a fresh _episode_seed from self.np_random "
+                           "when seed is None (spec §7); training would run on "
+                           "n_envs fixed exogenous paths")
+    # the converse half of the contract: an explicit seed pins the episode
+    a = _episode_trace(env, 7, action_seed=321, max_steps=max_steps)
+    b = _episode_trace(env, 7, action_seed=321, max_steps=max_steps)
+    if not _traces_eq(a, b):
+        return CheckResult("behavior.gym_reseed", "FAIL",
+                           "reset(seed=7) twice under identical actions "
+                           "diverged — an explicit seed must pin the episode")
+    return CheckResult("behavior.gym_reseed", "PASS",
+                       "unseeded resets draw fresh episodes; explicit seed pins one")
 
 
 def check_purity(h: DomainHandle) -> CheckResult:
@@ -725,6 +794,7 @@ REGISTRY = [
     check_init_state,
     check_gym_contract,
     check_determinism,
+    check_gym_reseed,
     check_purity,
     check_rng_generators,
 ]
