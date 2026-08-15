@@ -1076,6 +1076,8 @@ class {Domain}Env(gym.Env):
 
   `super().reset(seed=...)` seeds gymnasium's per-env `self.np_random` once (SB3 passes `training_seed + rank` per env at the first reset); unseeded resets then draw the episode-seed stream from it — per-env independent, reproducible, and safe under any vec-env. Drawing from **global** `np.random` is forbidden: under `SubprocVecEnv` (fork) every worker inherits identical global state and the "parallel" envs replay the *same* episode-seed sequence from episode 2 on; under `DummyVecEnv` the stream is reset-order-fragile. Everything below `episode_seed` is already counter-keyed (§6.3) and unaffected.
 
+  The **`else` branch is not optional**, and `behavior.gym_reseed` (`mdp_conformance`) is what enforces it: three unseeded resets under a fixed action stream must not replay one episode, and the same explicit seed must reproduce one. Omitting it leaves `_episode_seed` untouched on the auto-reset path SB3 takes, so every training episode after the first replays a single exogenous path — silent in both directions that normally catch things, since training only degrades and §9 evaluation seeds every episode explicitly. The leaderboard stays a valid measurement of the artifact while the training distribution is wrong.
+
 ### 7.1 Action Masking (discrete action spaces only)
 
 When some actions are structurally invalid at certain states — not merely suboptimal, but guaranteed to leave the state unchanged or violate a hard constraint — **action masking** removes them from the policy's support before sampling.
