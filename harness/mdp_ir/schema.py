@@ -661,6 +661,73 @@ class MetricReduce(str, Enum):
     min = "min"      # episode minimum
 
 
+class Tier2Stance(str, Enum):
+    """Which tier-2 claim a campaign is making (ESCALATION_LOG_GUIDE §3.1).
+
+    One question in the guide's text, three in practice — and they take
+    different evidence and owe different deliverables:
+
+    * ``confirm``  — RL recovers a structure we already know; evidence is the
+      readback **agreeing with the reference** policy.
+    * ``discover`` — the policy has structure we did *not* know; evidence is a
+      **structural-form fit plus paired scoring** of the fitted rule, which
+      must itself be scored as a §9 benchmark.
+    * ``bypass``   — RL does as well *without* the structure or the machinery
+      that produces it; evidence is the **outcome comparison alone**, typically
+      an ordered `means` split whose cross-link delta is the price of
+      generality. No interpretation artifact is owed.
+
+    The distinction is not cosmetic: the same measurement reads three ways.
+    ``raw ≈ echelon`` is a success under ``bypass``, inconclusive under
+    ``confirm``, and irrelevant under ``discover`` — so an undeclared stance
+    makes a finding and a gap indistinguishable in the record.
+    """
+
+    confirm = "confirm"
+    discover = "discover"
+    bypass = "bypass"
+
+
+class Tier2Question(_Base):
+    """One declared tier-2 research question (spec §14, guide §3.1).
+
+    A campaign may hold more than one stance on the same structure — bypass as
+    the primary claim and confirm as a secondary one is coherent when the
+    structure is known optimal, since a good enough policy must arrive there
+    and the readback says whether it did.
+    """
+
+    stance: Tier2Stance
+    structure: str                       # what structure the claim is about
+    claim: str = ""                      # the sentence the campaign will defend
+    instrument: str = ""                 # how it will be measured
+    priority: str = "primary"            # primary | secondary
+    # confirm/discover need the §14 probe; bypass does not. Defaults to True
+    # for the two stances that own a Stage-5 deliverable
+    probe_required: bool | None = None
+
+    @model_validator(mode="after")
+    def _default_probe_requirement(self) -> "Tier2Question":
+        if self.probe_required is None:
+            self.probe_required = self.stance is not Tier2Stance.bypass
+        return self
+
+
+class ResearchQuestions(_Base):
+    """The campaign's declared research questions, root level.
+
+    Tier 1 (how does RL compare with the existing solutions?) is *standing* —
+    every campaign asks it, so it is never declared. Tier 3 is engineering.
+    Only tier 2 is a commitment worth recording, because it decides whether a
+    Stage-5 interpretation artifact is owed at all."""
+
+    tier2: list[Tier2Question] = Field(default_factory=list)
+
+    @property
+    def probe_required(self) -> bool:
+        return any(q.probe_required for q in self.tier2)
+
+
 class BenchmarkRole(str, Enum):
     """Where a benchmark sits relative to the optimum (spec §9.9).
 
@@ -1466,6 +1533,11 @@ class MdpIR(_Base):
     # mdp_fingerprint. Optional — an IR without it validates unchanged and the
     # role-aware checks skip
     benchmarks: list[Benchmark] = Field(default_factory=list)
+    # the tier-2 stance(s) this campaign committed to at Phase A. Root level,
+    # same reason as eval_metrics and benchmarks: declared alongside the
+    # objective, never part of the frozen mdp block. Optional — an IR without
+    # it validates unchanged and the §14 deliverable checks skip
+    research_questions: ResearchQuestions | None = None
     assumptions_log: list[str] = Field(default_factory=list)
     # the slot->candidate selection this IR was resolved under (catalog ⊕
     # selection, IR_LAYERING_PLAN §10); None for a legacy resolved single

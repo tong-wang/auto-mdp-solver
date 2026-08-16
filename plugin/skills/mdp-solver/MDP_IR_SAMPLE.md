@@ -695,6 +695,43 @@ without the block validates unchanged and both checks stand down.
 
 ---
 
+## 5d. `research_questions` — the declared tier-2 stance (root level)
+
+Spec §14.0. `2-structural` is three claims that take different evidence, and
+the stance decides whether a §14 readback is owed at all. Declared at Phase A
+beside the objective and the mode stance.
+
+```jsonc
+"research_questions": {
+  "tier2": [
+    {
+      "stance": "bypass",                    // confirm | discover | bypass
+      "structure": "echelon coordinates",
+      "claim": "a policy from raw installation stock matches one given the transform",
+      "instrument": "gym.observation_mode extension chain (echelon ⊂ raw)"
+      // probe_required defaults false for bypass
+    },
+    {
+      "stance": "confirm",
+      "structure": "echelon coordinates",
+      "priority": "secondary",               // primary | secondary
+      "claim": "the learned policy is echelon-structured",
+      "instrument": "policy readback on the crowned artifact"
+      // probe_required defaults true for confirm/discover
+    }
+  ]
+}
+```
+
+Two stances on one structure is a legitimate shape: bypass as the primary
+claim, confirm riding along because the structure is *known* optimal. Tier 1 is
+standing and never declared; tier 3 is engineering.
+`mdp_conformance research.deliverables` requires `{domain}_policy_probe.py` +
+`INTERPRET.md` when any entry needs a probe, and SKIPs when the block is
+absent.
+
+---
+
 ## 6. Scenario-redesign additions (seed scheme v2)
 
 Added 2026-07-22 (spec §5, §6.3). All fields are

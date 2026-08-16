@@ -237,6 +237,18 @@ continuous decision?" gates the bounds/masking question.)
    with `source` recording the answer, e.g. "objective candidate, declined
    at Phase A"). Bystander metrics describe, never decide (spec §9.3) — and
    they sit outside the mdp block, so they never move the fingerprint.
+   **Ask the tier-2 research question in this same round** (spec §14.0): is the
+   campaign trying to **confirm** a structure already known for this problem
+   ("does RL recover the `(s,S)` policy?"), to **discover** structure nobody has
+   named, or to **bypass** it ("does RL do as well without the transform, or
+   without the machinery that produces it?")? It is the same kind of commitment
+   as the mode stance and it decides a Stage-5 deliverable: confirm and discover
+   owe a `{domain}_policy_probe.py` and an `INTERPRET.md`, bypass owes neither.
+   Record the answer as a root-level `research_questions.tier2` entry (`stance`,
+   `structure`, `claim`, `instrument`); more than one stance on the same
+   structure is legitimate. Undeclared, the same measurement reads three ways —
+   `raw ≈ echelon` is a success under bypass and merely inconclusive under
+   confirm — so a finding and a gap become indistinguishable in the record.
 2. Interview the user; draft `{name}/{name}_schema.json` — the IR lives in the
    domain's own folder; create `{name}/` now if this is a new domain (v0.4 root:
    `{domain, mdp, gym, rl, assumptions_log}`; `MDP_IR_SAMPLE.md` is the

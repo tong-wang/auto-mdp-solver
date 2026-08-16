@@ -35,7 +35,7 @@ prefixed with the domain name; the campaign docs (`CLAUDE.md`, `README.md`,
 | `{domain}_benchmark_{method}.py` | Non-RL benchmark solver — `{method}` names the method (`lp`, `dp`, `myopic`, `greedy`, `fluid`, or a domain-custom heuristic). One per method; a solver may expose several related policies via `--policy` (§9.8) |
 | `{domain}_benchmark_{method}_eval.py` | Evaluate a benchmark over the full parameter grid, same TSV format as the RL eval |
 | `{domain}_policy.py` | Deployable policy wrapper over the trained artifact (§12) |
-| `{domain}_policy_probe.py` | Policy-interpretation probe: action-surface sweep, structural-form fit + paired scoring of the fitted rule, agreement vs the reference, feature-sensitivity sweeps (§14). **Required when a reference policy or predicted structural class exists** |
+| `{domain}_policy_probe.py` | Policy-interpretation probe: action-surface sweep, structural-form fit + paired scoring of the fitted rule, agreement vs the reference, feature-sensitivity sweeps (§14). **Required when a declared tier-2 stance is `confirm` or `discover`** (`research_questions`, §14.0) — a claim-shaped condition, not a problem-shaped one: a `bypass` campaign owes no probe |
 | `{domain}_plot_policy.py` | Policy-overlay figure — one plot spec, static + interactive renders (§14.3) |
 | `{domain}_test.py` | The domain's own tests: the engine laws + the differential parametrized over the covering set, plus the claims only this domain can state. **Required for a new domain**; see §1.2 |
 
@@ -1957,7 +1957,9 @@ Two forms, mirroring formalize's replicate/elicit duality:
 - **Anchored** — a reference policy or a predicted structural class exists
   (an exact DP, a paper's policy, a classical form from theory). This
   section specifies the anchored form; it is **required** whenever the
-  domain ships a DP/reference baseline.
+  campaign declares a `confirm` or `discover` tier-2 stance (§14.0). Shipping
+  a DP/reference baseline makes the anchored form *available*; declaring the
+  stance is what makes it owed.
 - **Open** — no reference and no predicted class. Only the generic pieces
   below apply (the action-surface figure, the feature-sensitivity sweeps);
   discovery-style probes are deliberately not yet spec'd — conventions
@@ -1969,6 +1971,57 @@ an escalation campaign (diagnosing a failing arm, checking a mechanism
 before spending budget) are campaign record, governed by the escalation
 guide, not by this section; their outputs land in the run's `probe/` dir
 (§8.4) and their lessons in the campaign's `PLAYBOOK.md`.
+
+### 14.0 Declare the tier-2 stance first (`research_questions`)
+
+Whether a readback is owed at all is a property of the **claim**, not of the
+problem — and `2-structural` (ESCALATION_LOG_GUIDE §3.1) is three claims, taking
+different evidence:
+
+| stance | the claim | evidence | §14 artifacts owed |
+|---|---|---|---|
+| `confirm` | RL recovers a structure we already know — `(s,S)`, an index rule, echelon coordinates | the readback **agrees with the reference** policy (§14.3) | probe + `INTERPRET.md` |
+| `discover` | the policy has structure we did *not* know | **structural-form fit + paired scoring** of the fitted rule, which is then a first-class §9 benchmark | probe + `INTERPRET.md` |
+| `bypass` | RL does as well *without* the structure, or without the machinery that produces it | the **outcome comparison alone** — typically an ordered `means` split whose cross-link delta is the price of generality | none |
+
+The same measurement reads three ways, which is why the stance is declared
+rather than inferred: `raw ≈ echelon` is a **success** under `bypass` (the
+structure was not needed), **inconclusive** under `confirm` (consistent with
+having found it, and no demonstration), and irrelevant under `discover`.
+Undeclared, a finding and a gap are indistinguishable in the record.
+
+Declare it at Phase A, in the same round that fixes the objective and the mode
+stance — it is the same kind of commitment, and it decides a Stage-5
+deliverable:
+
+```jsonc
+"research_questions": {
+  "tier2": [
+    {"stance": "bypass", "structure": "echelon coordinates",
+     "instrument": "gym.observation_mode extension chain (echelon ⊂ raw)",
+     "claim": "a policy from raw installation stock matches one given the echelon transform"},
+    {"stance": "confirm", "structure": "echelon coordinates", "priority": "secondary",
+     "instrument": "policy readback on the crowned artifact",
+     "claim": "the learned policy is echelon-structured"}
+  ]
+}
+```
+
+`probe_required` defaults from the stance (`true` for confirm/discover, `false`
+for bypass) and may be set explicitly to argue an exception in the file rather
+than in prose. Two stances on one structure is a legitimate shape, as above:
+bypass is the primary claim, and confirm rides along because the structure is
+*known* optimal, so a good enough policy must arrive there and the readback
+says whether it did.
+
+Tier 1 (how does RL compare with the existing solutions, exact and heuristic?)
+is **standing** — every campaign asks it, so it is never declared. Tier 3 is
+engineering.
+
+`mdp_conformance research.deliverables` enforces this: a declared
+`confirm`/`discover` stance requires `{domain}_policy_probe.py` and
+`INTERPRET.md`; a bypass-only campaign passes with neither; an IR with no block
+SKIPs.
 
 ### 14.1 The probe (`{domain}_policy_probe.py`)
 

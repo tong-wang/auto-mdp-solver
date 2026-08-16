@@ -777,6 +777,47 @@ def check_benchmarks(h: DomainHandle) -> CheckResult:
                        f"{len(declared)} declared, all matched: {roles}")
 
 
+def check_research_questions(h: DomainHandle) -> CheckResult:
+    """A declared confirm/discover stance owes the §14 artifacts (spec §1, §14).
+
+    The probe's obligation used to be a fact about the *problem* ("required
+    when a reference policy or predicted structural class exists"), which
+    obliged an artifact a bypass campaign has no use for and named nothing as a
+    confirm campaign's own deliverable. Tied to the declared stance it becomes
+    checkable, and narrower: a bypass-only campaign owes neither file.
+    """
+    schemas = sorted(h.directory.glob("*_schema.json"))
+    if len(schemas) != 1:
+        return CheckResult("research.deliverables", "SKIP",
+                           "no single *_schema.json to read declarations from")
+    try:
+        from mdp_ir.schema import load_ir
+        ir = load_ir(schemas[0])
+    except Exception as e:
+        return CheckResult("research.deliverables", "SKIP",
+                           f"schema not loadable ({type(e).__name__}: {e})")
+    rq = getattr(ir, "research_questions", None)
+    if rq is None or not rq.tier2:
+        return CheckResult("research.deliverables", "SKIP",
+                           "IR declares no tier-2 research question")
+    owing = [q for q in rq.tier2 if q.probe_required]
+    stances = ", ".join(f"{q.stance.value}({q.structure})" for q in rq.tier2)
+    if not owing:
+        return CheckResult("research.deliverables", "PASS",
+                           f"{stances} — bypass only, no §14 artifact owed")
+    missing = []
+    if not (h.directory / f"{h.name}_policy_probe.py").exists():
+        missing.append(f"{h.name}_policy_probe.py")
+    if not (h.directory / "INTERPRET.md").exists():
+        missing.append("INTERPRET.md")
+    if missing:
+        return CheckResult("research.deliverables", "FAIL",
+                           f"{stances} owes the §14 readback; missing: "
+                           f"{', '.join(missing)}")
+    return CheckResult("research.deliverables", "PASS",
+                       f"{stances} — probe and INTERPRET.md present")
+
+
 def _check_grid_axes(h: DomainHandle, GRIDS: dict) -> CheckResult:
     """Classify each grid axis by what it breaks (spec §5.6): tier 1 changes
     the action space (one policy cannot emit two); tier-2 horizon changes no
@@ -837,6 +878,7 @@ REGISTRY = [
     check_seed_key_helpers,
     check_grids,
     check_benchmarks,
+    check_research_questions,
     check_init_state,
     check_gym_contract,
     check_determinism,
