@@ -170,6 +170,18 @@ above — was a tree all along.)
   cannot mean, since spec §8.6 makes `L0` reporting-only and never
   crown-eligible. That is the §8.6 ladder drawn as a selection split, and it is
   what §3.2's floor-control rule now prevents.)*
+- **Every split edge carries a split id, `{locus}.{axis}`.** The `axis` is the
+  same code-read name the child node uses, which is what makes the
+  mis-attachment check below performable rather than aspirational — a node's
+  axis needs something to disagree *with*. The `locus` is the spec-§8.6 layer
+  the split opens (`gym` / `arch` / `hp`), and it **composes** — `arch+hp` for
+  a split spanning two, mirroring §8.6's own `L3(hp+arch)` — because a campaign
+  that varies `net_arch` with the extractor pinned has one split across two
+  layers. The `scenario` and `solver` layers sit above the solve levels and
+  take no locus. Beyond the check, the locus is what puts the *cost* of
+  re-opening a branch on the tree: a `gym` split means a rebuild, an `hp` split
+  a tuning study, and these differ by orders of magnitude. `tier` deliberately
+  does not encode that — tier says what a split is *for*, not what it costs.
 - **Attributes ride on the edge, not the split** — one split may carry
   children that differ in them:
 
@@ -221,9 +233,11 @@ above — was a tree all along.)
 
   with the **axis name read from the code** — the gym kwarg, the registry key,
   the `{method}` of `{domain}_benchmark_{method}.py` — never coined. A node
-  whose axis disagrees with its incoming edge is then visibly mis-attached,
-  which is the cheapest way to catch a child parented *under* a sibling rather
-  than beside it. A parent's score is the best in its subtree. Mechanisms,
+  whose axis disagrees with the axis in its incoming edge's split id is then
+  visibly mis-attached, which is the cheapest way to catch a child parented
+  *under* a sibling rather than beside it — the check that caught a
+  continuous-action variant sitting under `action_mode=target_discrete` instead
+  of beside it, five revisions in. A parent's score is the best in its subtree. Mechanisms,
   pre-registrations and diagnostics do **not** go in nodes.
 
   The principle that keeps this stable when a campaign wants one more line:
@@ -637,14 +651,15 @@ stale.
 ​```mermaid
 graph TD
     ROOT["IR {domain} v{n}<br/>mdp {fingerprint} · structural {fingerprint}"]
-    ROOT ==>|"cases · S1 · required ▶"| SC1["scenario={registry key}<br/>{score} · #E{n}"]
-    ROOT -->|"cases · S2 · required ⏸"| SC2["scenario={next}<br/>coverage debt; return: {when}"]
-    SC1 ==>|"means · S1 · role=exact · tier=1 ★"| M1["method=dp<br/>{score} · #E{n}"]
-    SC1 ==>|"means · S2 · role=feasible · tier=1 ★"| M2["method=ppo<br/>{score} · #E{n}"]
+    ROOT ==>|"cases · scenario · S1 · required ▶"| SC1["scenario={registry key}<br/>{score} · #E{n}"]
+    ROOT -->|"cases · scenario · S2 · required ⏸"| SC2["scenario={next}<br/>coverage debt; return: {when}"]
+    SC1 ==>|"means · solver · S1 · role=exact · tier=1 ★"| M1["method=dp<br/>{score} · #E{n}"]
+    SC1 ==>|"means · solver · S2 · role=feasible · tier=1 ★"| M2["method=ppo<br/>{score} · #E{n}"]
     M2 ==>|"L0→L1 escalation (Δ {x})"| L1["level=L1<br/>{score} (Δ {x}) · #E{n}"]
-    L1 ==>|"designs · P1 · tier=3 ★"| C1["{axis}={option}<br/>{score} (Δ {x}) · #E{n}"]
-    L1 -->|"designs · P2 ⏸"| C2["{axis}={option}<br/>{score} · #E{n}"]
+    L1 ==>|"designs · gym.{axis} · P1 · tier=3 ★"| C1["{axis}={option}<br/>{score} (Δ {x}) · #E{n}"]
+    L1 -->|"designs · gym.{axis} · P2 ⏸"| C2["{axis}={option}<br/>{score} · #E{n}"]
     L1 -.->|"∅"| C3["{axis}={option}<br/>{why it cannot exist}"]
+    C1 ==>|"designs · arch+hp.{axis} · P1 · tier=3 ▶"| C4["{axis}={option}<br/>{score} · #E{n}"]
 ​```
 
 ### Layers and node readings   (one table — kind, attributes, tier, reading, entry)
