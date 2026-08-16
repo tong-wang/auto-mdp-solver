@@ -375,6 +375,16 @@ other row is **`feasible ≼ opt`**, the trained nets included. There is no
 `exact` row: the optimum is unknown for this problem, which is why the table is
 read as a bracket from one side rather than as a gap to a known target.
 
+The five solver-backed rows are **declared in the IR** (`mab_schema.json`'s
+root `benchmarks` block), so `mdp_conformance` checks declaration ↔ file
+correspondence and `mdp_gates --ir` can enforce §9.9's ordering. **The oracle
+is not declared, and cannot be**: it is not a `{method}` solver but a column
+(`oracle_mean`) that `mab_benchmark_common.py` emits on every eval, and the
+block keys entries to `{domain}_benchmark_{method}.py` files. So this domain's
+only `relaxed` arm — the one that would make the bracket machine-checkable —
+is exactly the one the declaration cannot hold. Recorded here rather than
+worked around.
+
 | policy | reward_mean | ±SE¹ | regret | % oracle | note |
 |---|---|---|---|---|---|
 | oracle (clairvoyant best arm) — `relaxed ≽ opt` | 1530.75 | — | 0.00 | 100% | unattainable by construction; never a gate |

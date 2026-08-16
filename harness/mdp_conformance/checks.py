@@ -751,10 +751,12 @@ def check_benchmarks(h: DomainHandle) -> CheckResult:
                            f"schema not loadable ({type(e).__name__}: {e})")
     declared = {b.name: b for b in getattr(ir, "benchmarks", [])}
     prefix = f"{h.name}_benchmark_"
+    # `{domain}_benchmark_common.py` is the shared eval-loop helper several
+    # domains factor out (mab, adi_flex), not a solver — it names no method
     on_disk = {
         p.name[len(prefix):-len(".py")]
         for p in h.directory.glob(f"{prefix}*.py")
-        if not p.name.endswith("_eval.py")
+        if not p.name.endswith("_eval.py") and p.name != f"{prefix}common.py"
     }
     if not declared:
         detail = "IR declares no benchmarks"

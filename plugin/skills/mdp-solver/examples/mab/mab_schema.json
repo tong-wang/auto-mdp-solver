@@ -641,6 +641,38 @@
       "rationale": "enabled=true for BOTH obs modes - settled empirically. History: first derived true with a rationale that reasoned about the stats features and called them stationary; then split per mode 2026-07-29 (stats off, as spec 8.3's drifting/accumulator case - counts climb to T, payout totals unbounded); then the split was REFUTED by an isolation probe on the same stream (only the flag changed): stats L1 norm_obs=true 927.63 +/- 6.88 vs false 855.73 +/- 7.18, +71.9 (z~7.2). The within-episode drift cost is real but second-order next to what normalization buys on raw counts and totals. bayes (bounded, self-normalizing posterior features) was never in question. mab_ppo_train._derived_norm_obs is the executable form; full trail in mab/ESCALATION.md (O2, #E8, #E10)"
     }
   },
+  "benchmarks": [
+    {
+      "name": "thompson",
+      "role": "feasible",
+      "basis": "Thompson sampling on the exact conjugate posterior (Normal-Gamma / Beta); one posterior draw per arm per round, pull the argmax",
+      "source": "human_confirmed"
+    },
+    {
+      "name": "ucb1",
+      "role": "feasible",
+      "basis": "UCB1 with a sigma-scaled confidence radius; pull each arm once, then the index maximizer",
+      "source": "human_confirmed"
+    },
+    {
+      "name": "greedy",
+      "role": "feasible",
+      "basis": "myopic Bayes \u2014 pull the conjugate posterior mean's argmax, no deliberate exploration",
+      "source": "human_confirmed"
+    },
+    {
+      "name": "random",
+      "role": "feasible",
+      "basis": "uniform random arm each round; the leaderboard floor",
+      "source": "human_confirmed"
+    },
+    {
+      "name": "rule",
+      "role": "feasible",
+      "basis": "the \u00a714 readback of the crowned net as a quantile index, argmax_i(pm_i + c(ttg)*psd_i) with c(ttg)=c0*(ttg/T)^p (#E26)",
+      "source": "human_confirmed"
+    }
+  ],
   "assumptions_log": [
     "Two scenario-mode branches, independent leaderboards (human-decided): Bernoulli (base instance) and Gaussian ('gaussian' instance); reward scales differ so no head-to-head comparison.",
     "Canonical priors (human-decided): Bernoulli p_i ~ Uniform(0,1) i.i.d.; Gaussian mu_i ~ N(0,1) i.i.d. with known sigma=1.",
