@@ -73,3 +73,14 @@ def test_declared_axis_admits_the_class(tmp_path, ir_doc):
 def test_unknown_class_name_fails(tmp_path, ir_doc):
     h = _domain(tmp_path, ir_doc, {"PPO_1": dict(FULL, algo_class="DreamerV3")})
     assert check_run_provenance(h).status == "FAIL"
+
+
+def test_a_run_carrying_only_the_old_sb3_line_is_legacy_not_partial(tmp_path, ir_doc):
+    """§8.6 asked for sb3_version long before §8.4 defined the set. A domain
+    that honoured it must not be failed for honouring it — adoption is marked
+    by `algo_class`, the key only the new convention writes. Found by running
+    the check against a real research repo, where the one domain that recorded
+    sb3_version was the only one that failed."""
+    h = _domain(tmp_path, ir_doc, {"PPO_1": {"seed": 1, "sb3_version": "2.8.0"}})
+    result = check_run_provenance(h)
+    assert result.status == "WARN" and "predate" in result.detail

@@ -1420,7 +1420,7 @@ Result: `PPO_20260630_224416_obssales_actdiscrete_rewprofit` (all defaults) or `
 | `sb3_version` | `stable_baselines3.__version__` | already asked for by §8.6; stated here so the whole set lives in one place |
 | `ir_mdp_fingerprint` | the IR's `mdp_fingerprint()` at training time | ties the run to the frozen model it was trained against, so a run cannot be silently re-attributed to a different IR |
 
-Domains stay free to add their own keys. `mdp_conformance run.provenance` reads the set: a log carrying some of the keys but not all FAILs, a log carrying none is treated as pre-convention and WARNs, and no run directory SKIPs. It also fails a run whose `algo_class` is not among the IR's declared classes (`rl.algo`/`rl.algos`) — the artifact-vs-declaration check, which is only possible because the class is recorded rather than inferred.
+Domains stay free to add their own keys. `mdp_conformance run.provenance` reads the set: **`algo_class` is the adoption marker** — a log without it is pre-convention and WARNs, a log with it but missing another key FAILs, and no run directory SKIPs. Keying adoption on any-key-present would fail the domains that honoured §8.6's older `sb3_version` line while excusing those that ignored it. It also fails a run whose `algo_class` is not among the IR's declared classes (`rl.algo`/`rl.algos`) — the artifact-vs-declaration check, which is only possible because the class is recorded rather than inferred.
 
 ### 8.5 Policy selection (MLP vs CNN)
 

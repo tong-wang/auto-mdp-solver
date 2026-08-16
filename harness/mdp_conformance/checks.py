@@ -839,8 +839,11 @@ def check_run_provenance(h: DomainHandle) -> CheckResult:
     legacy, partial, wrong_class = [], [], []
     for log in logs:
         rec = _parse_args_log(log)
-        present = [k for k in _PROVENANCE_KEYS if k in rec]
-        if not present:
+        # `algo_class` is the adoption marker — the one key only the §8.4
+        # convention writes. Keying "legacy" on *any* required key present
+        # would punish the domains that honoured §8.6's older sb3_version line
+        # and excuse the ones that ignored it, which is exactly backwards.
+        if "algo_class" not in rec:
             legacy.append(log.name)
             continue
         missing = [k for k in _PROVENANCE_KEYS if k not in rec]
