@@ -67,8 +67,8 @@ collided with it):
 
 | prefix | space | lifecycle |
 |---|---|---|
-| `P{n}` | selection-split priority at a tree node (§3.1) | standing; revised by tree surgery |
-| `S{n}` | coverage-split schedule at a tree node (§3.1) | standing; children postponable, never prunable |
+| `P{n}` | **P = priority**: orders competing siblings at a `designs` split (§3.1) | standing; revised by tree surgery |
+| `S{n}` | **S = schedule**: orders coverage at a `cases` or `means` split (§3.1) | standing; children postponable, never prunable |
 | `A{n}` | frontier agenda item (§3.5) | consumed → becomes a ledger entry |
 | `#E{n}` | ledger entry | append-only |
 | `F{n}` | IR-changelog reversal | append-only, sparse |
@@ -88,70 +88,173 @@ above — was a tree all along.)
   above another when changing it would invalidate the work below it
   (game2048: target scale ≻ action interface ≻ obs transform ≻ obs encoding ≻
   arch ≻ HP — the *biggest* lever, obs encoding, sits mid-tree; HP is at the
-  bottom because nothing conditions on it). The root may split on **targets**
-  (3×3 → 4×4); the standard eval protocol and the reference bar are then
-  **per-target-node annotations**, not campaign globals.
-- **Default level order** (override per domain by conditioning analysis):
-  S-splits (targets / scenario families) ≻ action interface ≻ observation ≻
+  bottom because nothing conditions on it).
+- **The root is the frozen IR**, carrying both fingerprints (`mdp` and
+  `structural`). The tree is then self-evidently a tree over *one* problem, and
+  the §MAP ↔ §IR-CHANGELOG link is mechanical: a moved `mdp` fingerprint
+  re-roots the frame, a moved `structural` one need not.
+- **The first two layers are fixed.** Below the root comes the **`scenario`
+  layer** — siblings are study bases, one named registry object each
+  (`{Domain}Scenario`, a sampler, or a `{Domain}ScenarioGrid`), so specialist
+  vs generalist stops being an invented axis and becomes *which kind of object
+  the sibling names*. Below that comes the **`solver` layer** — siblings
+  grouped by `role`, each named by its spec-§9 `{method}` (`method=dp`, never
+  "bar": §9 makes `--baseline`/`--reference` a per-comparison choice, not part
+  of an artifact's identity). Benchmarks live here, on the tree, because a
+  benchmark *is* a solution to the problem; grouping by role is what makes the
+  bracket legible, since the two bounding groups sit adjacent. Only opened
+  children are drawn, so a single-scenario campaign draws one — no phantom
+  coverage debt. The standard eval protocol and the reference bar are
+  **per-`cases`-node annotations**, not campaign globals. A campaign whose
+  problem demands a different skeleton may deviate, *provided the deviation is
+  recorded in §FRAME-CHANGELOG* — a default with a visible cost, not a rule
+  enforced by nothing.
+- **Default level order below the solver layer** (override per domain by
+  conditioning analysis): action interface ≻ observation ≻
   architecture / extractor ≻ training signal (reward shaping, HP) — matching
   the spec-§8.6 escalation layers `L2(gym)` / `L2(arch)` / `L2(hp)`. The
   order encodes **conditioning, not importance**: HP is last because nothing
   conditions on it, not because it moves results least — it is a *covariate*
   of every comparison above it, not a parent (topk_id: "plain HP is bigger
   than either research issue"), which is what rule 10 exists for.
-- **Type every split: coverage (AND) vs selection (OR).** A **coverage
-  split** — `S{n}` edges — partitions the *problem*: target scales
-  (3×3 → 4×4), scenario families (Gaussian vs Bernoulli arms). Every child
-  must eventually carry a reasonable solution, so S-children are
-  **postponable, never prunable** (`✗`/`∅` are illegal on S-edges; an
-  S-child is ✓ covered, ▶ active, or ⏸ postponed with a *scheduled return*),
-  and — for partitions — each owns its **own protocol, bar and leaderboard**
-  (extension-chain links instead share the target's protocol: the cross-link
-  comparison measures the *price of generality*, and losing it never prunes
-  a link). A **selection
-  split** — `P{n}` edges — compares *solutions*: modeling and design
-  alternatives (counts vs bayes, grid vs onehot). The point is to crown one
-  child and prune the rest; siblings are rows on **one shared leaderboard**.
-  The crown forks at S-splits (one ★ path per covered child) and passes
-  through exactly one child at P-splits. An S-split can sometimes be
-  **collapsed by a generalist** — one policy covering all cells — where the
-  axis permits (game2048: `prob_4` could, `grid_size` cannot: the obs shape
-  changes); a P-split has no analogue. This typing is the Phase-A **mode
-  stance** carried onto the tree: scenario modes declared "independent
-  branches, reported separately" arrive as S-splits, "competing designs to
-  compare head-to-head" as P-splits. **The litmus is redundancy at
-  crowning**: P-siblings become redundant the moment one is crowned; an
-  S-sibling never does (game2048: crowning the masked interface did not make
-  the free interface redundant — its value is less machinery, and that
-  survives the win).
-- **S-splits carry two annotations — shape and obligation — not a third edge
-  type.** Shape: a **partition** (3×3 vs 4×4, Gaussian vs Bernoulli) has
-  disjoint cells, each covered on its own; an **extension chain** (game2048:
-  masked ⊂ free — the free interface drops the mask oracle; topk_id: bayes
-  (0,0) ⊂ (0,1) ⊂ (1,1) — progressively less dependency on the Bayes
-  machinery) has *nested contracts ordered by generality*: solving a more
-  general link subsumes the restricted ones, so the chain is climbed from
-  the restricted end, levers transferring up as imported priors (§3.2).
-  Obligation: `must` (default — blocks case close) or `stretch`
-  (nice-to-have generality: may stay open at close, recorded as an *open
-  extension* — but never ✗ refuted, since crowning a restricted sibling
-  cannot make a more general contract redundant).
-- **Siblings carry ranks** — local and standing: P1 > P2 > … orders
-  competitors at a selection split; S1 > S2 > … *schedules coverage* at a
-  coverage split. Both are priorities and both revise via REPRIORITIZED
-  lines, but they license different things: a low-P child may never run at
-  all (a crowned winner prunes it); a low-S child runs *later*, never
-  *never*. S-order is set by transfer (cover the child that teaches the most
-  about the others first), cost, claim importance, and prerequisites — and
-  pairs with a per-child *return condition* saying when the next S-child
+- **Type every split by two questions, into three kinds.** *Does the crown
+  fork here or pass through one child? Do the siblings share a frame — the
+  same protocol, bar and seed block — so their scores may be subtracted?*
+
+  | | **own frame** (scores incomparable) | **shared frame** (scores comparable) |
+  |---|---|---|
+  | **crown forks** | **`cases`** — target scales (3×3 → 4×4), scenario families (Gaussian vs Bernoulli), specialist vs generalist | **`means`** — an exact solver, heuristics, the RL artifact; `masked` vs `free`; `echelon` vs `raw` |
+  | **crown passes one** | *empty, necessarily* | **`designs`** — competing encodings, architectures, HP |
+
+  The empty cell is the point, and it generalizes into the rule the older
+  `S`/`P` typing left implicit:
+
+  > **A score may be subtracted only within a frame.** Across frames a number
+  > may be *reported* — labeled as such — but it never selects: no crown, no
+  > prune, no `✗`.
+
+  A crown therefore cannot cross a scenario boundary — a consequence now,
+  rather than a rule to remember. Specialist vs generalist settles the same
+  way: they are `cases`, so tabling them together is a legitimate report and
+  never a basis for selection, unless the general branch is re-scored on the
+  restricted branch's own frame (same scenario, same seed block, paired).
+
+  **`cases` and `means` children are postponable, never prunable** (`✗`/`∅`
+  are illegal on their edges; a child is ✓ covered, ▶ active, or ⏸ postponed
+  with a *scheduled return*) — that, not disjointness, is what makes coverage
+  coverage. `designs` siblings are rows on one shared leaderboard: crown one,
+  prune the rest. **The litmus is redundancy at crowning**: a `designs`
+  sibling becomes redundant the moment one is crowned; a `cases` or `means`
+  sibling never does (game2048: crowning the masked interface did not make the
+  free interface redundant — its value is less machinery, and that survives
+  the win). A `cases` split can sometimes be **collapsed by a generalist** —
+  one policy covering all cells — where the axis permits (game2048: `prob_4`
+  could, `grid_size` cannot: the obs shape changes); `designs` has no
+  analogue. The typing is the Phase-A **mode stance** carried onto the tree:
+  modes declared "independent branches, reported separately" arrive as
+  `cases`, "competing designs to compare head-to-head" as `designs`.
+
+  *(This replaces the `S`/`P` split typing. Two things the old text got wrong:
+  it called a coverage split a partition of the problem while its own second
+  shape — the extension chain — was nested rather than disjoint; and it left
+  sibling sets that are neither, such as an exact DP beside heuristics beside
+  the RL artifact, with no legal type. The extension chain is now a `means`
+  split with `order: by generality`, which is what licenses its cross-link
+  delta as the price of generality. Two shipped campaigns show what the old
+  typing cost, one per failure mode. **Mis-typing**: `game2048`'s root splits
+  `3x3_20 (P1 ★) / 4x4_20 (P2)` — board size, a coverage axis by this guide's
+  own example — as a selection split, so the coverage cell the guide names is
+  drawn formally prunable. **Mis-ranking**: `cases/fnv`'s map co-ranks two
+  children of one split `P1 ★` — `L0 faithful defaults` beside `L1' corrected
+  derivation`, and again under its second target — which a selection split
+  cannot mean, since spec §8.6 makes `L0` reporting-only and never
+  crown-eligible. That is the §8.6 ladder drawn as a selection split, and it is
+  what §3.2's floor-control rule now prevents.)*
+- **Attributes ride on the edge, not the split** — one split may carry
+  children that differ in them:
+
+  | attribute | values | note |
+  |---|---|---|
+  | `coverage` | `required` (default — blocks case close) / `optional` | the old `must`/`stretch` obligation, now on every crown-forks edge. An `optional` child may stay open at close as an *open extension*, but is never `✗` refuted: crowning a restricted sibling cannot make a more general contract redundant |
+  | `order` | none / `by generality` | what makes a chain a chain (game2048: masked ⊂ free; topk_id: bayes (0,0) ⊂ (0,1) ⊂ (1,1)). Climb from the restricted end, levers transferring up as imported priors (§3.2); the cross-link delta is the **price of generality** |
+  | `role` | `relaxed` / `exact` / `feasible` | benchmark roles, sense-free — see below |
+  | `question` | `1-comparative` / `2-structural` / `3-engineering` | which question the edge answers — see below |
+- **Benchmark `role` is defined sense-free.** Let `≽` mean *at least as good
+  as*, read off `objective.sense`. Then `relaxed ≽ opt` (unattainable — an LP
+  or information relaxation), `exact = opt`, and `feasible ≼ opt` (any real
+  policy, **including the RL artifact**). Never "upper"/"lower" bound: the same
+  construction is an upper bound in a maximize domain and a lower bound in a
+  minimize one, so the word names the domain, not the benchmark. Two things
+  follow: a `feasible` sibling scoring strictly better than an `exact` or
+  `relaxed` one is impossible and indicts the eval, the bound or the simulator;
+  and a campaign holding both `relaxed` and `feasible` **brackets** the
+  optimum, so it has a certified gap without an exact solver.
+- **Tier the question each edge answers.** `1-comparative` — how does RL
+  compare with the existing solutions, exact *and* heuristic? `2-structural` —
+  does RL *discover* the structural insight those solutions embody?
+  `3-engineering` — which encoding, architecture or HP trains best? Tier 1 is
+  **standing**: every campaign asks it, so it is never a per-case declaration.
+  A tier may repeat across edges, so "the tier-2 question" means the set of
+  edges carrying it. This is what lets a tree say that its largest measured
+  effect is not its claim — layer order encodes conditioning, and tier encodes
+  what the campaign is *for*, without reordering anything.
+- **Siblings carry ranks** — local and standing: **P = priority**, P1 > P2 > …
+  orders competitors at a `designs` split; **S = schedule**, S1 > S2 > …
+  schedules coverage at a `cases` or `means` split. The letters rank the
+  siblings; the **kind on the edge** says what the split is. Both revise via
+  REPRIORITIZED lines, but they license different things: a low-P child may
+  never run at all (a crowned winner prunes it); a low-S child runs *later*,
+  never *never*. S-order is set by transfer (cover the child that teaches the
+  most about the others first), cost, claim importance, and prerequisites — and
+  pairs with a per-child *return condition* saying when the next child
   activates.
 - **Marks**: `✓` validated · `✗` closed · `⏸` pruned/parked (always with a
   reason + tripwire) · `∅` structurally void (*cannot* exist — say why) · `▶`
-  in flight · `★` the crowned path.
-- **Bounds attach to nodes.** A branch with a validated delta is worth ten
-  without (topk_id's localization control bounded node-pooling at ≤0.105 OC;
-  game2048's ladder: +29% config, +46% 2-D structure, +64% value one-hot —
-  each rung isolated by its own control).
+  in flight · `★` the crowned path. **Marks ride on the edge**, where the
+  selection they judge happened.
+- **A node carries two lines, fixed.** The shape is
+
+  ```
+  {axis}={option}
+  {score}{ (Δ)} · {#E ids}
+  ```
+
+  with the **axis name read from the code** — the gym kwarg, the registry key,
+  the `{method}` of `{domain}_benchmark_{method}.py` — never coined. A node
+  whose axis disagrees with its incoming edge is then visibly mis-attached,
+  which is the cheapest way to catch a child parented *under* a sibling rather
+  than beside it. A parent's score is the best in its subtree. Mechanisms,
+  pre-registrations and diagnostics do **not** go in nodes.
+
+  The principle that keeps this stable when a campaign wants one more line:
+  **the tree is an index into the ledger.** A node label must be *stable*, not
+  *complete* — an index that reproduces its target is not an index. That also
+  disposes of config bundles (`--extractor small --channels 64 128
+  --features_dim 256`) with no naming machinery: the bundle lives in the entry,
+  one hop away.
+- **A node's score and its Δ must come from the same configuration.** If the
+  delta was measured elsewhere, either the node moves to where it was measured
+  or the Δ leaves the node; a Δ against the node's own *parent* belongs on the
+  connecting edge, which names both endpoints. This is the node-level form of
+  what rules 3 and 9 govern for protocols, and it is invisible without the rule:
+  a leaf reading `992.54 (Δ −183.58)` whose Δ was measured at the
+  zero-knowledge start asserts that the derivation was worth 183 units *at the
+  crowned configuration*, which was never measured. Checkable by eye once the
+  `#E` id is on the node.
+- **Layers are named by axis and cited by ledger id — never numbered.**
+  "`gym.action_mode` (#E6)", not "T1" or "level 3". A numbered scheme collides
+  with spec §8.6's `L0/L1/L2`, whose contents are the *training-signal layer* —
+  so "level 2" and "L2" would mean different things three lines apart — and it
+  adds a second index the reader must join back to the ledger.
+- **Bounds attach to nodes**, and are recorded in the readings table beneath
+  the diagram rather than inside the node label. A branch with a validated
+  delta is worth ten without (topk_id's localization control bounded
+  node-pooling at ≤0.105 OC; game2048's ladder: +29% config, +46% 2-D
+  structure, +64% value one-hot — each rung isolated by its own control).
+- **Exactly one table beneath the diagram**, keyed by node:
+  `node | kind · attributes · tier | reading | entry`. Typing and finding on
+  one row — two tables restate each other (a `crowned` column repeats the
+  diagram's `★`, an `entries` column repeats the reading's citation).
 - **The tree is dynamic.** REPARENTED / SPLIT / REPRIORITIZED / SHATTERED are
   expected moves, each costing one changelog line (§4). A campaign that
   passes its bar re-roots the decomposition on *headroom above current best*;
@@ -163,9 +266,18 @@ virtue, mechanical generation of the cell nobody thought of:
 - **Prune visibly.** A branch declined by judgment appears anyway: one line,
   reason, tripwire (`⏸`). Never silently omitted, and never confused with `∅`
   impossible.
-- **Controls are siblings.** A crowned branch's children must include the
-  controls that decompose its win (game2048: onehot's +64% stayed confounded
-  with the CNN until an MLP-on-onehot sibling existed).
+- **Contrastive controls are siblings; floor controls are chain parents.** A
+  crowned branch's children must include the controls that decompose its win —
+  when the control *competes* on the same leaderboard (game2048: onehot's +64%
+  stayed confounded with the CNN until an MLP-on-onehot sibling existed). That
+  is a `designs` sibling, and a control is precisely a tier-3 sibling of a
+  tier-2 claim, which marks it as a control with no new mark. It is the wrong
+  shape for a **floor** control: spec §8.6's `L0` is reporting-only and "never
+  a gate", so it is never eligible for the crown, and drawn as a sibling it
+  asserts a selection that never happened — a reader cannot tell "we compared
+  these and one lost" from "we started here and escalated". §8.6's levels are a
+  ladder, and a ladder draws as a **chain**: `L0 → L1 → L2`, with the
+  escalation delta on the edge, where both of its endpoints are named.
 - **Imported levers are labeled.** A lever pre-validated in a prior campaign
   enters as a high-prior branch with its provenance attached; it is either
   re-validated in-campaign or its claims ship with the label (game2048:
@@ -186,9 +298,13 @@ paths, not components.
 
 **3.5 The frontier — the execution plan.** A priority-ordered queue of `A{n}`
 **agenda items**: each is an action *at* a tree node (act on the incumbent /
-expand a new child) or an **off-tree obligation** (bar calibration, protocol
-bookkeeping — budget-consuming but not solution-touching; keep an off-tree
-register beside the queue). Semantics:
+expand a new child) or an **off-tree obligation** — work that consumes budget
+**without being a solution**: bar *calibration* (verifying a DP against a
+brute-force joint DP), protocol construction, floor measurement. Keep an
+off-tree register beside the queue. The benchmarks themselves are **not**
+off-tree: they are solutions, they live on the `solver` layer (§3.1), and
+filing them in the register is what forces a campaign to leave the tree to read
+a score against its bar.  Semantics:
 
 - P is local and standing; A is global and dated. Default order = follow the
   P's down the crowned path.
@@ -202,9 +318,9 @@ register beside the queue). Semantics:
   subsumes "open questions, ranked" — parked items live as `⏸` nodes.
 - **The frontier cites the diagnosis that last reordered it** (§6): "frontier
   as of #E{n}" — every queue order traces to a dated reasoning record.
-- **Split types bind the queue**: an agenda item that crowns a P-child
-  licenses pruning its siblings; completing an S-child never reduces its
-  siblings' obligation — postponed S-children are coverage *debt*, and a
+- **Split kinds bind the queue**: an agenda item that crowns a `designs` child
+  licenses pruning its siblings; completing a `cases` or `means` child never
+  reduces its siblings' obligation — postponed children are coverage *debt*, and a
   campaign does not close while one is outstanding (a deliberate scope cut
   is a re-framing of the root, changelog line owed, not a prune).
 
@@ -356,7 +472,26 @@ right or wrong in place.
    unmotivated (don't launch). In agent form this is the budget-allocation
    invariant: allocating compute *is* coloring the map.
 2. **Bidirectional citation.** Map revisions cite the ledger IDs that forced them;
-   frame changes get a changelog line; ledger entries carry their address.
+   frame changes get a changelog line; ledger entries carry their address. An
+   *address* is a link, not prose — "under the crowned interface" is
+   unfollowable and goes stale unnoticed:
+
+   | direction | mechanism |
+   |---|---|
+   | tree → ledger | the readings row cites the entry: `[#E4](#E4)` |
+   | ledger → tree | the entry carries a back-link **naming its nodes**: `↑ [design tree](#MAP) — explains {node}, {node}` |
+   | targets | `<a id="MAP"></a>` before the map, `<a id="E{n}"></a>` before each entry |
+
+   Explicit anchors rather than heading-derived ones, which are built from the
+   whole title and die on any retitle — the mutable-identity trap one level
+   down. Naming the nodes is not decoration: mermaid nodes cannot be anchored
+   individually, so the entry must say *which* node it explains, and one entry
+   explaining two nodes on different layers (a factorial re-measuring an axis
+   under a newly crowned parent) is then visible instead of hidden in prose.
+   Node clicks are not a substitute for the readings table: as observed in one
+   markdown preview, explicit in-document anchors resolve and mermaid
+   `click … href` reaches external URLs, but a *fragment* href from inside the
+   mermaid SVG does not navigate.
 3. **Eval honesty.** Verdicts and records only at the campaign's declared standard
    eval protocol (fixed episode/seed count, faithful reward mode). Numbers from
    smaller evals are marked *provisional* and never crown a record (topk_id:
@@ -495,25 +630,34 @@ stale.
 ```markdown
 # {project} — escalation log
 
+<a id="MAP"></a>
 ## MAP  (as of {date})
 
 ### Design tree
 ​```mermaid
 graph TD
-    ROOT["root: {campaign}"]
-    ROOT ==>|"S1 ▶"| T1["target: {name}<br/>protocol: {eval}; bar: {reference}"]
-    ROOT -->|"S2 postponed"| T2["target: {next} — coverage debt; return: {when}"]
-    T1 ==>|"P1 ★"| C1["{choice} {mark} {bound if any}"]
-    T1 -->|"P2 ⏸"| C2["{choice} — {reason}; tripwire: {…}"]
-    T1 -.->|"∅"| C3["{impossible cell} — {why}"]
+    ROOT["IR {domain} v{n}<br/>mdp {fingerprint} · structural {fingerprint}"]
+    ROOT ==>|"cases · S1 · required ▶"| SC1["scenario={registry key}<br/>{score} · #E{n}"]
+    ROOT -->|"cases · S2 · required ⏸"| SC2["scenario={next}<br/>coverage debt; return: {when}"]
+    SC1 ==>|"means · S1 · role=exact · tier=1 ★"| M1["method=dp<br/>{score} · #E{n}"]
+    SC1 ==>|"means · S2 · role=feasible · tier=1 ★"| M2["method=ppo<br/>{score} · #E{n}"]
+    M2 ==>|"L0→L1 escalation (Δ {x})"| L1["level=L1<br/>{score} (Δ {x}) · #E{n}"]
+    L1 ==>|"designs · P1 · tier=3 ★"| C1["{axis}={option}<br/>{score} (Δ {x}) · #E{n}"]
+    L1 -->|"designs · P2 ⏸"| C2["{axis}={option}<br/>{score} · #E{n}"]
+    L1 -.->|"∅"| C3["{axis}={option}<br/>{why it cannot exist}"]
 ​```
+
+### Layers and node readings   (one table — kind, attributes, tier, reading, entry)
+| node | kind · attributes · tier | reading | entry |
+|---|---|---|---|
+| `{axis}={option}` | designs · tier=3 | {what it established, with scope} | [#E{n}](#E{n}) |
 
 ### Frontier
 1. **A1 — {action} @ {tree path}**  {▶|queued} — {evidence; cost}
 - parked: {⏸ node} — tripwire: {…}
 
-### Off-tree register
-- {bar calibration | protocol bookkeeping | next campaign roots}
+### Off-tree register   (budget-consuming, *not* solution-touching)
+- {bar calibration | protocol construction | floor measurement | next campaign roots}
 
 ### Current best bundle
 {the ★ path + jointly-validated edges + headline @ standard eval}
@@ -536,8 +680,10 @@ fix: {corrected shape}
 rule: {trigger-first generalization}
 
 ## LEDGER
+<a id="E{n}"></a>
 ### #{id} {date} — {one-line hypothesis}
 address: {tree path} / A{n}
+↑ [design tree](#MAP) — explains {node}, {node}
 runs: {commands or paths}
 verdict: {numbers @ protocol; comparison}   status: {✓|✗|~|▶}
 
