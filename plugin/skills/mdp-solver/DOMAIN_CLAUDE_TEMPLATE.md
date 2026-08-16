@@ -88,8 +88,20 @@ Round plans are deliberately **not** in this table: they live in `scratch/`
 and are deleted once their findings are in `ESCALATION.md` (see File
 hygiene).
 
-Pinned solver: {path + version of the solver checkout this domain builds
-against; verify before relying on it}.
+Solver provenance — **two versions, two meanings** (keep both; they answer
+different questions, and a case that is later contributed upstream needs the
+distinction — see `cases/README.md`, "After a case is merged"):
+
+- **Built and gated at: {tag + commit}** — the checkout every number in this
+  folder was produced under. This line never moves. Moving it would claim the
+  results were re-measured.
+- **Conformance maintained through: {tag}** — how far declarations, drawing
+  conventions and gate compatibility have been carried forward. Updated when
+  the case is brought to a newer spec *without* re-running anything; log each
+  such move in `ESCALATION.md` §FRAME-CHANGELOG.
+
+While the campaign is live these two are the same tag. They diverge only once
+someone conforms the case to a spec that landed after its results did.
 
 ## Commands
 

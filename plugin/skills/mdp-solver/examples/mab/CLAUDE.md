@@ -72,9 +72,21 @@ Round plans are deliberately **not** in this table: they live in `scratch/`
 and are deleted once their findings are in `ESCALATION.md` (see File
 hygiene).
 
-Pinned solver: **auto-mdp-solver v0.7.0** (`2e50c60`) —
-github.com/tong-wang/auto-mdp-solver. This case was built and gated against
-that tag; verify before relying on it.
+Solver provenance — **two versions, two meanings**
+(github.com/tong-wang/auto-mdp-solver):
+
+- **Built and gated at: v0.7.0** (`2e50c60`). Every number in this folder was
+  produced under that tag. This line never moves; moving it would claim the
+  results were re-measured.
+- **Conformance maintained through: v0.8.11.** Declarations, drawing
+  conventions and gate compatibility have been carried forward by the
+  maintainer — the `benchmarks` block (including the column-sourced oracle),
+  the `research_questions` stances, the §8.4 provenance emit, and the §MAP
+  retype to the `cases`/`means`/`designs` taxonomy. Each is logged in
+  `ESCALATION.md` §FRAME-CHANGELOG. **No verdict, mark or number moved.**
+
+The two lines differing is the intended state, not drift (`cases/README.md`,
+"After a case is merged"). Verify before relying on either.
 
 ## Commands
 
