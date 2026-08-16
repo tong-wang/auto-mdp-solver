@@ -333,6 +333,25 @@
       "rationale": "inventory (0\u201325) and time_to_go (0\u201350) are stationary, modestly heterogeneous scales; spec \u00a78.3 says normalize"
     }
   },
+  "benchmarks": [
+    {
+      "name": "dp",
+      "role": "exact",
+      "basis": "backward induction over (period, remaining stock) with the price optimized on a fine grid per state; exact for the discretized MDP",
+      "source": "human_confirmed"
+    },
+    {
+      "name": "fluid",
+      "role": "feasible",
+      "basis": "static policies from the Gallego & van Ryzin deterministic fluid relaxation, executed through the gym under the real information set; the relaxation's own value is a `relaxed` quantity but is not emitted as an eval column, so it has no declarable entry",
+      "policies": [
+        "fixed",
+        "myopic",
+        "random"
+      ],
+      "source": "human_confirmed"
+    }
+  ],
   "assumptions_log": [
     "MODELING CALL (continuous -> discrete): the paper is a continuous-time intensity-control problem; discretized into T=50 equal periods of length dt = horizon_length/T = 0.02. Per-period demand ~ Poisson(lambda(price)*dt). Larger T approaches the continuous point process (mostly 0/1 sales per period); T is a granularity choice.",
     "ACTION ENCODING (price vs intensity): two gym.action_modes (default 'price' = identity/clip; 'intensity' = the paper's native control, a bounded box [0, lambda*] reparametrized to price via p(lambda)). Both drive the same canonical 'price' decision in the _mdp layer; the choice is a gym-layer selection, not a re-formalization.",

@@ -52,8 +52,15 @@ python dynamic_pricing_policy.py --model-path results/simple/PPO_.../simple_ppo.
 
 ## Results (scenario `simple`: a=100, alpha=1, n0=25, T=50; 8192 seeds)
 
-Expected optimal revenue (DP, exact for the discretized MDP): **33.10**;
-deterministic fluid upper bound: 34.66.
+Expected optimal revenue (DP, `role: exact` — exact for the discretized MDP):
+**33.10**; the deterministic fluid relaxation sits at 34.66, `≽ opt` and
+unattainable (spec §9.3 states bound directions with `≽`/`≼`, never
+"upper"/"lower", which invert with the objective sense — this domain maximizes,
+so the same construction that bounds from above here would bound from below in
+a cost domain). The relaxation's *value* is a `relaxed` quantity but is not
+emitted as an eval column, so it carries no `benchmarks` entry; the `fluid`
+entry declares the static policies the file actually runs, which are
+`feasible`.
 
 | policy | mean revenue | note |
 |---|---|---|

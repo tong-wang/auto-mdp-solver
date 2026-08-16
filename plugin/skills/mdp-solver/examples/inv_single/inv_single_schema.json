@@ -594,6 +594,14 @@
       "rationale": "inventory and pipeline entries are stationary features of heterogeneous magnitude (scale set by the selected demand candidate); spec \u00a78.3 says normalize"
     }
   },
+  "benchmarks": [
+    {
+      "name": "dp",
+      "role": "exact",
+      "basis": "backward induction over the discretized (inventory, pipeline) state with the order grid enumerated per state; exact for the discretized MDP, and verified exact on inventory position at deterministic leadtime > 1",
+      "source": "human_confirmed"
+    }
+  ],
   "assumptions_log": [
     "Order quantity modeled as continuous (float) and clipped to [0, 20*demand.mean]; the source description said 'how much to order' without specifying integrality.",
     "Initial inventory and pipeline assumed empty (0).",

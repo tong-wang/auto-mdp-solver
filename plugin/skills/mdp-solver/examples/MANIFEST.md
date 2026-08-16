@@ -29,6 +29,14 @@ Current caveats:
   this script. The code stays as it is because every number in the folder was
   produced by it (see its `CLAUDE.md` Traps and `README`); `mab_selection_probe.py`
   is the post-hoc screen the campaign ran by hand.
+- `inv_single` and `dynamic_pricing` **declare no `research_questions` stance**,
+  and that is correct rather than an omission: neither ships a
+  `{domain}_policy_probe.py` or an `INTERPRET.md`, so neither makes a tier-2
+  claim. Spec §14.0 ties the deliverable to the declared stance, so declaring
+  `confirm` here would fail `research.deliverables` — the check would be right.
+  `mab` is the entry that carries the §14 leg, and the one whose stances are
+  declared. Both do declare `benchmarks` (their exact DPs, and
+  `dynamic_pricing`'s fluid policies) as of 2026-08-16.
 - `mab`'s **§MAP was retyped on 2026-08-16** to the guide's
   `cases`/`means`/`designs` taxonomy and its drawing contract (upstream
   #19/#20/#22), so the folder no longer teaches the withdrawn `S`/`P` typing by
