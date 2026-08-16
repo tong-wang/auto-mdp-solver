@@ -163,6 +163,14 @@ def roles_from_ir(schema_path: Path) -> dict[str, str]:
     return {b.name: b.role.value for b in getattr(ir, "benchmarks", [])}
 
 
+def tolerances_from_ir(schema_path: Path) -> dict[str, float]:
+    """{method: tolerance} — declared implementation slack, in metric units."""
+    from mdp_ir.schema import load_ir
+    ir = load_ir(schema_path)
+    return {b.name: b.tolerance for b in getattr(ir, "benchmarks", [])
+            if getattr(b, "tolerance", 0.0)}
+
+
 class IllTypedBaseline(ValueError):
     """`--baseline` (must-beat) on a benchmark that cannot be beaten (§9.9)."""
 
@@ -176,6 +184,8 @@ def compare_evals(
     z_min: float = 2.0,
     sense: str = "maximize",
     roles: dict[str, str] | None = None,
+    tolerances: dict[str, float] | None = None,
+    z_role: float = 2.0,
 ) -> GateReport:
     if sense not in ("maximize", "minimize"):
         raise ValueError(f"sense must be 'maximize' or 'minimize', got {sense!r}")
@@ -194,6 +204,7 @@ def compare_evals(
             msg += f". Other *_mean columns present: {others}"
         report.warnings.append(msg)
     roles = roles or {}
+    tolerances = tolerances or {}
     # §9.9: --baseline is must-beat, so nominating an arm that cannot be beaten
     # by construction is a category error. Refuse the comparison rather than
     # running it and reporting a routine loss. Checked before any file is read,
@@ -220,14 +231,40 @@ def compare_evals(
         report.references.append(ref)
         # the candidate is `feasible` by construction (a real policy under the
         # real information set), so beating an exact or relaxed arm is
-        # impossible — §9.9: a bug report, not a result
+        # impossible — §9.9: a bug report, not a result.
+        #
+        # Compared against a BAND, not to the last float. Two independent
+        # reasons, and either alone would justify it: an `exact` solver is
+        # exact in its logic, not its arithmetic (it truncates a tail,
+        # discretizes a state, stops at a tolerance — §9.9 says `basis` carries
+        # that), and both arms are Monte-Carlo means, so CRN shrinks the paired
+        # variance without removing it. The band is the declared implementation
+        # slack or the statistical term, whichever is larger. Inside it, report;
+        # outside it, indict. Firing on 1e-6 would tell the one campaign that
+        # closed on its bar that its simulator is broken, and the quickest way
+        # to silence that is to demote the bar — destroying the bracket the role
+        # exists to make checkable (upstream #27).
         role = roles.get(_method_from_path(path) or "")
-        if role in ("exact", "relaxed") and sense_sign * (cand.mean - ref.mean) > 0:
-            report.role_violations.append(
-                f"candidate ({cand.metric} = {cand.mean:.4f}) beats {ref.label} "
-                f"({ref.mean:.4f}), declared role={role} — impossible under §9.9: "
-                f"the eval, the bound, or the simulator is wrong. Not a result."
-            )
+        if role in ("exact", "relaxed"):
+            advantage = sense_sign * (cand.mean - ref.mean)
+            se = math.sqrt((cand.var + ref.var) / n_seeds)
+            declared = tolerances.get(_method_from_path(path) or "", 0.0)
+            band = max(declared, z_role * se)
+            if advantage > band:
+                report.role_violations.append(
+                    f"candidate ({cand.metric} = {cand.mean:.4f}) beats {ref.label} "
+                    f"({ref.mean:.4f}) by {advantage:.4f} > band {band:.4f} "
+                    f"(declared {declared:.4f}, {z_role:g}·SE {z_role * se:.4f}), "
+                    f"declared role={role} — impossible under §9.9: the eval, "
+                    f"the bound, or the simulator is wrong. Not a result."
+                )
+            elif advantage > 0:
+                report.warnings.append(
+                    f"candidate is {advantage:.4f} ahead of {ref.label} "
+                    f"(role={role}) but within the band {band:.4f} — not "
+                    f"separable from implementation slack and eval noise, so "
+                    f"this is a `~`, not a defect claim and not a win"
+                )
     return report
 
 
@@ -253,6 +290,11 @@ def main(argv: list[str]) -> int:
                     help="objective sense of the metric: maximize (higher is better, "
                          "default) or minimize (lower is better, e.g. a cost/regret "
                          "column). Must match the domain's objective sense.")
+    ap.add_argument("--z-role", type=float, default=2.0,
+                    help="z multiplier for the §9.9 ordering band: a candidate "
+                         "ahead of an exact/relaxed arm by less than "
+                         "max(declared tolerance, z*SE) is reported, not failed "
+                         "(default 2.0)")
     ap.add_argument("--ir", default=None, type=Path,
                     help="domain schema declaring benchmark roles (spec §9.9). With it, "
                          "--baseline on an exact/relaxed arm is refused, and a candidate "
@@ -263,9 +305,11 @@ def main(argv: list[str]) -> int:
         ap.error("nothing to compare: pass --baseline and/or --reference")
 
     roles: dict[str, str] = {}
+    tolerances: dict[str, float] = {}
     if args.ir is not None:
         try:
             roles = roles_from_ir(args.ir)
+            tolerances = tolerances_from_ir(args.ir)
         except Exception as e:
             ap.error(f"--ir {args.ir}: {type(e).__name__}: {e}")
 
@@ -279,6 +323,8 @@ def main(argv: list[str]) -> int:
             z_min=args.z,
             sense=args.sense,
             roles=roles,
+            tolerances=tolerances,
+            z_role=args.z_role,
         )
     except IllTypedBaseline as e:
         print(f"GATE REFUSED: {e}", file=sys.stderr)

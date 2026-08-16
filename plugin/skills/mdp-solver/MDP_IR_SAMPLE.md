@@ -681,10 +681,26 @@ built rather than from any one comparison. Root-level for the same reason as
     "name": "fluid",
     "role": "relaxed",                     // reads the latent / drops a constraint
     "basis": "deterministic fluid relaxation with hindsight demand",
-    "policies": ["fixed", "myopic"]        // §9.8: one file, several policies
+    "policies": ["fixed", "myopic"],       // §9.8: one file, several policies
+    "tolerance": 0.5                       // implementation slack, in metric units
+  },
+  {
+    "name": "oracle",
+    "role": "relaxed",
+    "column": "oracle_mean",               // emitted BY THE EVAL, not run as a solver
+    "basis": "clairvoyant: reads the realized latents; no deployable policy attains it"
   }
 ]
 ```
+
+`role` describes the algorithm's **logic**; `basis` carries the numerics (a
+truncation, a discretization, a tolerance) and `tolerance` carries the slack
+the ordering gate should allow. A `column` entry declares an arm the eval
+emits rather than a solver it runs — the natural shape for a
+clairvoyant/hindsight bound, since it reads the same realized latents as the
+eval it bounds. Column entries are exempt from the file-correspondence check
+and still participate in the ordering gate, which is what keeps §9.9's bracket
+checkable on such domains.
 
 The RL artifact needs no entry — a trained policy under the real information
 set is `feasible` by construction. Two gates read the block: `mdp_conformance`

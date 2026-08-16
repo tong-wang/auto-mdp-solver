@@ -144,3 +144,65 @@ def test_no_roles_declared_means_no_new_behaviour(tmp_path):
     base = _tsv(tmp_path / "d_benchmark_dp_eval_s.tsv", 90.0)
     report = compare_evals(cand, [base], [], n_seeds=100, sense="minimize")
     assert report.ok and not report.role_violations
+
+
+# --- the ordering band, and column-sourced arms (upstream #27, #26 Part C) ---
+
+def test_inside_the_band_reports_rather_than_fails(tmp_path):
+    """§9.9's claim is about what is possible in principle; the check must not
+    test it to the last float on two Monte-Carlo means."""
+    cand = _tsv(tmp_path / "ppo_eval_s.tsv", 89.9999, var=4.0)
+    ref = _tsv(tmp_path / "d_benchmark_dp_eval_s.tsv", 90.0, var=4.0)
+    report = compare_evals(cand, [], [ref], n_seeds=100, sense="minimize",
+                           roles={"dp": "exact"})
+    assert not report.role_violations          # not a defect claim
+    assert report.warnings and "within the band" in report.warnings[-1]
+    assert report.ok
+
+
+def test_outside_the_band_still_violates(tmp_path):
+    cand = _tsv(tmp_path / "ppo_eval_s.tsv", 80.0, var=0.01)
+    ref = _tsv(tmp_path / "d_benchmark_dp_eval_s.tsv", 90.0, var=0.01)
+    report = compare_evals(cand, [], [ref], n_seeds=100, sense="minimize",
+                           roles={"dp": "exact"})
+    assert report.role_violations and not report.ok
+
+
+def test_declared_tolerance_widens_the_band(tmp_path):
+    """Implementation slack declared by whoever wrote the solver, not inferred."""
+    cand = _tsv(tmp_path / "ppo_eval_s.tsv", 89.0, var=0.0001)
+    ref = _tsv(tmp_path / "d_benchmark_dp_eval_s.tsv", 90.0, var=0.0001)
+    strict = compare_evals(cand, [], [ref], n_seeds=100, sense="minimize",
+                           roles={"dp": "exact"})
+    assert strict.role_violations              # 1.0 ahead, SE ~ 0
+    lenient = compare_evals(cand, [], [ref], n_seeds=100, sense="minimize",
+                            roles={"dp": "exact"}, tolerances={"dp": 2.0})
+    assert not lenient.role_violations and lenient.warnings
+
+
+def test_z_role_zero_restores_the_strict_comparison(tmp_path):
+    cand = _tsv(tmp_path / "ppo_eval_s.tsv", 89.9999, var=4.0)
+    ref = _tsv(tmp_path / "d_benchmark_dp_eval_s.tsv", 90.0, var=4.0)
+    report = compare_evals(cand, [], [ref], n_seeds=100, sense="minimize",
+                           roles={"dp": "exact"}, z_role=0.0)
+    assert report.role_violations
+
+
+def test_column_sourced_benchmark_parses_and_carries_tolerance(ir_doc):
+    ir_doc["benchmarks"] = [
+        {"name": "oracle", "role": "relaxed", "column": "oracle_mean",
+         "basis": "clairvoyant: reads the realized arm means", "tolerance": 0.5},
+    ]
+    ir = MdpIR.model_validate(ir_doc)
+    assert ir.benchmarks[0].column == "oracle_mean"
+    assert ir.benchmarks[0].tolerance == 0.5
+
+
+def test_tolerances_from_ir_skips_the_zero_default(tmp_path, ir_doc):
+    import json
+    ir_doc["benchmarks"] = [{"name": "dp", "role": "exact", "tolerance": 1.5},
+                            {"name": "myopic", "role": "feasible"}]
+    path = tmp_path / "d_schema.json"
+    path.write_text(json.dumps(ir_doc))
+    from mdp_gates.compare import tolerances_from_ir
+    assert tolerances_from_ir(path) == {"dp": 1.5}

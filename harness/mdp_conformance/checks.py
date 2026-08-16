@@ -763,7 +763,12 @@ def check_benchmarks(h: DomainHandle) -> CheckResult:
         if on_disk:
             detail += f"; {len(on_disk)} benchmark file(s) present: {sorted(on_disk)}"
         return CheckResult("benchmarks.declared", "SKIP", detail)
-    missing_file = sorted(declared.keys() - on_disk)
+    # a column-sourced entry declares an arm that is emitted by the eval rather
+    # than run as a solver (a clairvoyant/hindsight bound reading the same
+    # realized latents) — it has no file by construction, and exempting it is
+    # what keeps the bracket declarable on such domains
+    from_column = {n for n, b in declared.items() if getattr(b, "column", None)}
+    missing_file = sorted(declared.keys() - on_disk - from_column)
     undeclared = sorted(on_disk - declared.keys())
     problems = []
     if missing_file:
@@ -772,9 +777,13 @@ def check_benchmarks(h: DomainHandle) -> CheckResult:
         problems.append(f"on disk but undeclared: {undeclared}")
     if problems:
         return CheckResult("benchmarks.declared", "FAIL", "; ".join(problems))
-    roles = ", ".join(f"{n}={b.role.value}" for n, b in sorted(declared.items()))
-    return CheckResult("benchmarks.declared", "PASS",
-                       f"{len(declared)} declared, all matched: {roles}")
+    roles = ", ".join(
+        f"{n}={b.role.value}" + (f"@{b.column}" if getattr(b, "column", None) else "")
+        for n, b in sorted(declared.items()))
+    detail = f"{len(declared)} declared, all matched: {roles}"
+    if from_column:
+        detail += f" ({len(from_column)} column-sourced, no file expected)"
+    return CheckResult("benchmarks.declared", "PASS", detail)
 
 
 def check_research_questions(h: DomainHandle) -> CheckResult:

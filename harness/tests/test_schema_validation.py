@@ -186,3 +186,44 @@ def test_duplicate_invariant_names_are_rejected(ir_doc):
 def test_invariant_may_use_the_row_period_t(ir_doc):
     ir_doc["mdp"]["invariants"] = [{"name": "clock", "expr": "t >= 0"}]
     assert valid(ir_doc)
+
+
+# --- rl.algos: the algorithm as a declarable axis (upstream #26 Part A) ---
+
+def test_algo_alone_still_validates_and_reads_as_one_class(ir_doc):
+    """Every existing IR: `algo` scalar, no `algos` — must not need migration."""
+    from mdp_ir.schema import Algo, MdpIR
+
+    ir = MdpIR.model_validate(ir_doc)
+    assert ir.rl.declared_algos() == [Algo.ppo]
+
+
+def test_a_campaign_can_declare_the_algorithm_axis(ir_doc):
+    from mdp_ir.schema import Algo, MdpIR
+
+    ir_doc["rl"]["algos"] = ["ppo", "maskable_ppo"]
+    ir_doc["mdp"]["decisions"][0]["type"] = {"value": "discrete",
+                                             "suggested": "discrete"}
+    ir_doc["gym"]["action_modes"][0]["type"] = "discrete"
+    ir = MdpIR.model_validate(ir_doc)
+    assert ir.rl.declared_algos() == [Algo.ppo, Algo.maskable_ppo]
+
+
+def test_the_default_class_must_be_one_of_the_declared_ones(ir_doc):
+    import pytest
+    from mdp_ir.schema import MdpIR
+
+    ir_doc["rl"]["algo"] = "ppo"
+    ir_doc["rl"]["algos"] = ["recurrent_ppo"]
+    with pytest.raises(Exception, match="not in rl.algos"):
+        MdpIR.model_validate(ir_doc)
+
+
+def test_masking_declared_as_an_axis_still_owes_a_discrete_action(ir_doc):
+    """The discreteness condition follows the class wherever it is declared."""
+    import pytest
+    from mdp_ir.schema import MdpIR
+
+    ir_doc["rl"]["algos"] = ["ppo", "maskable_ppo"]   # continuous default action
+    with pytest.raises(Exception, match="discrete default action mode"):
+        MdpIR.model_validate(ir_doc)

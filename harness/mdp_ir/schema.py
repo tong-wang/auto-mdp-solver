@@ -765,10 +765,22 @@ class Benchmark(_Base):
     name: str                    # the {method} of {domain}_benchmark_{method}.py
     role: BenchmarkRole
     # one line on HOW it is built — what determines the role, and where a
-    # caveat belongs ("exact up to Poisson tail truncation at mass < 1e-9")
+    # caveat belongs ("exact up to Poisson tail truncation at mass < 1e-9").
+    # `role` describes the algorithm's LOGIC; `basis` carries the numerics
     basis: str = ""
     # §9.8: one solver file may expose several policies through --policy
     policies: list[str] = Field(default_factory=list)
+    # a bound that is emitted as an eval COLUMN rather than run as a solver —
+    # the natural shape for a clairvoyant/hindsight `relaxed` arm, since it
+    # reads the same realized latents as the eval it bounds. Such an entry is
+    # exempt from the file-correspondence check and still participates in the
+    # ordering gate, so the bracket stays checkable on domains whose bound has
+    # no solver file
+    column: str | None = None
+    # implementation slack, in metric units: how far a feasible arm may sit
+    # past this benchmark before the §9.9 ordering gate calls it a defect. The
+    # gate takes max(tolerance, z·SE), so 0 leaves the statistical term alone
+    tolerance: float = 0.0
     source: str = ""             # provenance, as on EvalMetric
 
     @model_validator(mode="after")
@@ -1443,15 +1455,38 @@ class RlBlock(_Base):
     reverse; consistency is enforced by root-level cross-layer validators."""
 
     requires_memory: Confirmable[bool]
-    algo: Algo = Algo.ppo
+    algo: Algo = Algo.ppo                    # the DEFAULT class (as gym's default mode)
+    # the algorithm classes this campaign varies, when it varies one. The gym
+    # block already models every design axis as a list with a default
+    # (action_modes, reward_modes); the algorithm was the exception, so a
+    # masked-vs-unmasked `designs` split had to declare one class and ship
+    # artifacts of another. Empty means "just `algo`", which is what every
+    # existing IR says (upstream #26 Part A). `algo` must appear in the list.
+    algos: list[Algo] = Field(default_factory=list)
     frame_stack: int = Field(default=1, ge=1)
     obs_normalization: ObsNormalization
     net_arch: list[int] | None = None        # None = SB3 default
 
+    def declared_algos(self) -> list[Algo]:
+        """Every class this IR licenses — the axis if declared, else the default."""
+        return list(self.algos) if self.algos else [self.algo]
+
+    @model_validator(mode="after")
+    def _default_algo_is_declared(self) -> "RlBlock":
+        if self.algos and self.algo not in self.algos:
+            raise ValueError(
+                f"rl.algo={self.algo.value!r} is not in rl.algos "
+                f"{[a.value for a in self.algos]} — the default must be one of "
+                f"the declared classes, as gym's default mode is"
+            )
+        return self
+
     @model_validator(mode="after")
     def _memory_consistency(self) -> "RlBlock":
         needs = self.requires_memory.value
-        has_recurrence = self.algo is Algo.recurrent_ppo
+        # any declared class may be the recurrent one — a campaign varying
+        # recurrent_ppo against ppo carries the memory machinery either way
+        has_recurrence = Algo.recurrent_ppo in self.declared_algos()
         has_stack = self.frame_stack > 1
         if needs and not (has_recurrence or has_stack):
             raise ValueError(
@@ -1780,9 +1815,16 @@ class MdpIR(_Base):
 
     @model_validator(mode="after")
     def _algo_matches_action_type(self) -> "MdpIR":
-        """rl → gym: masking needs a discrete default action mode."""
+        """rl → gym: masking needs a discrete default action mode.
+
+        Checked over every declared class, not just the default: a campaign
+        varying `ppo` against `maskable_ppo` (rl.algos) owes the discreteness
+        condition for the masked arm too, and declaring the axis is what makes
+        that checkable at all.
+        """
         default_type = self.gym.default_action_mode().type
-        if self.rl.algo is Algo.maskable_ppo and default_type is not DecisionType.discrete:
+        if (Algo.maskable_ppo in self.rl.declared_algos()
+                and default_type is not DecisionType.discrete):
             raise ValueError("maskable_ppo requires a discrete default action mode")
         return self
 

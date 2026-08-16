@@ -1453,7 +1453,18 @@ result is always an escalation.
   rationale (the `obs_normalization` decision pattern, generalized).
   Judgment beyond these rules is L2.
 - **L2+ — escalations**, one level per round, tagged with the layer(s)
-  opened: `L2(hp)`, `L2(gym)`, `L2(arch)`, `L3(hp+arch)`, … Budget extension
+  opened: `L2(hp)`, `L2(gym)`, `L2(arch)`, `L3(hp+arch)`, … **Levels are
+  per-family.** A *family* is the set of algorithm classes sharing one L0 form
+  and one L1 derivation table: `ppo`, `maskable_ppo` and `recurrent_ppo` are
+  one family, so their `Δ(L1−L0)` values are commensurable and comparing those
+  classes on one leaderboard is legitimate (declare the axis as `rl.algos`).
+  A genuinely different family — anything off-policy, anything model-based —
+  has a different L0 line and different L1 knobs, so its delta is *not*
+  comparable to this family's; two families meet only at the protocol layer, as
+  `means` siblings. **Admitting a new family obliges two artifacts**: its own
+  L0 faithful-defaults one-liner, and an L1 derivation table in its own knobs.
+  Without them the family has no ruler and no backbone, and its levels are not
+  levels. Budget extension
   ("still climbing at ceiling") is the cheapest L2 move.
 
 **The L1 derivation table** (signal → knob):
@@ -1787,11 +1798,14 @@ A benchmark's `--baseline`/`--reference` role is a per-comparison choice (§9). 
 |---|---|---|---|
 | `relaxed` | drops a constraint, or grants information the deployed policy will not have (LP/Lagrangian relaxation; clairvoyant / hindsight — §5.2) | `≽ opt` | no |
 | `exact` | solves the MDP (a converged DP over the true model) | `= opt` | yes |
+
 | `feasible` | runs a real policy under the real information set — heuristics, fitted rules, **and the RL artifact itself** | `≼ opt` | yes |
+
+**`role` describes the algorithm's logic, not its numerical implementation.** A converged DP over the true model is `exact` even though it truncates a distribution, discretizes a state, or stops at a tolerance — record that in `basis`, which is what `basis` is for. Read otherwise, `exact` is a category no implementation can hold: value iteration stops at a tolerance, unbounded supports are truncated, float64 sums round. A benchmark whose *logic* solves the MDP is `exact`; a benchmark whose logic is a heuristic is `feasible` however precisely it is computed.
 
 Two consequences worth stating because they are checkable rather than editorial:
 
-- **A `feasible` arm scoring strictly better than an `exact` or `relaxed` arm is impossible.** It means the eval, the bound, or the simulator is wrong — the RL policy beating a verified-optimal DP is not a result, it is a bug report.
+- **A `feasible` arm scoring strictly better than an `exact` or `relaxed` arm is impossible.** It means the eval, the bound, or the simulator is wrong — the RL policy beating a verified-optimal DP is not a result, it is a bug report. **Judged against a band, not to the last float**: `max(tolerance, z·SE)`, where `tolerance` is the entry's declared implementation slack and the statistical term comes from the same CRN estimate the gate already computes for baselines. Inside the band the gate reports and does not fail — a `~` in the guide's marks, never a `✗`. This matters precisely for the domains the pipeline is meant to produce: a policy that closes on a discretized bar would otherwise be told its simulator is broken, and the quickest way to silence that is to demote the bar to `feasible`, which destroys the bracket.
 - **`relaxed` together with `feasible` brackets the optimum**, so a domain carrying both has a certified optimality gap *without* an exact solver — which is the common case for the domains that most need one.
 
 **Declare the roles in the IR**, in the root-level `benchmarks` block — one entry per `{domain}_benchmark_{method}.py`, keyed by the same `{method}`:
