@@ -29,6 +29,15 @@ Current caveats:
   this script. The code stays as it is because every number in the folder was
   produced by it (see its `CLAUDE.md` Traps and `README`); `mab_selection_probe.py`
   is the post-hoc screen the campaign ran by hand.
+- `mab`'s **§MAP was retyped on 2026-08-16** to the guide's
+  `cases`/`means`/`designs` taxonomy and its drawing contract (upstream
+  #19/#20/#22), so the folder no longer teaches the withdrawn `S`/`P` typing by
+  demonstration. Campaign-record curation, not research: no number, verdict,
+  mark or ranking moved, and the retype's own §FRAME-CHANGELOG line lists the
+  four structural defects the old typing had permitted — chief among them `L0`
+  drawn as a crown-eligible sibling of `L1`, which spec §8.6 forbids. The
+  *code* still predates v0.7.0 per the caveat above; only the record was
+  redrawn.
 
 Every example carries three gates, all run from the repo root with
 `E=plugin/skills/mdp-solver/examples`:

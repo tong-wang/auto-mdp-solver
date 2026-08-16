@@ -369,9 +369,15 @@ rows are **stochastic** evals (`--stochastic`); rules and readbacks are
 deterministic on the same CRN seeds. Escalation ids in the last column point
 at the entry that produced the number.
 
+Roles are spec §9.9: `oracle` is **`relaxed ≽ opt`** — it reads the hidden arm
+means, so no deployable policy can attain it and it is never a gate. Every
+other row is **`feasible ≼ opt`**, the trained nets included. There is no
+`exact` row: the optimum is unknown for this problem, which is why the table is
+read as a bracket from one side rather than as a gap to a known target.
+
 | policy | reward_mean | ±SE¹ | regret | % oracle | note |
 |---|---|---|---|---|---|
-| oracle (clairvoyant best arm) | 1530.75 | — | 0.00 | 100% | — |
+| oracle (clairvoyant best arm) — `relaxed ≽ opt` | 1530.75 | — | 0.00 | 100% | unattainable by construction; never a gate |
 | **rule `argmax(pmᵢ + 2.5·(ttg/T)^0.15·psdᵢ)`** | **1486.14** | **6.47** | **44.61** | **97.1%** | **+22.95 vs thompson, z=36.8 — two constants, no torch (#E26); `mab_benchmark_rule_eval.py`** |
 | free rule `argmax(pmᵢ + √(2 ln(ttg/nᵢ))·psdᵢ)` | 1464.87 | 6.52 | 65.88 | 95.7% | best **parameter-free** form; −21.27 vs tuned (#E27) |
 | thompson (exact conjugate) | 1462.38 | 6.52 | 68.37 | 95.5% | reference |

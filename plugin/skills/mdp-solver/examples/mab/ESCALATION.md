@@ -1,13 +1,14 @@
 # mab — escalation log
 
-Format: `ESCALATION_LOG_GUIDE.md` (mdp_solver, 2026-07-29 revisions — design
-tree + frontier, id spaces, §IR-CHANGELOG, and the coverage/selection split
-typing). Reorganized from the 2026-07-24 decomposition+grids shape on
-2026-07-29; ids migrated, no verdict edited (see the migration lines in
-FRAME-CHANGELOG).
+Format: `ESCALATION_LOG_GUIDE.md` (mdp_solver). Reorganized from the 2026-07-24
+decomposition+grids shape on 2026-07-29; **retyped to the `cases`/`means`/
+`designs` taxonomy and the node/edge drawing contract on 2026-08-16** (upstream
+issues #19, #20, #22). Ids migrated, **no verdict and no number edited** in
+either pass — see the migration lines in FRAME-CHANGELOG.
 
-Id spaces per guide §2: `S{n}` coverage-split schedule · `P{n}` selection-split
-priority · `A{n}` frontier agenda · `#E{n}` ledger · `F{n}` IR reversal.
+Id spaces per guide §2: `S{n}` = schedule, ordering coverage at a `cases` or
+`means` split · `P{n}` = priority, ordering competitors at a `designs` split ·
+`A{n}` frontier agenda · `#E{n}` ledger · `F{n}` IR reversal.
 `D{n}` is a local extension (deviation register, below) and `O{n}` names the
 two derivation defects that `mab_ppo_train.py` cites by name in its docstrings.
 
@@ -22,6 +23,7 @@ two derivation defects that `mab_ppo_train.py` cites by name in its docstrings.
 
 ---
 
+<a id="MAP"></a>
 ## MAP  (as of 2026-08-11 — #E31 coverage, #E32 robustness grid, #E33
 selection validity, #E34 operating envelope, #E35 lambda ladder, #E36
 generalist and #E37 its readback closed; F4 logs the structural move #E35
@@ -37,24 +39,49 @@ target ≻ obs encoding ≻ solve level ≻ {norm_obs, budget, HP} — obs encod
 also the biggest lever (+458.73), but it is placed by conditioning, not gain:
 re-choosing it voids every trained policy beneath it.
 
-**Split types (guide §3.1).** The root is a **coverage split** (`S`): Bernoulli
-and Gaussian are two halves of one problem, declared in Phase A as independent
-branches reported separately (D1) — so each owns its **own protocol, bar and
-leaderboard**, and neither is prunable. T2 is coverage *debt*, not a parked
-option: `✗`/`∅` are illegal on an S-edge and completing T1 does not reduce
-the obligation. **What closed it here was a SCOPE decision, not a discharge:
-S2 was taken out of scope by the operator (2026-08-11), so the campaign
-reports T1 only and every T1 claim ships bounded to Gaussian payouts.** The
-S-typing did its job — it is why that boundary is stated on every claim rather
-than left implicit. Everything
-*below* a target is a **selection split** (`P`) — obs encoding and solve level
-are competing designs on one shared leaderboard, where the point is to crown
-one child and prune the rest. The crown therefore **forks at the root**: T1 has
-a ★ path, T2 has none yet.
+**Split kinds (guide §3.1, retyped 2026-08-16 — numbers unchanged).** The root
+split is **`cases`**: Bernoulli and Gaussian are two halves of one problem,
+declared in Phase A as independent branches reported separately (D1). They do
+**not share a frame** — payout scales differ by ~1000×, so each owns its own
+protocol, bar and leaderboard and a score from one may never be subtracted from
+a score in the other. Neither is prunable: T2 is coverage *debt*, and `✗`/`∅`
+are illegal on a `cases` edge. **What closed it here was a SCOPE decision, not
+a discharge: S2 was taken out of scope by the operator (2026-08-11), so the
+campaign reports T1 only and every T1 claim ships bounded to Gaussian
+payouts.** The typing did its job — it is why that boundary is stated on every
+claim rather than left implicit.
 
-*Generalist collapse of the S-split — open, not attempted.* **Distinct from
+Below a case sits the **`solver` layer**, a **`means`** split grouped by
+**role** (guide §3.1, spec §9.9): `oracle` is `relaxed ≽ opt` — it reads the
+hidden arm means, so no deployable policy can reach it — and `thompson`,
+`ucb1`, `greedy`, `random` and `ppo` are all `feasible ≼ opt`. No `exact` arm
+exists here; the optimum is unknown, which is exactly why the bracket matters.
+The benchmarks are **on the tree**, not in the off-tree register: each is a
+solution to the problem, and grouping them by role is what makes the ceiling
+readable next to the artifact. `means` children share T1's frame, so their
+scores are comparable — that is what licenses every "% of thompson" in this
+log — and none is prunable: crowning `ppo` would not retire the references.
+
+Everything below the solver layer is **`designs`** — obs encoding, escalation
+layer, HP — competing on one shared leaderboard, where the point is to crown
+one child and prune the rest. The crown **forks at the `cases` and `means`
+splits** (T1 has a ★ path, T2 has none; `oracle` and the references keep their
+own ★-free readings) and passes through exactly one child at each `designs`
+split.
+
+**L0 is a chain parent, not a sibling (guide §3.2).** The earlier tree drew
+`L0` as a `P2 ✗` sibling of `L1` under both obs modes. Spec §8.6 makes L0
+"control, reporting only, never a gate" — never crown-eligible — so a sibling
+edge asserted a selection that never happened. The ladder now draws as a
+chain, `L0 → L1`, with the escalation delta on the edge, which is where both
+endpoints are named. The numbers are untouched: `bayes` L0 −1.67 and `stats`
+L0 732.17 are still the readings, and the jointly-validated-edge argument below
+(bayes is worthless without something funding exploration) is exactly what the
+chain says structurally.
+
+*Generalist collapse of the `cases` split — open, not attempted.* **Distinct from
 #E36's generalist**, which spans HORIZONS inside T1 (a §5.6 grid over T); this
-would span the S-split itself, Bernoulli and Gaussian in one policy. One policy
+would span the `cases` split itself, Bernoulli and Gaussian in one policy. One policy
 covering both children is conceivable: the obs vector has identical shape (21 features)
 on both branches and the family is inferable within a few pulls (Bernoulli
 payouts are 0/1). Blockers: the `bayes` features are computed family-specific
@@ -72,53 +99,93 @@ are not established).
 
 ```mermaid
 graph TD
-    ROOT["<b>mab</b> — stochastic K-armed bandit · β=1 undiscounted<br/>base cell gauss_K10_T1000; since F3 the IR spans <b>34 instances</b> (K∈{5,10,20}, T∈{10…40000}) + 1 grid<br/>protocol at the base cell: episode seeds 0..8191, stochastic · oracle 1530.75<br/>references: thompson 1462.38 · ucb1 1440.79 · greedy 1015.69 · random −2.51"]
+    ROOT["<b>IR mab v0.4</b><br/>mdp e385f662a857 · structural 36688c7707f1"]
 
-    ROOT ==>|"S1 ✓ CLOSED — policy search stopped on #E34 V3"| T1["<b>T1 gaussian</b><br/>★★ best overall <b>1486.14</b> — a 2-constant index formula (#E26)<br/>★ best trained net 1453.57 ± 4.80, 3 seeds (#E23)<br/><i>both are cell-local claims — see the envelope and the grid below</i>"]
-    ROOT -.->|"S2 — OUT OF SCOPE by decision"| T2["<b>T2 bernoulli</b> — bern_K10_T1000<br/><b>implemented and differentially gated; deliberately not evaluated</b><br/>scoped out by operator decision 2026-08-11 — one payout family carries this campaign<br/>consequence: every T1 claim is reported BOUNDED to gaussian payouts<br/>forgone: the sharpest available transfer test of the A9 constant (#E27)"]
+    ROOT ==>|"cases · payout · S1 · required ✓ closed (#E34 V3)"| T1["payout=gaussian<br/>1486.14 rule / 1453.57 net · #E26, #E23"]
+    ROOT -.->|"cases · payout · S2 · required ⏸ out of scope 2026-08-11"| T2["payout=bernoulli<br/>gated, not evaluated · scope decision"]
 
-    T1 ==>|"P1 ★ ✓ exhausted"| OB["<b>obs = bayes</b> — posterior mean+sd per arm<br/>the conjugate update is <i>handed</i> to the agent<br/>+458.73 over stats at the L1 centre"]
-    T1 -->|"P2 ✗ → reopened → ✓ closed (A11)"| OS["<b>obs = stats</b> — raw sufficient statistic<br/>counts + totals + ttg — the agent must learn the update<br/>pruned at 927.63 under a centre later shown bad; reopened at the A8 centre"]
-    T1 -.->|"F3 made K and T IR axes — new targets became expressible"| CELLS["<b>other cells &amp; horizons</b> (§5.4 instances, §5.6 grid)<br/>where every T1 claim above gets tested off its tuning cell"]
+    T1 ==>|"cases · scenario · S1 · required ✓"| SC1["scenario=gauss_K10_T1000<br/>the tuning cell · #E7"]
+    T1 ==>|"cases · scenario · S2 · required ✓"| CELLS["scenario=cells+grid (34 instances)<br/>every T1 claim re-tested off its cell · #E32"]
 
-    OB ==>|"P1 ✓"| L1B["<b>L1</b> — the derived centre · MLP <b>1314.46</b> (#E7)<br/>a0 frame-average mitigation 1353.35, eval-only (#E13)"]
-    OB -->|"P2 ✗"| L0B["<b>L0</b> control — −1.67<br/>indistinguishable from random, z=0.08"]
+    SC1 -->|"means · solver · role=relaxed · tier=1"| ORACLE["method=oracle<br/>1530.75 · #E7"]
+    SC1 -->|"means · solver · role=feasible · tier=1"| TS["method=thompson<br/>1462.38 ± 6.52 · #E7"]
+    SC1 -->|"means · solver · role=feasible · tier=1"| UCB["method=ucb1<br/>1440.79 ± 6.52 · #E7"]
+    SC1 -->|"means · solver · role=feasible · tier=1"| GRE["method=greedy<br/>1015.69 ± 6.52 · #E7"]
+    SC1 -->|"means · solver · role=feasible · tier=1"| RND["method=random<br/>−2.51 ± 3.50 · #E7"]
+    SC1 ==>|"means · solver · role=feasible · tier=1 ★"| PPO["method=ppo<br/>1453.57 ± 4.80 · #E23"]
 
-    L1B -.->|"training-free probe"| PROBE["<b>A5 probe bundle</b> ✓ → #E11 · capacity REFUTED<br/>index class distils to 99.5% of thompson at 4.5k par<br/>distilled ceiling 1455.49 — later EXCEEDED by #E26"]
-    L1B -.->|"instrument audit"| SELECT["<b>selection validity</b> ✓ #E33<br/>the 256-seed callback picks the ORACLE checkpoint in 5 of 6 runs<br/>noise costs <b>+1.44</b> against the <b>+42.90</b> that selecting at all is worth<br/>selection retained; <b>plateau early-stopping retired</b>"]
+    PPO ==>|"designs · gym.observation_mode · P1 · tier=2 ★"| OB["obs=bayes<br/>+458.73 vs stats at the L1 centre · #E7"]
+    PPO -->|"designs · gym.observation_mode · P2 · tier=2"| OS["obs=stats<br/>927.63 → 1408.55 reopened · #E10, #E29"]
 
-    L1B ==>|"escalate — §8.6 <b>L2</b>"| L2["<b>L2 — the escalation surface</b><br/>every A6/A7/A8 arm sits here; they differ by LAYER"]
+    OB ==>|"L0→L1 escalation (Δ +1316.13)"| L0B["level=L0<br/>−1.67, z=0.08 vs random · #E7"]
+    L0B ==>|"designs · hp · tier=3 ★"| L1B["level=L1<br/>1314.46 · #E7"]
+    L1B ==>|"L1→L2 escalation"| L2["level=L2<br/>children differ by locus · #E14"]
 
-    L2 -->|"L2(gym)"| GYM["<b>A7-b</b> belief-potential shaping ✗ <b>1293.03</b> (#E15)<br/>REGRESSED −21.4 vs the raw MLP"]
+    L1B -.->|"training-free probe"| PROBE["probe=capacity<br/>distilled ceiling 1455.49 · #E11"]
+    L1B -.->|"instrument audit"| SELECT["audit=selection_validity<br/>+1.44 noise vs +42.90 value · #E33"]
 
-    L2 ==>|"L2(arch)"| ARCH["<b>A6 symmetry ladder</b> — rung b ✓ <b>1387.57</b> (#E14)<br/>architecture of record; 20M re-run 1391.49, 3-seed 1369.92<br/>c 1310.16 ✗ · c-max 1328.16 ✗ · d 1336.65 ✗ (#E20)<br/><i>every enlargement lost — findability, not capacity</i>"]
+    L2 -->|"designs · gym.reward_shaping · P3 ✗ · tier=3"| GYM["shaping=belief_potential<br/>1293.03 (Δ −21.4) · #E15"]
+    L2 ==>|"designs · arch.policy · P2 ✓ · tier=3"| ARCH["policy=index<br/>1387.57 ± 6.30 · #E14, #E20"]
+    L2 -->|"designs · arch+algo.entropy_price · P2 · tier=3"| ALGO["entropy_price=t2<br/>1445.32, 3 seeds · #E18, #E21"]
+    L2 ==>|"designs · hp · P1 · tier=3 ★"| HP["hp=A8-a<br/>1453.57 ± 4.80, 3 seeds · #E23, #E28"]
 
-    L2 -->|"L2(arch+algo)"| ALGO["<b>A7-t2 family</b> — ttg-weighted entropy price<br/>t2 <b>1445.32</b> 3-seed (#E18/#E21) · t2n 1419.65<br/>t2-t3 1422.80 ✗ · t2n-t3 1326.41 ✗<br/>λ probes: 0.995→1459.74 n.s. · 1.0→1325.05 ✗ (#E21)"]
+    ARCH -.->|"parametrization ✗ ×4"| HEAD["head=temperature<br/>1427.41, 3 seeds · #E19, #E22, #E23"]
+    HP -.->|"diagnosis + constructive fix"| COVER["anchor=forward_kl<br/>tail 15–22× smaller at no cost in mean · #E31"]
 
-    L2 ==>|"L2(hp) ★"| HP["<b>A3 tuning → A8-a</b> ★ <b>1453.57 ± 4.80</b>, 3 seeds (#E23)<br/>ent_coef→3.4e-5, λ 0.988, lr 1.6e-5, 20 epochs<br/>argmax gap 450→<b>37</b>: exploration moved INTO the index<br/>statistically level with t2 — the two subsidy-removals converge<br/>A3 closed 73/73 trials; its own top trial refuted at protocol (#E28)"]
+    HP ==>|"§14 readback · tier=2 ★★"| READ["readback=quantile_index<br/>1486.14 (Δ +22.95 vs thompson) · #E24, #E25, #E26"]
+    READ ==>|"designs · scenario.grid · tier=2 ★"| GRID["robustness=grid_21cells<br/>21/21 vs thompson; c* = 1.204 + 0.286·ln n · #E32"]
+    GRID ==>|"designs · scenario.horizon · tier=2"| ENV["envelope=T_star<br/>T* = 14,149 (K=10) / 14,513 (K=20) · #E34"]
 
-    ARCH -.->|"parametrization ✗ ×4"| HEAD["<b>temperature heads — refuted four times</b><br/>t3 1334.20 (#E19) · identified t3 1427.41 3-seed (#E23)<br/>β learned the anneal with the sign INVERTED (#E19)<br/>placement, not parametrization, was the defect (#E22)"]
+    CELLS -->|"designs · hp.gae_lambda · tier=3"| LAM["lambda=coverage_scaled<br/>flat 2–3× thompson at constant coverage · #E35"]
+    CELLS ==>|"means · solver · role=feasible · tier=1 ★"| GEN["method=ppo_generalist<br/>ties thompson at T=500; +76% at T=10000 · #E36"]
+    GEN ==>|"§14 readback · tier=2 ★"| GREAD["readback=fixed_quantile<br/>c ≈ 0.85 constant, ~⅓ of c*(n) · #E37"]
 
-    HP -.->|"diagnosis + constructive fix"| COVER["<b>coverage: the starvation tail IS the deficit</b> ✓ #E31<br/>verdict <b>H-opt</b> — an optimizer failure, not a rational trade<br/>rung 5: a forward-KL anchor to thompson removes the tail <b>15–22×</b><br/>at no measurable cost in mean, dose-ordered in β"]
-
-    HP ==>|"§14 readback ★★"| READ["<b>A9/A10 — the crown IS a quantile index</b> (#E24, named by #E25)<br/>argmax of m + c·s · 98% action agreement · 12-knot fit 1459.56<br/>★★ tuned <b>c = 2.5·(ttg/T)^0.15 → 1486.14</b>, beats thompson +22.95 (#E26)<br/>flat c=2.5 → 1482.82 (ONE param, +20.44)<br/>best parameter-FREE form 1464.87 — 21.27 short (#E27)"]
-
-    READ ==>|"take the rule off its tuning cell"| GRID["<b>robustness grid</b> ✓ #E32 — beats thompson in <b>all 21 cells</b><br/>K∈{5,10,20} × n=T/K ∈ 2…100, capturing ~⅓ of thompson's closable gap<br/>but the LEVEL is a log law: <b>c* = 1.204 + 0.286·ln n</b> (R² 0.743)<br/><i>the fitted 2.5 is cell-local; the shape is not</i>"]
-
-    GRID ==>|"how far does it hold?"| ENV["<b>operating envelope</b> ✓ #E34 — where the rule STOPS<br/>a fixed quantile is inconsistent: regret <b>linear</b> in T vs thompson's <b>log</b><br/>crossover K-invariant in total rounds: T* = <b>14,149</b> (K=10) / 14,513 (K=20)<br/>repair must GROW with t (log:0.7 works, a constant floor does not)<br/><b>every repair converges to thompson</b> — V3, where the search stopped"]
-
-    CELLS -->|"L2(hp) at long horizon"| LAM["<b>λ ladder</b> ✓ #E35 — credit horizon must scale with T<br/>state λ as COVERAGE = (1/(1−λ))/T: aim ~8%, floor ~1%<br/>at 0.41% coverage <b>2 of 3 seeds never learn at all</b> (31× thompson)<br/>at constant coverage PPO is a flat <b>2–3× thompson, not diverging</b>"]
-
-    CELLS ==>|"one net over a §5.6 grid"| GEN["<b>generalist</b> ✓ #E36 — 40 log-spaced cells, T∈[500,10000]<br/>at T=500 it <b>ties thompson (1.05×)</b> — no specialist here has<br/>but +10% vs the specialist at T=1000, <b>+76%</b> at T=10000 (budget-matched)<br/>limits: one grid cannot vary K; one scalar λ cannot cover a 20× T span"]
-
-    GEN ==>|"§14 readback ★"| GREAD["<b>the generalist is a FIXED QUANTILE</b> ✓ #E37<br/>c ≈ <b>0.85, constant</b> — no dependence on ttg/T (0.003 vs the rule's 0.15)<br/>nor on T (0.003 vs #E32's 0.286), given both raw over a 20× span<br/>~⅓ of c*(n), shortfall widening; regret linear in T (R² 0.9999)<br/>at T=10000 only ~6 of 10 arms ever pulled — #E34's mechanism, seen"]
-
-    OS -->|"P1"| L1S["L1 — best <b>927.63</b> at norm_obs=True (#E10)<br/>#E10 verdict ✗: z=−9.29 vs greedy<br/><i>trained at ent_coef 0.01, raw-MLP arch, untuned</i>"]
-    OS -->|"P2 ✗"| L0S["L0 control — 732.17"]
-
-    L1S -.->|"A11 ✓ #E29"| REOPEN["<b>stats reopened at the A8 centre — the prune reverses</b><br/>index @ share/avg map: <b>1408.55 ± 8.66</b> (3 seeds), 96.3% of thompson<br/>Δ vs bayes-at-same-centre <b>45.02</b>: 91% of the old gap was the CENTRE<br/>raw MLP @ same HP 1060.81 — the arch, not the HP, is the rescuer"]
-    REOPEN -->|"§14 readback ★ #E30"| SREAD["<b>the stats twin is a learned THOMPSON, not an index</b><br/>mode: behavioral c = −0.47, worthless straight (argmax 643.60 / −28.99)<br/>ALL performance in a posterior-calibrated sampling anneal 0.31→0.05<br/>stoch−argmax gap <b>772–1442</b> vs A8-a's 37<br/>the encoding decides WHERE exploration lives; the ~45 = randomized-vs-index premium"]
+    OS ==>|"L0→L1 escalation (Δ +195.46)"| L0S["level=L0<br/>732.17 · #E7"]
+    L0S ==>|"designs · hp · tier=3"| L1S["level=L1<br/>927.63 at norm_obs=True · #E10"]
+    L1S ==>|"designs · hp · tier=3 (A11)"| REOPEN["hp=A8_centre<br/>1408.55 ± 8.66, 3 seeds · #E29"]
+    REOPEN ==>|"§14 readback · tier=2"| SREAD["readback=learned_thompson<br/>behavioral c = −0.47; anneal 0.31→0.05 · #E30"]
 ```
+
+### Layers and node readings
+
+One table, keyed by node (guide §3.1). The tree is an index; every reading
+below reproduces from the entry it cites.
+
+| node | kind · attributes · tier | reading | entry |
+|---|---|---|---|
+| `payout=gaussian` | cases · required · tier=1 | the reported branch; every claim in this log ships bounded to Gaussian payouts | [#E34](#E34) |
+| `payout=bernoulli` | cases · required · tier=1 | implemented and differentially gated, deliberately not evaluated — scoped out by the operator 2026-08-11. Forgone: the sharpest transfer test of the A9 constant | [#E27](#E27) |
+| `scenario=gauss_K10_T1000` | cases · required · tier=1 | the tuning cell; the standard protocol and bar are annotated on it, not on the campaign | [#E7](#E7) |
+| `scenario=cells+grid` | cases · required · tier=1 | since F3 the IR spans 34 instances (K∈{5,10,20}, T∈{10…40000}) + 1 grid — where every cell-local claim gets tested off its tuning cell | [#E32](#E32) |
+| `method=oracle` | means · role=relaxed · tier=1 | clairvoyant best arm — reads the hidden means, so unattainable by any deployable policy (§9.9). The ceiling, never a gate | [#E7](#E7) |
+| `method=thompson` | means · role=feasible · tier=1 | exact conjugate sampling; the `--reference` this campaign measures headroom against (D8), 95.5% of oracle | [#E7](#E7) |
+| `method=ucb1` | means · role=feasible · tier=1 | sigma-scaled UCB1, 94.1% of oracle; `--reference`, not a must-beat bar | [#E7](#E7) |
+| `method=greedy` | means · role=feasible · tier=1 | myopic Bayes, 66.4% of oracle — a `--baseline` the artifact must clear | [#E7](#E7) |
+| `method=random` | means · role=feasible · tier=1 | the floor, −0.2% of oracle | [#E7](#E7) |
+| `method=ppo` | means · role=feasible · tier=1 ★ | the trained artifact; crowned within its own frame, and read against thompson rather than gated on it | [#E23](#E23) |
+| `obs=bayes` | designs · gym.observation_mode · tier=2 | the conjugate update is *handed* to the agent — posterior mean+sd per arm. +458.73 over stats at the L1 centre | [#E7](#E7) |
+| `obs=stats` | designs · gym.observation_mode · tier=2 | raw sufficient statistic (counts + totals + ttg); the agent must learn the update. Pruned at 927.63 under a centre later shown bad, then reopened at the A8 centre | [#E10](#E10), [#E29](#E29) |
+| `level=L0` (bayes) | chain rung · tier=3 | faithful defaults, reporting-only (§8.6): −1.67, indistinguishable from random (z=0.08). The posterior is worthless until something funds exploration — the pairing constraint stated structurally | [#E7](#E7) |
+| `level=L1` (bayes) | chain rung · tier=3 | the derived centre, raw MLP 1314.46; a0 frame-average mitigation 1353.35, eval-only | [#E7](#E7), [#E13](#E13) |
+| `level=L2` | chain rung · tier=3 | the escalation surface: every A6/A7/A8 arm is L2 and they differ by which §8.6 layer they open | [#E14](#E14) |
+| `shaping=belief_potential` | designs · gym.reward_shaping · tier=3 | A7-b: regressed −21.4 vs the raw MLP | [#E15](#E15) |
+| `policy=index` | designs · arch.policy · tier=3 | A6 symmetry ladder rung b — architecture of record; 20M re-run 1391.49, 3-seed 1369.92. Every enlargement lost (c 1310.16, c-max 1328.16, d 1336.65): findability, not capacity | [#E14](#E14), [#E20](#E20) |
+| `entropy_price=t2` | designs · arch+algo.entropy_price · tier=3 | ttg-weighted entropy price; t2n 1419.65, t2-t3 1422.80 ✗, t2n-t3 1326.41 ✗. λ probes: 0.995→1459.74 n.s., 1.0→1325.05 ✗. Statistically level with A8-a — the two subsidy-removals converge | [#E18](#E18), [#E21](#E21) |
+| `hp=A8-a` | designs · hp · tier=3 ★ | A3 tuning → ent_coef 3.4e-5, λ 0.988, lr 1.6e-5, 20 epochs. Argmax gap 450→37: exploration moved INTO the index. A3 closed 73/73 trials; its own top trial refuted at protocol | [#E23](#E23), [#E28](#E28) |
+| `probe=capacity` | off-crown probe · tier=2 | training-free: the index class distils to 99.5% of thompson at 4.5k parameters — capacity REFUTED as the deficit. Distilled ceiling 1455.49, later exceeded by #E26 | [#E11](#E11) |
+| `audit=selection_validity` | off-crown audit · tier=3 | the 256-seed callback picks the oracle checkpoint in 5 of 6 runs; noise costs +1.44 against the +42.90 that selecting at all is worth. Selection retained, plateau early-stopping retired | [#E33](#E33) |
+| `head=temperature` | designs · arch.policy · tier=3 ✗ | refuted four times; β learned the anneal with the sign INVERTED. Placement, not parametrization, was the defect | [#E19](#E19), [#E22](#E22), [#E23](#E23) |
+| `anchor=forward_kl` | designs · algo.anchor · tier=3 | the starvation tail IS the deficit — verdict H-opt, an optimizer failure rather than a rational trade. A forward-KL anchor to thompson removes the tail 15–22× at no measurable cost in mean, dose-ordered in β | [#E31](#E31) |
+| `readback=quantile_index` | §14 readback · tier=2 ★★ | the crown IS a quantile index: argmax of m + c·s, 98% action agreement, 12-knot fit 1459.56. Tuned c = 2.5·(ttg/T)^0.15 → 1486.14, beats thompson +22.95; flat c=2.5 → 1482.82 on ONE parameter; best parameter-free form 1464.87, 21.27 short | [#E24](#E24), [#E25](#E25), [#E26](#E26), [#E27](#E27) |
+| `robustness=grid_21cells` | designs · scenario.grid · tier=2 | beats thompson in all 21 cells (K∈{5,10,20} × n=T/K ∈ 2…100), capturing ~⅓ of thompson's closable gap — but the LEVEL is a log law, c* = 1.204 + 0.286·ln n (R² 0.743). The fitted 2.5 is cell-local; the shape is not | [#E32](#E32) |
+| `envelope=T_star` | designs · scenario.horizon · tier=2 | where the rule STOPS: a fixed quantile is inconsistent, regret linear in T vs thompson's log. Crossover K-invariant in total rounds. Repair must GROW with t, and every repair converges to thompson — V3, where policy search stopped | [#E34](#E34) |
+| `lambda=coverage_scaled` | designs · hp.gae_lambda · tier=3 | credit horizon must scale with T: state λ as coverage = (1/(1−λ))/T, aim ~8%, floor ~1%. At 0.41% coverage 2 of 3 seeds never learn (31× thompson); at constant coverage PPO is a flat 2–3× thompson, not diverging | [#E35](#E35) |
+| `method=ppo_generalist` | means · role=feasible · tier=1 ★ | one net over a §5.6 grid, 40 log-spaced cells T∈[500,10000]: ties thompson at T=500 (1.05×) where no specialist has, +10% vs the specialist at T=1000 and +76% at T=10000 budget-matched. Limits: one grid cannot vary K, one scalar λ cannot cover a 20× T span | [#E36](#E36) |
+| `readback=fixed_quantile` | §14 readback · tier=2 ★ | the generalist is a FIXED quantile — c ≈ 0.85 constant, no dependence on ttg/T (0.003 vs the rule's 0.15) nor on T (0.003 vs #E32's 0.286). ~⅓ of c*(n), shortfall widening, regret linear in T (R² 0.9999); at T=10000 only ~6 of 10 arms ever pulled — #E34's mechanism, seen | [#E37](#E37) |
+| `level=L0` (stats) | chain rung · tier=3 | 732.17 — the encoding that survives without funded exploration, which is the contrast that makes the bayes L0 reading meaningful | [#E7](#E7) |
+| `level=L1` (stats) | chain rung · tier=3 | best 927.63 at norm_obs=True; verdict ✗ at z=−9.29 vs greedy, trained at ent_coef 0.01 on the raw-MLP arch, untuned | [#E10](#E10) |
+| `hp=A8_centre` | designs · hp · tier=3 | A11: the prune reverses. Index at the share/avg map reaches 1408.55 ± 8.66 (3 seeds), 96.3% of thompson; Δ vs bayes at the same centre 45.02, so 91% of the old gap was the CENTRE. Raw MLP at the same HP 1060.81 — the arch, not the HP, is the rescuer | [#E29](#E29) |
+| `readback=learned_thompson` | §14 readback · tier=2 | the stats twin is a learned THOMPSON, not an index: behavioral c = −0.47, worthless straight (argmax 643.60 / −28.99); all performance lives in a posterior-calibrated sampling anneal 0.31→0.05, stoch−argmax gap 772–1442 vs A8-a's 37. The encoding decides WHERE exploration lives | [#E30](#E30) |
 
 
 ### Frontier  (as of #E37, 2026-08-11)
@@ -516,8 +583,8 @@ the interesting remaining question lives one level up.**
 
 ### Current best bundle — the ★ path
 
-The crown forks at the root S-split — this is T1's path; **T2 has no ★ and
-will not get one** (out of scope by decision, A4).
+The crown forks at the root `cases` split — this is T1's path; **T2 has no ★
+and will not get one** (out of scope by decision, A4).
 
 `ROOT → S1 T1 gaussian → obs=bayes → level L1 backbone → policy=index
 (L2(arch))` is the path every candidate below sits on — including the rule,
@@ -585,13 +652,21 @@ faithful reward mode (`pull` payout), PPO scored **stochastically**
 *provisional* and never crown a record. The selection eval (256 CRN seeds from
 `1_000_000`, **stochastic since #E6**) is training-internal — diagnostic only.
 
-| policy | reward_mean | ±SE | regret | % oracle | role |
-|---|---|---|---|---|---|
-| oracle (clairvoyant best arm) | 1530.75 | — | 0.00 | 100% | ceiling |
-| thompson (exact conjugate) | 1462.38 | 6.52 | 68.37 | 95.5% | reference |
-| ucb1 (sigma-scaled) | 1440.79 | 6.52 | 89.95 | 94.1% | reference |
-| greedy (myopic Bayes) | 1015.69 | 6.52 | 515.05 | 66.4% | **baseline** |
-| random | −2.51 | 3.50 | 1533.26 | −0.2% | **baseline** |
+Two columns, deliberately: **role** is where a benchmark sits relative to the
+optimum (spec §9.9 — a property of how it is built), **gate** is the
+per-comparison choice (§9, D8). `oracle` is `relaxed ≽ opt`: it reads the
+hidden arm means, so no deployable policy can attain it, and it is never a
+gate. Everything else here is `feasible ≼ opt`, the RL artifact included. No
+`exact` arm exists — the optimum is unknown for this problem, so `relaxed`
+brackets it from one side only.
+
+| policy | reward_mean | ±SE | regret | % oracle | role (§9.9) | gate |
+|---|---|---|---|---|---|---|
+| oracle (clairvoyant best arm) | 1530.75 | — | 0.00 | 100% | `relaxed ≽ opt` | never |
+| thompson (exact conjugate) | 1462.38 | 6.52 | 68.37 | 95.5% | `feasible ≼ opt` | reference |
+| ucb1 (sigma-scaled) | 1440.79 | 6.52 | 89.95 | 94.1% | `feasible ≼ opt` | reference |
+| greedy (myopic Bayes) | 1015.69 | 6.52 | 515.05 | 66.4% | `feasible ≼ opt` | **baseline** |
+| random | −2.51 | 3.50 | 1533.26 | −0.2% | `feasible ≼ opt` | **baseline** |
 
 Excess regret of the crowned path over Thompson: **147.92** (216.29 − 68.37).
 
@@ -603,7 +678,7 @@ IR-CHANGELOG; what remains is problem definition, protocol, and gym choices.
 
 | id | layer | choice | vanilla | rationale |
 |---|---|---|---|---|
-| **D1** | problem | Two branches, **separate leaderboards** | one scenario | payout scales differ, so a head-to-head number has no meaning. This is the Phase-A mode stance that types the root as a coverage (`S`) split — the branches are covered, never compared |
+| **D1** | problem | Two branches, **separate leaderboards** | one scenario | payout scales differ, so a head-to-head number has no meaning. This is the Phase-A mode stance that types the root as a `cases` split — separate frames, so the branches are covered and their scores never subtracted |
 | **D2** | problem | K=10, T=1000 | — | Sutton & Barto testbed size (human-decided, menu) |
 | **D3** | problem | **β = 1**, finite horizon, undiscounted | — | *confirmed, not a deviation* — regret minimization (Lai & Robbins; Auer; S&B). The discounted/Gittins reading is a parked separate composition |
 | **D4** | rl | `requires_memory` = **false**, `human_override` | derivation said *true* | `(pulls, payouts)` is the exact sufficient statistic under both conjugate priors → fully observed. **The keystone**: it is what licenses D6. Generalized as F2 |
@@ -931,6 +1006,30 @@ it be configured.
                         mab/CLAUDE.md is now generated from that template. Same release
                         moved the playbook into the case folder (guide §10 digest schema)
                         and gave spec/schema proposals their own channel (mdp-propose)
+2026-08-16  RETYPED     §MAP redrawn to the guide's cases/means/designs taxonomy and its
+                        node/edge drawing contract (upstream #19/#20/#22, solver v0.8.3+).
+                        Maintainer-curated campaign-record edit, not research: NO number,
+                        verdict, mark or ranking changed. Four structural corrections the
+                        retype forced, each a defect the old typing permitted:
+                        (1) L0 was drawn as a P2 ✗ SIBLING of L1 under both obs modes,
+                        asserting a selection that never happened — §8.6 makes L0
+                        reporting-only and never crown-eligible. It is now the parent rung
+                        of a chain, with the escalation delta on the edge;
+                        (2) the benchmarks (oracle/thompson/ucb1/greedy/random) lived only
+                        in the ROOT node text and the T1 annotation; they are solutions, so
+                        they are now a `means` solver layer grouped by spec-§9.9 role —
+                        oracle `relaxed`, the rest `feasible`, no `exact` arm since the
+                        optimum is unknown;
+                        (3) the scenario layer was implicit — the tuning cell and the
+                        34-instance/grid set now sit as `cases` siblings under T1, which is
+                        what makes "every T1 claim is cell-local" structural rather than
+                        prose;
+                        (4) node labels ran 3–6 lines of mechanism; they are now two lines
+                        ({axis}={option} / score · #E ids) with every evicted reading moved
+                        to the readings table beneath the diagram, and each split edge
+                        carries {locus}.{axis} so the mis-attachment check can fire.
+                        Anchors added (<a id="MAP">, <a id="E{n}"> on all 37 entries) so
+                        rule 2's bidirectional citation has its mechanism.
 ```
 
 ---
@@ -1356,6 +1455,7 @@ Artifact paths are indexed in **§RUNS** — an entry's `runs:` line records the
 command that produced the run, and the generated table resolves it to a live
 directory even after a rename, so paths here are never the linkage of record.
 
+<a id="E1"></a>
 ### #E1  2026-07-28 — obs=bayes at L1 is the deliverable candidate
 address: T1/bayes/L1  (crowned leaf) — pre-frontier, no A id
 runs: `OMP_NUM_THREADS=1 python mab_ppo_train.py -s gauss_K10_T1000 -o bayes --level l1 --seed 1`
@@ -1367,6 +1467,7 @@ best selection eval at 10M (951.06 det/256, *provisional*).
 gate: gym layer (D6) — obs gate ✓, features are functions of `(pulls,payouts,t)`
 only; asserted in `mab_test.py`.   status: **✓**
 
+<a id="E2"></a>
 ### #E2  2026-07-28 — obs=stats at L1: is the raw sufficient statistic enough?
 address: T1/stats/L1 — pre-frontier, no A id
 runs: `... -o stats --level l1 --seed 1` → `PPO_obsstats_L1_seed1_20260728_173709/`
@@ -1377,6 +1478,7 @@ best selection 977.40 (det/256, *provisional*). Δ(#E1−#E2) = **+384.74** for 
 posterior parametrization at L1.   status: **✗** *(scope: with `norm_obs=True`
 — see O2, this may under-read the mode)*
 
+<a id="E3"></a>
 ### #E3  2026-07-28 — obs=stats L0 control
 address: T1/stats/L0 (control) — pre-frontier, no A id
 runs: `... -o stats --level l0 --seed 1` → `PPO_obsstats_L0_seed1_20260728_173709/`
@@ -1384,6 +1486,7 @@ runs: `... -o stats --level l0 --seed 1` → `PPO_obsstats_L0_seed1_20260728_173
 verdict: **719.77 ± 7.91**, 47.0% oracle, FAIL z=−29.33 vs greedy.
 Δ(L1−L0) for stats = **+179.82**.   status: **✗** (control, never a gate)
 
+<a id="E4"></a>
 ### #E4  2026-07-28 — obs=bayes L0 control
 address: T1/bayes/L0 (control) — pre-frontier, no A id
 runs: `... -o bayes --level l0 --seed 1` → `PPO_obsbayes_L0_seed1_20260728_173709/`
@@ -1397,6 +1500,7 @@ Consequence for method: an obs-mode comparison run at L0 alone would have
 crowned the wrong winner — the level is the first-order variable here.
 status: **✗** (control) — but the *inversion* is the campaign's main finding so far
 
+<a id="E5"></a>
 ### #E5  2026-07-29 — audit of the L1 protocol against §8.6/§9 (no new training)
 address: off-tree — protocol audit (O1, O2); no tree node
 runs: re-read of `selection_log.tsv` and `run_status.json` for #E1/#E2, and of
@@ -1416,6 +1520,7 @@ status: **✓** (consumed → #E6, which fixed both derivation defects and
 re-keyed the payout streams; *amended 2026-08-11 — this line said "probes not
 yet launched" for two weeks after they had been*)
 
+<a id="E6"></a>
 ### #E6  2026-07-29 — fix both derivation defects; re-key the payout streams
 address: off-tree (O1, O2) + IR reversal F1 — corrections, no tree node
 runs: no training. Code: `mab_ppo_train.py` (`_derived_norm_obs`;
@@ -1448,6 +1553,7 @@ gate: none (hp/derivation + uncertainty layer, no gym-layer change)
 status: **✓** (landed; nothing re-measured yet — the bar and the grid are
 still to be re-run)
 
+<a id="E7"></a>
 ### #E7  2026-07-29 — re-run the whole grid + bar on the per-arm payout stream
 address: whole T1 subtree + off-tree bar calibration / supersedes #E1–#E4
 runs: `scratchpad/rerun_mab.sh` — 4 benchmark evals (8192 seeds) and the
@@ -1471,6 +1577,7 @@ Others FAIL: stats L1 855.73 (z=−16.49), stats L0 732.17 (z=−28.38), bayes L
 gate: none new (D6's obs gate already discharged; no gym-layer change)
 status: **✓**
 
+<a id="E8"></a>
 ### #E8  2026-07-29 — O2's accumulator argument, tested by the re-run
 address: T1/stats/L1/norm_obs  → became A1
 hypothesis (stated in #E5, before launch): `stats` is accumulator-valued, so
@@ -1493,6 +1600,7 @@ current stream, isolating the flag.
 status: **✗** (hypothesis refuted; attribution confirmed by #E9's diagnosis
 — *amended 2026-08-11, the queued probe was consumed there*)
 
+<a id="E9"></a>
 ### #E9  2026-07-29 — DIAGNOSIS: after the re-run — where the remaining 147.92 lives
 reads:    #E5–#E8 (protocol audit, derivation fixes, the #E7 re-run, the #E8
 norm_obs refutation); imported w/ provenance (rule 8): the other project's equivariant
@@ -1529,6 +1637,7 @@ shaping L2(gym) (trains-only, faithful selection); **both ⇒ A6 before A7**
 (tripwire: distilled ceiling high yet PPO + A6 + A7 cannot reach it). KG
 reference proposed in the off-tree register.
 
+<a id="E10"></a>
 ### #E10  2026-07-29 — A1: norm_obs isolated for obs=stats (the O2 attribution probe)
 address: T1/stats/L1/norm_obs / A1
 hypothesis (#E8/#E9, stated before launch): #E7's stats drop (899.59 → 855.73
@@ -1545,6 +1654,7 @@ True for both modes again and the IR rationale records the test. The branch
 itself stays pruned: still FAIL vs greedy (z=−9.29), `budget_complete` at 20M
 under both flags.   status: **✗** for the split (the probe did its job)
 
+<a id="E11"></a>
 ### #E11  2026-07-29 — A5 probe bundle + A6 rung a0: capacity refuted; symmetry survives as an optimization prior
 address: T1/bayes/L1 / A5 (+ A6-a0)
 hypothesis (#E9, pre-decided): (a) fires iff MLP-distilled ≪ Thompson while
@@ -1575,6 +1685,7 @@ prior*, which the pre-registered capacity test did not measure. Scope note:
 the "attention no-op" prediction extends one rung down — pooled context ≈
 index at the Thompson target.   status: **✓**
 
+<a id="E12"></a>
 ### #E12  2026-07-29 — DIAGNOSIS: the gap is a training-process deficit; two levers, one mandated
 reads:    #E10 (A1), #E11 (A5 + a0); #E9's pre-decided branches; imports
 already labeled there (the other project's equinet and its shaping pairing).
@@ -1601,6 +1712,7 @@ mab_policy.py inference option** — +38.9 free, gate z vs greedy ≈ 36.7, pure
 symmetrization of our own policy, no imitation taint. A2 parked. A3 + A4
 unchanged as the closing set.
 
+<a id="E13"></a>
 ### #E13  2026-07-29 — crown amendment: frame-averaged inference on the shipped artifact
 address: T1/bayes/L1 / A6-rung-a0 (crown amendment, #E12 plan item 3)
 hypothesis: the +38.9 measured in #E11's probe survives the formal gate at the
@@ -1617,6 +1729,7 @@ wrapper compensates *this* artifact's measured non-equivariance and becomes a
 no-op under an equivariant policy — it is part of the bundle, not a standing
 component.   status: **✓** (crowned)
 
+<a id="E14"></a>
 ### #E14  2026-07-29 — A6-rung-b: the equivariant index policy takes the crown
 address: T1/bayes/L1 → policy=index / A6-rung-b (L2(arch))
 hypothesis (#E12, pre-decided before launch): "A6-b lands ≥ ~1400 ⇒ the prior
@@ -1644,6 +1757,7 @@ the last one.
 gate: none new (arch layer; the obs gate was discharged at D6, and the policy
 reads exactly the same observation)   status: **✓** (crowned)
 
+<a id="E15"></a>
 ### #E15  2026-07-29 — A7-rung-b: belief-potential shaping regresses the policy
 address: T1/bayes/L1 + shaping / A7-rung-b (L2(gym))
 hypothesis (#E12, pre-decided): "A7-b closes ≥ half the gap to the
@@ -1667,6 +1781,7 @@ refutes *this lever as configured*, not directed exploration in general.
 gate: gym layer — shaping trains-only ✓ (structural), selection on the
 faithful mode ✓, obs unchanged ✓   status: **✗**
 
+<a id="E16"></a>
 ### #E16  2026-07-29 — DIAGNOSIS: representation converted, exploration backfired; the constraint is now optimization
 reads:    #E13 (frame-avg crown), #E14 (index crown), #E15 (shaping refuted);
 supersedes the plan in #E12. Imported labels unchanged.
@@ -1702,6 +1817,7 @@ imported-lever claim ("equivariance pays") that is currently Gaussian-only,
 paying the debt both closes the campaign's obligation and tests the claim's
 scope. A6 rungs a/c/d, A7 rung a, A2 remain unrun/parked as recorded.
 
+<a id="E17"></a>
 ### #E17  2026-07-31 — A7-rung-c DIAGNOSIS: the crown provably over-explores late; three general prescriptions launched
 address:  T1/bayes crown (L2(arch)) / A7-rung-c (eval-only probe)
 hypothesis (operator, reads pre-registered in the log before the protocol
@@ -1768,6 +1884,7 @@ effective average entropy weight interacts with A3's level finding.
 gate: none (probe + in-flight runs; the t-runs report on the 8192 protocol
 when they land)   status: **✓ diagnosis consumed; prescriptions in flight**
 
+<a id="E18"></a>
 ### #E18  2026-08-01 — A7-t2 VERDICT: the ttg-weighted bonus converts, but does not reach the calibration bar
 address:  T1/bayes crown (L2(arch+algo)) / A7-t2
 reads:    #E17's pre-registered thresholds, applied unedited.
@@ -1814,6 +1931,7 @@ gate: none — a crowned-leaf comparison on the standing protocol; obs unchanged
 faithful streams, stochastic eval per D5/D7.   status: **✓** (converts; new best
 trained policy on T1, still below B_cal)
 
+<a id="E19"></a>
 ### #E19  2026-08-01 — A7-t3 post-mortem: β learned the anneal with the sign INVERTED; the 3×2 factorial launched
 address:  T1/bayes crown / A7-t3 (post-mortem) + the A7 family (prescriptions)
 hypothesis (pre-registered in `mab_beta_probe.py`'s docstring, with its three
@@ -1917,6 +2035,7 @@ gate: none (crowned-leaf comparisons on the standing protocol)
 status: **✓** (diagnosis consumed; the six-cell factorial landed → #E20 and
 #E21 — *amended 2026-08-11, it read "in flight" for ten days after landing*)
 
+<a id="E20"></a>
 ### #E20  2026-08-01 — A6 rungs c / c-max / d: cross-arm context is not what PPO was missing
 address:  T1/bayes/L1, L2(arch) / A6 rungs c, c-max, d — the three-way read
 reads:    #E14's pre-registration, which is scored *unmet in the direction that
@@ -1973,6 +2092,7 @@ integration trap (VecNormalize per-slot stats) is structurally avoided, since
 `norm_obs` is forced off for every policy in `mab_equinet`.   status: **✗**
 (branch closed; d-full's tripwire spent)
 
+<a id="E21"></a>
 ### #E21  2026-08-01 — CORRECTION + verdicts: training-seed noise is 2.7× eval noise, and most of this campaign's z-values used the wrong denominator
 address:  campaign-wide (methodology) + A7 factorial + A7 λ probes
 supersedes: the **denominators** in #E14, #E18, #E19, #E20 — not their
@@ -2088,6 +2208,7 @@ gate: none (protocol comparisons; the seed runs are byte-identical to their
 seed-1 counterparts apart from `--seed`)   status: **✓** (correction landed;
 one verdict strengthened, one demoted, one prescription refuted)
 
+<a id="E22"></a>
 ### #E22  2026-08-01 — DIAGNOSIS: why t3 fails under any patch; exploration belongs in the index, not in randomness (A8 designed)
 address:  A7-t3 (root-cause analysis) → **A8** (new frontier item)
 reads:    #E19/#E21 verdicts + one new measurement on the *existing* β-probe
@@ -2138,6 +2259,7 @@ there; launch gated on A3 harvest so arms inherit the winner's HP verbatim.
 gate: none (analysis + design; no runs)   status: **~** (diagnosis consumed;
 A8 awaits the A3 harvest)
 
+<a id="E23"></a>
 ### #E23  2026-08-02 — A8 VERDICT: ent→0 alone is the new best config; exploration measurably moved into the index; the temperature head fails a fourth time — but the schedule it was built for exists, in the shape channel
 address:  A8 arms a/b/c — all seven runs `budget_complete`, all committed at
 8192 stochastic, plus one argmax eval and β readbacks on four artifacts.
@@ -2206,6 +2328,7 @@ derivation only by the tuned HP (recorded per-run in `*_ppo_args.txt`).
 status: **✓** (arm a = new best config; head line closed; instrument
 consumed — the peg is the posterior, via shape)
 
+<a id="E24"></a>
 ### #E24  2026-08-02 — INTERPRETATION round (spec §14, anchored): the crown is a deterministic index in Thompson's clothing; 12 numbers replace the network
 address:  A8-a crown (deep dives on a-s3; structure cross-checked s1/s2)
 runs: `mab_interpret.py` (battery 7 policies × 8192 CRN / replay / tail),
@@ -2253,6 +2376,7 @@ gate: none (eval-only; fitted-rule scoring on the standing CRN protocol)
 status: **✓** (round complete; fitted rule = shippable; tail lever queued
 as the next candidate)
 
+<a id="E25"></a>
 ### #E25  2026-08-02 — DIAGNOSIS: the crown is a fixed-quantile index, and the open question is the quantile SCHEDULE; A9 sweeps it in behavior space (no training)
 address:  A8-a crown → **A9** (new frontier item; eval-only)
 reads:    #E24 (readback + tail anatomy); operator discussion 2026-08-02.
@@ -2314,6 +2438,7 @@ status: **✓** (sweep complete → **#E26**, the very next entry, which is its
 verdict — *amended 2026-08-11; "▶ sweep running" survived nine days and one
 ledger id past its own answer*)
 
+<a id="E26"></a>
 ### #E26  2026-08-02 — A9 VERDICT: the quantile was too LOW, not mis-shaped — a 2-parameter formula scores 1486.14 and is the first policy in this campaign to beat Thompson
 address:  A9 (all six families) — eval-only, no training
 reads:    #E25's pre-registration, applied unedited. **R2 FIRES.**
@@ -2387,6 +2512,7 @@ scored once, on candidates chosen elsewhere)
 status: **✓** (A9 consumed; new best policy on T1; #E25(i) corrected and
 #E24's softmax claim narrowed)
 
+<a id="E27"></a>
 ### #E27  2026-08-02 — A10 VERDICT: NO parameter-free rule matches the tuned constant — the operator's objection stands, and the 21.27-point gap is the measured value of knowing the prior and horizon
 address:  A10 — parameter-free index forms @ the fitted-rule harness (eval-only)
 motivation (operator, 2026-08-02): #E26's winner is a policy *instance* —
@@ -2461,6 +2587,7 @@ gate: none (eval-only; all rules deterministic on CRN ⇒ eval-SE noise model)
 status: **✓** (A10 consumed; hypothesis refuted; #E26 narrowed; the value of
 instance knowledge quantified at 21.27)
 
+<a id="E28"></a>
 ### #E28  2026-08-03 — A3 HARVEST: the study's ranking does not survive the protocol — it ranked the wrong checkpoint on an easier block, and #E23's pre-registration holds
 address:  A3 — `mdp_tuning` L2(hp) @ T1/bayes/L1/index. Formal harvest, as
 pre-registered in #E23 ("A3 times out 2026-08-03 ~03:16 — formal harvest =
@@ -2557,6 +2684,7 @@ protocol at `oracle_mean` 1530.7471, stochastic per #E7.
 status: **✓** (A3 consumed; ranking refuted at the protocol; #E23's
 pre-registration upheld; no re-centring)
 
+<a id="E29"></a>
 ### #E29  2026-08-05 — A11 VERDICT: the stats prune reverses at the good centre — 91% of the encoding gap was the centre, and the established residual (~45) is the price of building sd from counts
 address:  A11 rungs a+b — reopen T1/stats at the A8 centre, share/avg
 feature map (operator design 2026-08-04, recorded in item 11 before launch)
@@ -2621,6 +2749,7 @@ gate: standing protocol comparisons; runs differ from the L1 derivation by
 the tuned HP (+ arch for rung a), recorded per-run in `*_ppo_args.txt`.
 status: **✓** (A11 consumed: rungs a+b read; c licensed, unqueued)
 
+<a id="E30"></a>
 ### #E30  2026-08-05 — STATS READBACK (spec §14): the stats twin is a learned THOMPSON, not an index — the encoding decides where exploration lives
 address:  A11-a artifacts (deep dive a-s2; gap/surface direction-checked on
 s1/s3) — the follow-up #E29 licensed in place of rung c
@@ -2687,6 +2816,7 @@ reproduce the committed numbers).
 status: **✓** (readback complete; A11 fully closed — a, b read, c
 superseded)
 
+<a id="E31"></a>
 ### #E31  2026-08-06 — COVERAGE round: the never-touched-best-arm tail IS the crown's deficit, and it is an optimizer failure, not a rational trade
 address:  the operator's observation from the #E24/#E30 interpretation GIFs —
 trained policies leave some arms untouched across all 1000 rounds, and the bad
@@ -2821,6 +2951,7 @@ mean.
 status: **✓ closed** (H-opt established and constructively confirmed; the
 mean question is settled as neutral, not open)
 
+<a id="E32"></a>
 ### #E32  2026-08-06 — ROBUSTNESS grid: the two-constant rule beats Thompson in all 21 cells, but its LEVEL is a log law in pulls-per-arm
 address:  is #E26's `argmax(pm + 2.5·(ttg/T)^0.15·psd)` a rule, or a fit to
 the one cell it was tuned on (K=10, T=1000, σ=1)? Raised after the result was
@@ -2925,6 +3056,7 @@ than pre-registered**: c_RL ≈ 0.85 against c\* = 2.32 → 3.18, a ratio fallin
 hypothesis guessed. The mechanism is not a gradient that dies but an index
 class: the net learned a *constant*, which #E34 had already proved must lose.
 
+<a id="E33"></a>
 ### #E33  2026-08-07 — SELECTION VALIDITY: the 256-seed callback picks the oracle checkpoint in 5 of 6 runs; selection is worth ~43 points and its noise costs ~1.4
 address:  the operator's objection that best-checkpoint selection and plateau
 early-stopping are "not working well in practice", and #E31's Verdict 2 that
@@ -2994,6 +3126,7 @@ first 2048 seeds are an easier subset of the same block. Pick/oracle/terminal
 are paired and valid; the absolute numbers are not leaderboard-comparable.
 status: **✓** (objection resolved; selection retained, early-stopping retired)
 
+<a id="E34"></a>
 ### #E34  2026-08-07 — the rule's OPERATING ENVELOPE: a fixed-quantile index is inconsistent, it crosses thompson at T ~ 14,000, and every repair converges to thompson
 address:  the operator's follow-up to #E32 — "expand the experiment and find
 the boundary where the rule may fail". #E32 tested only inside the design
@@ -3093,6 +3226,7 @@ K=5 never crossed within measurement and its T* is extrapolation only.
 status: **✓ closed** — envelope mapped; policy search stopped here by the
 operator, on Verdict 3.
 
+<a id="E35"></a>
 ### #E35  2026-08-10 (closed 2026-08-11) — LAMBDA LADDER: the credit horizon must scale with T, and below ~1% episode coverage it is a THRESHOLD, not a rate — training stops working. Above it, PPO sits at a flat 2-3x thompson and does NOT diverge.
 address:  the operator's attribution of #E32's corner-run collapse to HP
 transfer, "especially gae_lambda", and the follow-on question of how far behind
@@ -3242,6 +3376,7 @@ this closes the operator's HP-transfer question from #E32, and the residual
 2-3x is a constant factor, which #E34 Verdict 3 already stopped policy search
 on.
 
+<a id="E36"></a>
 ### #E36  2026-08-07 (closed 2026-08-11) — GENERALIST over a horizon grid: one policy CAN serve a 20x range of T, but it pays for it at the long end — and one scalar lambda cannot cover the grid it is trained on
 
 address:  the operator's request for a generalist — "varying T ... uniform on
@@ -3342,6 +3477,7 @@ scalar lambda, and say what to do about it (bound the grid's T-span, or accept
 and declare mis-coverage at one end). No new frontier item: #E34 Verdict 3
 stopped the policy search, and this does not reopen it.
 
+<a id="E37"></a>
 ### #E37  2026-08-11 — READBACK of the #E36 generalist: it learned a FIXED QUANTILE. c ~ 0.85, constant in BOTH ttg/T and T, ~1/3 of optimal — precisely the class #E34 proved must lose at long horizon
 
 address:  #E36's pre-registered open readback — *does phi depend on `ttg` and
