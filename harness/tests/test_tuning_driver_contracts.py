@@ -197,3 +197,25 @@ def test_value_taking_args_are_unaffected(tmp_path):
                              args_map, "train")
     cmd = build_cmd(tmp_path / "train.py", args_map, assign)
     assert cmd[2:] == ["--learning_rate", "0.001", "--net_arch", "64", "64"]
+
+
+def test_summary_labels_the_best_value_as_a_trial_layer_score(capsys):
+    """Spec §9.7 (upstream #25): the number a human reads must carry its layer.
+
+    A campaign compared a tuning best against a protocol leaderboard and closed
+    the round as a null result; re-scored properly the same artifacts won. The
+    spec now forbids the comparison — this puts the warning where the error is
+    made.
+    """
+    import optuna
+
+    from mdp_tuning.__main__ import print_summary
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    study = optuna.create_study(direction="maximize")
+    study.optimize(lambda t: t.suggest_float("x", 0.0, 1.0), n_trials=3)
+    print_summary(study, eval_seeds=512)
+    out = capsys.readouterr().out
+    assert "TRIAL-LAYER score, 512 seeds" in out
+    assert "not comparable to a protocol number" in out
+    assert "maximum over 3 trials" in out       # the selection effect, named

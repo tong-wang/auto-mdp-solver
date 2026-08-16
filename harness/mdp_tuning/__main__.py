@@ -157,7 +157,8 @@ def show_space(scripts: DomainScripts, algo: str, tier: str = "all",
               f"dests, or a dest was renamed (unmatched-knob lint)")
 
 
-def print_summary(study: optuna.Study, top: int = 5) -> None:
+def print_summary(study: optuna.Study, top: int = 5,
+                  eval_seeds: int | None = None) -> None:
     done = [t for t in study.trials
             if t.state == optuna.trial.TrialState.COMPLETE]
     if not done:
@@ -181,6 +182,17 @@ def print_summary(study: optuna.Study, top: int = 5) -> None:
     print(f"  -> best model: {best.user_attrs.get('model_path', '?')}"
           + (f"  (scored on {best.user_attrs['score_checkpoint']} checkpoint)"
              if "score_checkpoint" in best.user_attrs else ""))
+    # spec §9.7: the trial layer is a different instrument from the protocol
+    # layer, and this is the number a human reads — so the warning belongs at
+    # the moment it is read, not only in the spec. A campaign that compared
+    # these two layers directly closed a tuning round as a null result on an
+    # inverted reading (upstream #25).
+    block = f", {eval_seeds} seeds" if eval_seeds else ""
+    print(f"  -> best trial value {best.value:.4f} is a TRIAL-LAYER score"
+          f"{block} — not comparable to a protocol number (§9.7). Re-score the "
+          f"winner with {{domain}}_ppo_eval.py before quoting it anywhere; it "
+          f"is also a maximum over {len(done)} trials, so it flatters the "
+          f"procedure even when it is honest about the artifact.")
 
 
 def resolve_tunable(scripts: DomainScripts, args: argparse.Namespace,
@@ -339,7 +351,7 @@ def main() -> None:
     )
 
     if args.summary_only:
-        print_summary(study)
+        print_summary(study, eval_seeds=args.eval_seeds)
         return
 
     print(f"study    : {study_name}  ({storage})")
@@ -389,7 +401,7 @@ def main() -> None:
     if failed:
         print(f"{failed} trial(s) crashed (typically NaN divergence) and were "
               f"penalized — see their train.log")
-    print_summary(study)
+    print_summary(study, eval_seeds=args.eval_seeds)
     report_importances(study, study_dir)
 
 

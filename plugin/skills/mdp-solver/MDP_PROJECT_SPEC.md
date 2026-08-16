@@ -1708,12 +1708,28 @@ quotes):
 
 | layer | where | episodes | job |
 |---|---|---|---|
-| trial | periodic eval inside a tuning trial, every ~5% of budget | ~512 CRN seeds | the tuner's signal: trial value = the **last** eval (it describes the artifact the trial ships); early stopping reads THIS curve, never the rollout curve — patience ~4 evals with a min-evals guard ~5, strict comparison (the fixed CRN block pairs the evals, so policy differences are not draw noise); `trial.report` on the same curve enables population pruning |
+| trial | periodic eval inside a tuning trial, every ~5% of budget | ~512 CRN seeds | the tuner's signal: trial value = the **last** eval (it describes the artifact the trial ships); early stopping reads THIS curve, never the rollout curve — patience ~4 evals with a min-evals guard ~5, strict comparison (the fixed CRN block pairs the evals, so policy differences are not draw noise); `trial.report` on the same curve enables population pruning. **Its scores are never quoted** — a trial value is a tuning signal on a different instrument, and comparing one to a protocol number manufactures a result in either direction |
 | screen | post-hoc over a training run's ~20 checkpoints (§8.6) | ~2048 CRN seeds | rank the checkpoints, pass the top-k to confirmation; its scores are never quoted |
 | protocol | `{domain}_ppo_eval.py` / benchmark evals | **~8192 evidence-grade** (2048 default for cheap domains) | confirm the top-k, crown the winner — the leaderboard number; a ladder run *exists* only once this TSV does |
 
 A smoke eval (train-script tail, ~50 episodes, "did it learn anything")
 stays outside the layers and is never quoted.
+
+**A tuning winner is an artifact, not a result.** It enters a leaderboard, a
+comparison, or a claim only through a protocol-layer TSV produced by
+`{domain}_ppo_eval.py`. Its trial value *selected* it; that value never
+*scores* it. The two are different instruments — the last eval of one run on a
+~512-seed block versus ~8192 seeds on the record block — so a trial-vs-protocol
+comparison manufactures a verdict in whichever direction the layers happen to
+differ. A campaign that skips the re-score can close a tuning round as a null
+result on numbers that were never comparable.
+
+**The reported best also carries a selection effect**, which changes how the
+re-score reads: it is a *maximum* over the study's trials, so the winner's
+protocol score is an honest measurement of **that artifact** but an optimistic
+estimate of what re-running the tuning *procedure* would yield. Claims about
+the procedure's value need a multi-seed retrain of the winning configuration;
+claims about the shipped artifact do not.
 
 **The leaderboard is a table**, in the domain `README.md`: one row per arm —
 the trained policy, every baseline, the reference/oracle if one exists —
