@@ -660,6 +660,41 @@ here and forbidden in a per-step reward).
 
 ---
 
+## 5c. `benchmarks` — declared non-RL solutions and their roles (root level)
+
+Spec §9.9. A benchmark already has a filename, an output path and a
+per-comparison gate role (`--baseline` / `--reference`); what needs declaring
+is where it sits **relative to the optimum**, which follows from how it is
+built rather than from any one comparison. Root-level for the same reason as
+`eval_metrics`: benchmarks are built in Phase B, so declaring one never moves
+`mdp_fingerprint()`.
+
+```jsonc
+"benchmarks": [
+  {
+    "name": "dp",                          // the {method} of {domain}_benchmark_dp.py
+    "role": "exact",                       // relaxed ≽ opt | exact = opt | feasible ≼ opt
+    "basis": "value iteration to 1e-9; exact up to Poisson tail truncation",
+    "source": "human_confirmed"            // provenance, as on eval_metrics
+  },
+  {
+    "name": "fluid",
+    "role": "relaxed",                     // reads the latent / drops a constraint
+    "basis": "deterministic fluid relaxation with hindsight demand",
+    "policies": ["fixed", "myopic"]        // §9.8: one file, several policies
+  }
+]
+```
+
+The RL artifact needs no entry — a trained policy under the real information
+set is `feasible` by construction. Two gates read the block: `mdp_conformance`
+checks declaration ↔ file correspondence (`benchmarks.declared`), and
+`mdp_gates --ir` refuses a must-beat comparison against an unbeatable arm and
+fails the gate if the candidate beats one. Optional and additive: an IR
+without the block validates unchanged and both checks stand down.
+
+---
+
 ## 6. Scenario-redesign additions (seed scheme v2)
 
 Added 2026-07-22 (spec §5, §6.3). All fields are

@@ -71,10 +71,13 @@ class GateReport:
     comparisons: list[Comparison] = field(default_factory=list)
     references: list[EvalStats] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # spec §9.9 violations: a feasible arm (the candidate) strictly beating an
+    # exact or relaxed one. Not a lost comparison — a bug report
+    role_violations: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        return all(c.passed for c in self.comparisons)
+        return all(c.passed for c in self.comparisons) and not self.role_violations
 
     def render(self) -> str:
         c = self.candidate
@@ -85,6 +88,7 @@ class GateReport:
             f"(SE, n={self.n_seeds}; sense={self.sense}, {better} is better)"
         ]
         lines += [f"  [WARN] {w}" for w in self.warnings]
+        lines += [f"  [BUG ] {v}" for v in self.role_violations]
         for cmp in self.comparisons:
             b = cmp.baseline
             verdict = "PASS" if cmp.passed else "FAIL"
@@ -135,6 +139,34 @@ def _read_eval_tsv(path: Path, metric: str | None) -> EvalStats:
     )
 
 
+def _method_from_path(path: Path) -> str | None:
+    """The `{method}` of a spec-§9 benchmark eval TSV, or None if not one.
+
+    `{domain}_benchmark_{method}_eval_{scenario}.tsv` — the same `{method}` that
+    names the solver file and keys the results directory, which is what lets a
+    declared role find its eval.
+    """
+    stem = path.name
+    marker = "benchmark_"
+    if marker not in stem:
+        return None
+    rest = stem[stem.index(marker) + len(marker):]
+    if "_eval" not in rest:
+        return None
+    return rest[:rest.index("_eval")] or None
+
+
+def roles_from_ir(schema_path: Path) -> dict[str, str]:
+    """{method: role} from an IR's `benchmarks` block; empty if none declared."""
+    from mdp_ir.schema import load_ir
+    ir = load_ir(schema_path)
+    return {b.name: b.role.value for b in getattr(ir, "benchmarks", [])}
+
+
+class IllTypedBaseline(ValueError):
+    """`--baseline` (must-beat) on a benchmark that cannot be beaten (§9.9)."""
+
+
 def compare_evals(
     candidate: Path,
     baselines: list[Path],
@@ -143,6 +175,7 @@ def compare_evals(
     metric: str | None = None,
     z_min: float = 2.0,
     sense: str = "maximize",
+    roles: dict[str, str] | None = None,
 ) -> GateReport:
     if sense not in ("maximize", "minimize"):
         raise ValueError(f"sense must be 'maximize' or 'minimize', got {sense!r}")
@@ -160,6 +193,19 @@ def compare_evals(
         if others:
             msg += f". Other *_mean columns present: {others}"
         report.warnings.append(msg)
+    roles = roles or {}
+    # §9.9: --baseline is must-beat, so nominating an arm that cannot be beaten
+    # by construction is a category error. Refuse the comparison rather than
+    # running it and reporting a routine loss. Checked before any file is read,
+    # so an ill-typed gate fails the same way whatever the numbers say.
+    for path in baselines:
+        role = roles.get(_method_from_path(path) or "")
+        if role in ("exact", "relaxed"):
+            raise IllTypedBaseline(
+                f"--baseline {path.name} is declared role={role} (spec §9.9): "
+                f"{'an exact solver is the optimum' if role == 'exact' else 'a relaxation is ≽ the optimum'}, "
+                f"so a deployable policy cannot beat it. Pass it as --reference."
+            )
     for path in baselines:
         base = _read_eval_tsv(path, metric or cand.metric)
         diff = cand.mean - base.mean            # raw mean difference (cand - base)
@@ -170,7 +216,18 @@ def compare_evals(
             Comparison(baseline=base, diff=diff, se=se, z=z, passed=z >= z_min)
         )
     for path in references:
-        report.references.append(_read_eval_tsv(path, metric or cand.metric))
+        ref = _read_eval_tsv(path, metric or cand.metric)
+        report.references.append(ref)
+        # the candidate is `feasible` by construction (a real policy under the
+        # real information set), so beating an exact or relaxed arm is
+        # impossible — §9.9: a bug report, not a result
+        role = roles.get(_method_from_path(path) or "")
+        if role in ("exact", "relaxed") and sense_sign * (cand.mean - ref.mean) > 0:
+            report.role_violations.append(
+                f"candidate ({cand.metric} = {cand.mean:.4f}) beats {ref.label} "
+                f"({ref.mean:.4f}), declared role={role} — impossible under §9.9: "
+                f"the eval, the bound, or the simulator is wrong. Not a result."
+            )
     return report
 
 
@@ -196,20 +253,36 @@ def main(argv: list[str]) -> int:
                     help="objective sense of the metric: maximize (higher is better, "
                          "default) or minimize (lower is better, e.g. a cost/regret "
                          "column). Must match the domain's objective sense.")
+    ap.add_argument("--ir", default=None, type=Path,
+                    help="domain schema declaring benchmark roles (spec §9.9). With it, "
+                         "--baseline on an exact/relaxed arm is refused, and a candidate "
+                         "beating one fails the gate as a bug report")
     args = ap.parse_args(argv)
 
     if not args.baseline and not args.reference:
         ap.error("nothing to compare: pass --baseline and/or --reference")
 
-    report = compare_evals(
-        candidate=args.candidate,
-        baselines=args.baseline,
-        references=args.reference,
-        n_seeds=args.n_seeds,
-        metric=args.metric,
-        z_min=args.z,
-        sense=args.sense,
-    )
+    roles: dict[str, str] = {}
+    if args.ir is not None:
+        try:
+            roles = roles_from_ir(args.ir)
+        except Exception as e:
+            ap.error(f"--ir {args.ir}: {type(e).__name__}: {e}")
+
+    try:
+        report = compare_evals(
+            candidate=args.candidate,
+            baselines=args.baseline,
+            references=args.reference,
+            n_seeds=args.n_seeds,
+            metric=args.metric,
+            z_min=args.z,
+            sense=args.sense,
+            roles=roles,
+        )
+    except IllTypedBaseline as e:
+        print(f"GATE REFUSED: {e}", file=sys.stderr)
+        return 2
     print(report.render())
     return 0 if report.ok else 1
 

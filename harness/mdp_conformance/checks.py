@@ -732,6 +732,49 @@ def _axis_tiers(ir) -> dict[str, str]:
     return tiers
 
 
+def check_benchmarks(h: DomainHandle) -> CheckResult:
+    """Declared benchmarks and benchmark files must be the same set (spec §9.9).
+
+    The declaration is what carries `role`, and a role nobody can trace to a
+    file is a second source of truth: a renamed method, a deleted solver, or an
+    arm quoted from an older run are all invisible without this check.
+    """
+    schemas = sorted(h.directory.glob("*_schema.json"))
+    if len(schemas) != 1:
+        return CheckResult("benchmarks.declared", "SKIP",
+                           "no single *_schema.json to read declarations from")
+    try:
+        from mdp_ir.schema import load_ir
+        ir = load_ir(schemas[0])
+    except Exception as e:
+        return CheckResult("benchmarks.declared", "SKIP",
+                           f"schema not loadable ({type(e).__name__}: {e})")
+    declared = {b.name: b for b in getattr(ir, "benchmarks", [])}
+    prefix = f"{h.name}_benchmark_"
+    on_disk = {
+        p.name[len(prefix):-len(".py")]
+        for p in h.directory.glob(f"{prefix}*.py")
+        if not p.name.endswith("_eval.py")
+    }
+    if not declared:
+        detail = "IR declares no benchmarks"
+        if on_disk:
+            detail += f"; {len(on_disk)} benchmark file(s) present: {sorted(on_disk)}"
+        return CheckResult("benchmarks.declared", "SKIP", detail)
+    missing_file = sorted(declared.keys() - on_disk)
+    undeclared = sorted(on_disk - declared.keys())
+    problems = []
+    if missing_file:
+        problems.append(f"declared with no {prefix}*.py: {missing_file}")
+    if undeclared:
+        problems.append(f"on disk but undeclared: {undeclared}")
+    if problems:
+        return CheckResult("benchmarks.declared", "FAIL", "; ".join(problems))
+    roles = ", ".join(f"{n}={b.role.value}" for n, b in sorted(declared.items()))
+    return CheckResult("benchmarks.declared", "PASS",
+                       f"{len(declared)} declared, all matched: {roles}")
+
+
 def _check_grid_axes(h: DomainHandle, GRIDS: dict) -> CheckResult:
     """Classify each grid axis by what it breaks (spec §5.6): tier 1 changes
     the action space (one policy cannot emit two); tier-2 horizon changes no
@@ -791,6 +834,7 @@ REGISTRY = [
     check_meta_v2,
     check_seed_key_helpers,
     check_grids,
+    check_benchmarks,
     check_init_state,
     check_gym_contract,
     check_determinism,

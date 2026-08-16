@@ -1778,7 +1778,25 @@ Two consequences worth stating because they are checkable rather than editorial:
 - **A `feasible` arm scoring strictly better than an `exact` or `relaxed` arm is impossible.** It means the eval, the bound, or the simulator is wrong — the RL policy beating a verified-optimal DP is not a result, it is a bug report.
 - **`relaxed` together with `feasible` brackets the optimum**, so a domain carrying both has a certified optimality gap *without* an exact solver — which is the common case for the domains that most need one.
 
-Name the role in the campaign record and beside the leaderboard; a relaxation and a heuristic look alike in a table of numbers, and the bracket they jointly form goes unstated unless something says which is which.
+**Declare the roles in the IR**, in the root-level `benchmarks` block — one entry per `{domain}_benchmark_{method}.py`, keyed by the same `{method}`:
+
+```json
+"benchmarks": [
+  {"name": "dp", "role": "exact",
+   "basis": "value iteration to 1e-9; exact up to Poisson tail truncation at mass < 1e-9",
+   "source": "human_confirmed"},
+  {"name": "myopic", "role": "feasible", "basis": "one-step lookahead"}
+]
+```
+
+`basis` is one line on *how* it is built — what determines the role, and where a caveat belongs; `policies` lists a §9.8 multi-policy solver's policies. Root level for the same reason as `eval_metrics`: benchmarks are built in Phase B, so declaring one never moves `mdp_fingerprint`. The RL artifact needs no entry — a trained policy under the real information set is `feasible` by construction. The block is optional and additive; an IR without it validates unchanged.
+
+Two gates read it, which is the point of declaring rather than describing:
+
+- **`mdp_conformance`** (`benchmarks.declared`) — every declared benchmark has a file and every file is declared, so a renamed method or a deleted solver cannot go unnoticed. SKIPs when nothing is declared.
+- **`mdp_gates --ir {domain}_schema.json`** — refuses `--baseline` on an `exact` or `relaxed` arm (exit 2: must-beat asks the candidate to beat a bound it cannot beat), and **fails the gate when the candidate beats an `exact` or `relaxed` reference**, quoting §9.9. Without `--ir` the gate behaves exactly as before.
+
+Name the role beside the leaderboard too; a relaxation and a heuristic look alike in a table of numbers, and the bracket they jointly form goes unstated unless something says which is which.
 
 ---
 

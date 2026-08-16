@@ -661,6 +661,56 @@ class MetricReduce(str, Enum):
     min = "min"      # episode minimum
 
 
+class BenchmarkRole(str, Enum):
+    """Where a benchmark sits relative to the optimum (spec §9.9).
+
+    Stated with ``≽`` ("at least as good as", §9.3) so the meaning survives
+    either objective sense — "upper bound" names the domain, not the benchmark.
+    """
+
+    relaxed = "relaxed"    # ≽ opt: drops a constraint or reads hidden state; unattainable
+    exact = "exact"        # = opt: solves the MDP
+    feasible = "feasible"  # ≼ opt: a real policy under the real information set
+
+
+class Benchmark(_Base):
+    """A declared non-RL solution, and the role that says where it can sit.
+
+    Spec §9 already gives a benchmark a filename (``{domain}_benchmark_
+    {method}.py``), an output path, and a per-comparison gate role
+    (``--baseline`` / ``--reference``). What it had nowhere to put is §9.9's
+    ``role``, which is *not* a per-comparison choice: it follows from how the
+    benchmark is built, and two things depend on it —
+
+    * a ``feasible`` arm scoring strictly better than an ``exact`` or
+      ``relaxed`` one is impossible, so it indicts the eval, the bound or the
+      simulator (``mdp_gates`` enforces this once roles are declared);
+    * ``--baseline`` (must-beat) on a non-``feasible`` arm is a category error:
+      it asks the candidate to beat a bound it cannot beat by construction.
+
+    The RL artifact needs no entry — a trained policy under the real
+    information set is ``feasible`` by construction.
+
+    Declared at the IR root, deliberately OUTSIDE the mdp block, for the same
+    reason ``eval_metrics`` is: benchmarks are built in Phase B, long after the
+    Phase-A freeze, and declaring one must never move ``mdp_fingerprint()``."""
+
+    name: str                    # the {method} of {domain}_benchmark_{method}.py
+    role: BenchmarkRole
+    # one line on HOW it is built — what determines the role, and where a
+    # caveat belongs ("exact up to Poisson tail truncation at mass < 1e-9")
+    basis: str = ""
+    # §9.8: one solver file may expose several policies through --policy
+    policies: list[str] = Field(default_factory=list)
+    source: str = ""             # provenance, as on EvalMetric
+
+    @model_validator(mode="after")
+    def _check_name(self) -> "Benchmark":
+        if not _IDENT.fullmatch(self.name):
+            raise ValueError(f"benchmarks name {self.name!r} is not an identifier")
+        return self
+
+
 class EvalMetric(_Base):
     """A bystander metric: it describes, it never decides.
 
@@ -1411,6 +1461,11 @@ class MdpIR(_Base):
     # level by design — outside the mdp block, so mdp_fingerprint is
     # unaffected and metrics stay appendable after the Phase-A freeze
     eval_metrics: list[EvalMetric] = Field(default_factory=list)
+    # declared non-RL solutions and their §9.9 roles. Root level for the same
+    # reason as eval_metrics: built in Phase B, so declaring one must not move
+    # mdp_fingerprint. Optional — an IR without it validates unchanged and the
+    # role-aware checks skip
+    benchmarks: list[Benchmark] = Field(default_factory=list)
     assumptions_log: list[str] = Field(default_factory=list)
     # the slot->candidate selection this IR was resolved under (catalog ⊕
     # selection, IR_LAYERING_PLAN §10); None for a legacy resolved single
