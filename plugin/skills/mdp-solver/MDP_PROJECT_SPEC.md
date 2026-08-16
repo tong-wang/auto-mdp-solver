@@ -571,8 +571,15 @@ class {Domain}ScenarioSource:
   inferred — a realized latent field on the scenario is **not** automatically
   observed; observability is decided only by the observation modes (§7). The
   deployable policy (§12) must never require a hidden latent as input, and a
-  baseline that reads one is *clairvoyant* — an upper bound, labeled as such
-  in eval output.
+  baseline that reads one is *clairvoyant*: it solves an information
+  relaxation, so its value is `≽` the true optimum (§9.3) and it is **not
+  attainable by any deployable policy** — the `relaxed` role of §9.9. Label it
+  as such in eval output, with the direction taken from `objective.sense`.
+  Never call it "an upper bound": the same construction bounds from above in a
+  maximize domain and from below in a minimize one, so the word names the
+  domain rather than the benchmark — and every inventory domain here is a
+  minimize domain, which is where following the old wording literally wrote an
+  inverted label into the file §5.2 says the label must appear.
 
 ### 5.3 `{Domain}MixtureSampler` (optional)
 
@@ -1564,6 +1571,11 @@ is not given (neither privileges any particular name). The objective's
 **sense** (maximize vs minimize) is the domain's, and callers pass it through
 (`mdp_gates --sense`, `mdp_tuning --minimize`).
 
+**Write `≽` for *at least as good as*** — larger under `maximize`, smaller under
+`minimize`. State every bound direction with `≽`/`≼`, **never** as
+"upper"/"lower": those invert with the sense, so the word ends up naming the
+domain rather than the benchmark. This is the vocabulary §5.2 and §9.9 use.
+
 Example — a pricing domain (`dynamic_pricing`), whose primary objective is
 `profit` (maximize):
 
@@ -1750,6 +1762,23 @@ different uncertainties — report both, never one as the other.
 ### 9.8 Multiple policies per benchmark solver
 
 A benchmark solver may expose several closely-related policies through a `--policy` argument (e.g. a fluid-relaxation file offering `fixed`, `myopic`, and `random`), rather than one file per policy. Name the file after the method family it embodies (`{domain}_benchmark_fluid.py`), and encode the selected policy in the eval TSV name (`benchmark_myopic_eval_{scenario}.tsv`) so each benchmark run writes a distinct, gate-referenceable file.
+
+### 9.9 Benchmark roles — where a benchmark sits relative to the optimum
+
+A benchmark's `--baseline`/`--reference` role is a per-comparison choice (§9). Its **position relative to the optimum** is not: it follows from how the benchmark is built, and it is what makes a leaderboard readable. Three positions, stated with `≽` (§9.3) so they hold under either sense:
+
+| role | how it is built | vs the optimum | attainable? |
+|---|---|---|---|
+| `relaxed` | drops a constraint, or grants information the deployed policy will not have (LP/Lagrangian relaxation; clairvoyant / hindsight — §5.2) | `≽ opt` | no |
+| `exact` | solves the MDP (a converged DP over the true model) | `= opt` | yes |
+| `feasible` | runs a real policy under the real information set — heuristics, fitted rules, **and the RL artifact itself** | `≼ opt` | yes |
+
+Two consequences worth stating because they are checkable rather than editorial:
+
+- **A `feasible` arm scoring strictly better than an `exact` or `relaxed` arm is impossible.** It means the eval, the bound, or the simulator is wrong — the RL policy beating a verified-optimal DP is not a result, it is a bug report.
+- **`relaxed` together with `feasible` brackets the optimum**, so a domain carrying both has a certified optimality gap *without* an exact solver — which is the common case for the domains that most need one.
+
+Name the role in the campaign record and beside the leaderboard; a relaxation and a heuristic look alike in a table of numbers, and the bracket they jointly form goes unstated unless something says which is which.
 
 ---
 
