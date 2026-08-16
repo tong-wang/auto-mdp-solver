@@ -643,6 +643,13 @@
   },
   "benchmarks": [
     {
+      "name": "oracle",
+      "role": "relaxed",
+      "column": "oracle_mean",
+      "basis": "clairvoyant best arm: reads the realized arm means, T * max_i mu_i on the same seeds; emitted by mab_benchmark_common.py on every eval rather than run as a solver, so it has no {method} file",
+      "source": "human_confirmed"
+    },
+    {
       "name": "thompson",
       "role": "feasible",
       "basis": "Thompson sampling on the exact conjugate posterior (Normal-Gamma / Beta); one posterior draw per arm per round, pull the argmax",
@@ -673,6 +680,24 @@
       "source": "human_confirmed"
     }
   ],
+  "research_questions": {
+    "tier2": [
+      {
+        "stance": "confirm",
+        "structure": "index policy (posterior mean + coefficient x posterior sd)",
+        "claim": "the trained net's action rule is an index policy of the classical form, recoverable from the artifact",
+        "instrument": "mab_policy_probe.py structural-form fit + action agreement vs thompson (#E24, #E25)",
+        "priority": "primary"
+      },
+      {
+        "stance": "discover",
+        "structure": "time-varying quantile coefficient c(ttg/T)",
+        "claim": "the recovered coefficient depends on time-to-go, and the fitted rule scored as a benchmark beats thompson",
+        "instrument": "mab_benchmark_rule.py scored at the protocol layer (#E26), with the grid re-fit off the tuning cell (#E32)",
+        "priority": "primary"
+      }
+    ]
+  },
   "assumptions_log": [
     "Two scenario-mode branches, independent leaderboards (human-decided): Bernoulli (base instance) and Gaussian ('gaussian' instance); reward scales differ so no head-to-head comparison.",
     "Canonical priors (human-decided): Bernoulli p_i ~ Uniform(0,1) i.i.d.; Gaussian mu_i ~ N(0,1) i.i.d. with known sigma=1.",

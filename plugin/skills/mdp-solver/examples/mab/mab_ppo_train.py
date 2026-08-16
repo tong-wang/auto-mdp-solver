@@ -473,11 +473,27 @@ def tee_console(outdir: Path, name: str = "train.log") -> None:
     sys.stderr = _Tee(sys.stderr, fh)
 
 
-def write_args(args: argparse.Namespace, outdir: Path) -> None:
+def write_args(args: argparse.Namespace, outdir: Path,
+               algo_class: str = "PPO") -> None:
+    # spec §8.4: beside the domain's own flags, the log carries a literal
+    # provenance set — the resolved class, the SB3 version, and the frozen IR
+    # this run was trained against. `mask: True` names the class only to
+    # someone who knows this domain; `algo_class` names it to a checker.
     with open(outdir / f"{args.grid_name or args.scenario_name}_ppo_args.txt", "w") as f:
         for k, v in sorted(vars(args).items()):
             f.write(f"{k}: {v}\n")
+        f.write(f"algo_class: {algo_class}\n")
         f.write(f"sb3_version: {stable_baselines3.__version__}\n")
+        f.write(f"ir_mdp_fingerprint: {_ir_fingerprint()}\n")
+
+
+def _ir_fingerprint() -> str:
+    """The frozen model this run trained against, or '?' if unreadable."""
+    try:
+        from mdp_ir.schema import load_ir
+        return load_ir(Path(__file__).resolve().parent / "mab_schema.json").mdp_fingerprint()
+    except Exception:
+        return "?"
 
 
 # ---------------------------------------------------------------------------

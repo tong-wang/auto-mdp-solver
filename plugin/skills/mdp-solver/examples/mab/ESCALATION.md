@@ -1030,6 +1030,18 @@ it be configured.
                         carries {locus}.{axis} so the mis-attachment check can fire.
                         Anchors added (<a id="MAP">, <a id="E{n}"> on all 37 entries) so
                         rule 2's bidirectional citation has its mechanism.
+2026-08-16  DECLARED    the IR gains what v0.8.5/v0.8.8 made declarable, closing the audit
+                        gaps this example carried in prose: `benchmarks` now holds all SIX
+                        arms — the five solvers plus the ORACLE as a column-sourced
+                        `relaxed` entry (`column: oracle_mean`), which is the arm that makes
+                        §9.9's bracket machine-checkable here and had no declaration shape
+                        until v0.8.8; and `research_questions.tier2` states the campaign's
+                        two stances — `confirm` on the index-policy form (#E24/#E25) and
+                        `discover` on the time-varying quantile c(ttg/T) whose fitted rule
+                        beat thompson (#E26/#E32). Both were already true of the campaign;
+                        neither was readable from the IR. No number, verdict or mark moved,
+                        and both fingerprints are unchanged (mdp e385f662a857, structural
+                        36688c7707f1) — the blocks are root-level for exactly that reason.
 ```
 
 ---

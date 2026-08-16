@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
+import stable_baselines3
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import (
     BaseCallback,
@@ -30,6 +31,7 @@ from inv_single_scenarios import SCENARIOS
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Train PPO on single-echelon inventory.")
@@ -172,10 +174,25 @@ def tee_console(outdir: Path, name: str = "train.log") -> None:
     sys.stderr = _Tee(sys.stderr, fh)
 
 
+def _ir_fingerprint() -> str:
+    """The frozen model this run trained against, or '?' if unreadable (§8.4)."""
+    try:
+        from mdp_ir.schema import load_ir
+        return load_ir(Path(__file__).resolve().parent / "inv_single_schema.json").mdp_fingerprint()
+    except Exception:
+        return "?"
+
+
 def write_args(args: argparse.Namespace, outdir: Path) -> None:
     with open(outdir / f"{args.scenario_name}_ppo_args.txt", "w") as f:
         for k, v in sorted(vars(args).items()):
             f.write(f"{k}: {v}\n")
+        # spec §8.4 provenance set: the resolved class, the SB3 version, and
+        # the frozen IR this run was trained against — literal keys, so a
+        # checker reads them without knowing what any domain flag means
+        f.write("algo_class: PPO\n")
+        f.write(f"sb3_version: {stable_baselines3.__version__}\n")
+        f.write(f"ir_mdp_fingerprint: {_ir_fingerprint()}\n")
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
+import stable_baselines3
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
@@ -103,6 +104,16 @@ def build_run_name(args: argparse.Namespace) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
+def _ir_fingerprint() -> str:
+    """The frozen model this run trained against, or '?' if unreadable (§8.4)."""
+    try:
+        from mdp_ir.schema import load_ir
+        return load_ir(Path(__file__).resolve().parent
+                       / "dynamic_pricing_schema.json").mdp_fingerprint()
+    except Exception:
+        return "?"
+
+
 def main() -> None:
     args = parse_args()
     scenario = SCENARIOS[args.scenario_name]
@@ -115,6 +126,10 @@ def main() -> None:
     with open(outdir / f"{args.scenario_name}_ppo_args.txt", "w") as f:
         for k, v in sorted(vars(args).items()):
             f.write(f"{k}: {v}\n")
+        # spec §8.4 provenance set — literal keys, read without domain knowledge
+        f.write("algo_class: PPO\n")
+        f.write(f"sb3_version: {stable_baselines3.__version__}\n")
+        f.write(f"ir_mdp_fingerprint: {_ir_fingerprint()}\n")
 
     print(f"observation_mode={args.observation_mode}  action_mode={args.action_mode}  "
           f"reward_mode={args.reward_mode}  outdir={outdir}")

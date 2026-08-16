@@ -26,6 +26,7 @@ import ast
 import copy
 import dataclasses
 import math
+from pathlib import Path
 
 import numpy as np
 
@@ -786,6 +787,87 @@ def check_benchmarks(h: DomainHandle) -> CheckResult:
     return CheckResult("benchmarks.declared", "PASS", detail)
 
 
+_PROVENANCE_KEYS = ("algo_class", "sb3_version", "ir_mdp_fingerprint")
+
+# resolved SB3 class -> the IR's Algo value. The spec records the class the run
+# actually constructed, so this map is the whole translation a generic check
+# needs — no domain knowledge about which flag selects what.
+_CLASS_TO_ALGO = {
+    "PPO": "ppo",
+    "MaskablePPO": "maskable_ppo",
+    "RecurrentPPO": "recurrent_ppo",
+}
+
+
+def _args_logs(h: DomainHandle) -> list[Path]:
+    results = h.directory / "results"
+    return sorted(results.rglob("*_args.txt")) if results.is_dir() else []
+
+
+def _parse_args_log(path: Path) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in path.read_text(errors="replace").splitlines():
+        key, sep, value = line.partition(":")
+        if sep:
+            out[key.strip()] = value.strip()
+    return out
+
+
+def check_run_provenance(h: DomainHandle) -> CheckResult:
+    """Run directories record what produced them (spec §8.4).
+
+    The args log was already the declared home for run provenance — §8.6 asks it
+    to carry the SB3 version — but nothing said what it must contain, so its
+    contents were whatever flags a domain happened to expose. That is why the
+    trained artifact's class could only be *derived*, and only with domain
+    knowledge (`mask: True` names the class to someone who knows the domain).
+    Recording `algo_class` is what makes the artifact-vs-declaration check
+    possible at all.
+    """
+    logs = _args_logs(h)
+    if not logs:
+        return CheckResult("run.provenance", "SKIP", "no run directory to read")
+    declared: set[str] = set()
+    schemas = sorted(h.directory.glob("*_schema.json"))
+    if len(schemas) == 1:
+        try:
+            from mdp_ir.schema import load_ir
+            ir = load_ir(schemas[0])
+            declared = {a.value for a in ir.rl.declared_algos()}
+        except Exception:
+            declared = set()
+    legacy, partial, wrong_class = [], [], []
+    for log in logs:
+        rec = _parse_args_log(log)
+        present = [k for k in _PROVENANCE_KEYS if k in rec]
+        if not present:
+            legacy.append(log.name)
+            continue
+        missing = [k for k in _PROVENANCE_KEYS if k not in rec]
+        if missing:
+            partial.append(f"{log.parent.name}/{log.name}: missing {missing}")
+        cls = rec.get("algo_class")
+        if cls and declared:
+            algo = _CLASS_TO_ALGO.get(cls)
+            if algo is None or algo not in declared:
+                wrong_class.append(
+                    f"{log.parent.name}: algo_class={cls!r} not in declared "
+                    f"{sorted(declared)}")
+    if partial or wrong_class:
+        return CheckResult("run.provenance", "FAIL",
+                           "; ".join((partial + wrong_class)[:4]))
+    if legacy and len(legacy) == len(logs):
+        return CheckResult("run.provenance", "WARN",
+                           f"{len(legacy)} run(s) predate the §8.4 provenance set "
+                           f"(no {list(_PROVENANCE_KEYS)}); re-runs will carry it")
+    detail = f"{len(logs) - len(legacy)} run(s) carry the full provenance set"
+    if legacy:
+        detail += f"; {len(legacy)} pre-convention"
+    if declared:
+        detail += f"; algo_class within declared {sorted(declared)}"
+    return CheckResult("run.provenance", "PASS", detail)
+
+
 def check_research_questions(h: DomainHandle) -> CheckResult:
     """A declared confirm/discover stance owes the §14 artifacts (spec §1, §14).
 
@@ -888,6 +970,7 @@ REGISTRY = [
     check_grids,
     check_benchmarks,
     check_research_questions,
+    check_run_provenance,
     check_init_state,
     check_gym_contract,
     check_determinism,

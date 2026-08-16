@@ -1412,6 +1412,16 @@ Result: `PPO_20260630_224416_obssales_actdiscrete_rewprofit` (all defaults) or `
 - Args log: `{scenario_name}_{algo}_args.txt`
 - Eval output: `ppo_eval_{eval_scenario}.tsv` — the eval scenario is encoded in the filename so that evaluating the same model on different scenarios produces non-overwriting files (see §9.6)
 
+**The args log carries a minimum provenance set**, beside whatever flags the domain exposes. Keys are literal, so a checker reads them without domain knowledge:
+
+| key | value | why |
+|---|---|---|
+| `algo_class` | the **resolved class actually constructed** — `PPO`, `MaskablePPO`, `RecurrentPPO` — not the flag that selected it | a flag like `mask: True` says the class only to someone who knows that domain; the class itself is what a generic check can compare against `rl.algos` |
+| `sb3_version` | `stable_baselines3.__version__` | already asked for by §8.6; stated here so the whole set lives in one place |
+| `ir_mdp_fingerprint` | the IR's `mdp_fingerprint()` at training time | ties the run to the frozen model it was trained against, so a run cannot be silently re-attributed to a different IR |
+
+Domains stay free to add their own keys. `mdp_conformance run.provenance` reads the set: a log carrying some of the keys but not all FAILs, a log carrying none is treated as pre-convention and WARNs, and no run directory SKIPs. It also fails a run whose `algo_class` is not among the IR's declared classes (`rl.algo`/`rl.algos`) — the artifact-vs-declaration check, which is only possible because the class is recorded rather than inferred.
+
 ### 8.5 Policy selection (MLP vs CNN)
 
 Pick the SB3 policy family from the **observation shape**, with a CLI override:
