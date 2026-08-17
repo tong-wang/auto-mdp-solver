@@ -1,14 +1,18 @@
 # mab — plain-English restatement (Phase A round-trip artifact)
 
-IR: `mab_schema.json` · `mdp` fingerprint `e385f662a857` ·
+IR: `mab_schema.json` · `mdp` fingerprint `5bb25e684405` ·
 structural fingerprint `36688c7707f1` · seed scheme v2
 
-*(Fingerprints current as of the shipped schema. They moved twice after the
-Phase-A freeze, both recorded in §IR-CHANGELOG: **F3** promoted K and T to
+*(Fingerprints current as of the shipped schema. They moved after the Phase-A
+freeze, each move recorded in §IR-CHANGELOG: **F3** promoted K and T to
 axis-tagged scenario constants, **F4** widened state-variable bounds to cover
-the long-horizon instances, and **F5** made `gaussian` the slot default (the
-branch this campaign reports) while adding an explicit `bernoulli` instance. `546617c32435` / `072c7f55c967` are the
-pre-F3 values and appear in entries written before that move.)*
+the long-horizon instances, **F5** made `gaussian` the slot default (the
+branch this campaign reports) while adding an explicit `bernoulli` instance,
+and **F6** declared the `mdp.model` theory layer and regrouped the file into
+model / design / rendering — which moved the `mdp` freeze token once
+(`e385f662a857` → `5bb25e684405`) and left the structural hash untouched.
+`546617c32435` / `072c7f55c967` are the pre-F3 values and appear in entries
+written before that move.)*
 
 (Frozen 2026-07-24 at `ad610581f715`. Re-confirmed three times since, each
 structural, so each moved the fingerprint. 2026-07-28: the claims below were

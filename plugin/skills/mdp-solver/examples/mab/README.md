@@ -91,12 +91,15 @@ payouts were comonotone in p. The law the agent saw was still correct — one ar
 is revealed per round — but it is not the standard bandit model. `mab_test.py`
 carries the regression test.
 
-Fingerprints of the shipped schema: `mdp` **`e385f662a857`**, structural
+Fingerprints of the shipped schema: `mdp` **`5bb25e684405`**, structural
 **`36688c7707f1`**. Both moved after the Phase-A freeze and each move is
 recorded in §IR-CHANGELOG — **F3** (K and T become axis-tagged scenario
 constants), **F4** (state-variable bounds widened for the long-horizon
-instances) and **F5** (`gaussian` becomes the slot default, with `bernoulli`
-gaining an explicit instance so it stays gated). Earlier values, in order: `546617c32435` / `072c7f55c967` pre-F3;
+instances), **F5** (`gaussian` becomes the slot default, with `bernoulli`
+gaining an explicit instance so it stays gated) and **F6** (the `mdp.model`
+theory layer declared and the file regrouped — the freeze token moved once,
+`e385f662a857` → `5bb25e684405`, while the structural hash did **not**: the
+theory's statement is new, the executable form is untouched). Earlier values, in order: `546617c32435` / `072c7f55c967` pre-F3;
 `cb3cf419ebf9` / `8cc218500b55` before the arm key; `ad610581f715` when the
 branches were two guarded sources with twenty scalar latent constants.
 
