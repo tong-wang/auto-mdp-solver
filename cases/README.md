@@ -10,6 +10,31 @@ an `mdp_ir/` extension is a good case.
 Trained artifacts (`results/`) are gitignored; each case README's commands
 must reproduce them.
 
+## What is here
+
+Two version columns, and they mean different things (see the last section):
+**built** is the tag a case's numbers were produced and gated against and never
+changes; **gated** is the tag its conformance has been carried through.
+
+| case | what it stresses | built | gated |
+|---|---|---|---|
+| `clark_scarf` — serial multi-echelon inventory, Clark & Scarf (1960) | A **coupled multi-stage decision**: N simultaneous shipments per period, each clipped to what its source holds, so the top of the chain anticipates demand it never sees. Carries an `exact` DP verified against a brute-force joint-state solve rather than taken on the theorems' word — the first draft was 30% suboptimal and entirely convincing. | v0.9.5 | v0.9.5 |
+| `fnv` — fresh-newsvendor sequential ordering under MMFE | **Progressive information revelation**: a martingale signal refines while cost rises, so the decision is when to commit rather than how much. Two demand transforms are separate leaderboards. Demoted from `examples/` 2026-08-13 for shipping no train/eval pair; the solve leg and record were contributed after. | v0.8.0 | v0.9.5 |
+| `adi_flex` — inventory with advance demand information and flexible delivery, Wang & Toktay (2008) §4 | A **joint ordering + allocation** decision under **demand crossover**: orders are seen when placed but due now, next period, or two out, so stock spent shipping a not-yet-due order may be stock an urgent one needs tomorrow — the manager chooses how much to buy *and* how much to withhold. The one case whose optimum is **bracketed rather than exact**: a relaxation bounds it from below and heuristics from above — the shape the `relaxed`/`feasible` roles exist for, though this case declares no `benchmarks` block and its four benchmark files carry no role. **Predates the contribution contract** — see below. | — | v0.9.5 |
+
+Gates green at v0.9.5, **zero FAILs on all three**: conformance `clark_scarf`
+18/21, `fnv` 17/22, `adi_flex` 15/21; `mdp_ir.laws` 8/9, 7/9, 7/9. Every
+un-passed law is a SKIP, and which one it is says something: on all three it is
+`mixture_equivalence` (none declares a mixture), plus `path_independence` on
+`fnv` and `invariants` on `adi_flex`, which declares none to check.
+
+**`adi_flex` does not meet the contract below** and is kept because it gates,
+not as an exemplar of a contribution. It has no `CLAUDE.md`, no `ESCALATION.md`,
+no `PLAYBOOK.md` and no `adi_flex_test.py`, so it carries no campaign record and
+no claim about its own numbers — which is why it has no `built` tag. It is the
+one entry here to read *last*: `clark_scarf` is the current reference for what a
+case looks like.
+
 ## Contributing a case
 
 External case contributions are welcome — they are exactly how this directory
@@ -75,11 +100,17 @@ maintainer-curated).
 Demotion is the same move in reverse, and is not a failure verdict: an
 example that no longer earns its place as a *few-shot exemplar* — too
 specific a problem, or incomplete as a pipeline run — returns here, where it
-still gates. `fnv` moved back on 2026-08-13: it ships no train/eval pair, so
-it never exercised the solve leg, and its MMFE ordering problem is narrower
-than the shapes an exemplar should teach. Note its solve half exists in the
-originating research repo, so completing it is a contribution of the missing
-scripts, not a fresh case.
+still gates. `fnv` moved back on 2026-08-13: at the time it shipped no
+train/eval pair, so it never exercised the solve leg, and its MMFE ordering
+problem is narrower than the shapes an exemplar should teach.
+
+That first reason no longer holds — PR #15 contributed the solve leg, the
+campaign record and a §14 readback that recovers the paper's structure, and
+PR #17 retracted a §14.2 improvement claim after a grid mean was found to hide
+a sign flip. Both leaderboards now run to their DP. Demotion is not a standing
+verdict: re-promotion is a fresh decision against the criteria above, and the
+open question for `fnv` is the second reason — whether the shape is broad
+enough for an exemplar — not the missing scripts.
 
 ## After a case is merged
 
