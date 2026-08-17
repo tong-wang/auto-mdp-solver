@@ -271,8 +271,8 @@ Two side-effects worth their own line:
 - **The regroup broke `fnv_test.py`** — it read `["mdp"]["scenario"]` off the
   raw JSON, a path that exists only in the flat layout, so collection died with
   `KeyError: 'scenario'`. Fixed to read through `load_ir`, which flattens both.
-  **The same latent break sits in `examples/mab` (18 raw `["mdp"]` reads),
-  `examples/inv_single` (7) and `examples/dynamic_pricing` (1)** — any case
+  **The same latent break sits in `examples/mab` (21 raw `["mdp"]` reads),
+  `examples/inv_single` (9) and `examples/dynamic_pricing` (1)** — any case
   adopting the grouped layout breaks its own test file at collection time, and
   `--regroup` gives no warning. Not fixed here: it is a pipeline defect, not a
   `fnv` one, and belongs in its own change. Note there are already **two
@@ -282,6 +282,14 @@ Two side-effects worth their own line:
   the declared enumeration exactly. They agree on `fnv` because `mmmfe`
   overrides constants only. Whichever the pipeline change picks, it should pick
   one.
+
+  **Filed upstream as issue #42** (2026-08-17), which measures what the counts
+  above only imply: regroup those three schemas and collection goes 69 → 0,
+  26 → 0, 9 → 0, because `mab` and `inv_single` bind the raw document at module
+  scope. It also places this as the *third* instance of one defect class —
+  issue #37 (fixed in v0.9.3) was `--all-instances` reading
+  `raw["mdp"]["scenario"]`, the same root cause one layer down, whose fix never
+  generalized to the exemplars or to the contract.
 
 ## LEDGER
 

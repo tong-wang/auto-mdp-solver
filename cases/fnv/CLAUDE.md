@@ -156,8 +156,9 @@ same day**, citing the finding (#E…) that paid for it.
   the exact-enumeration path (`load_ir` resolves the catalog, so it drops any
   instance that re-selects a slot; `fnv`'s `mmmfe` overrides constants only, so
   the two agree here). `--regroup` does not warn, and the same read still sits
-  in `examples/mab` (18 sites), `examples/inv_single` (7) and
-  `examples/dynamic_pricing` (1).
+  in `examples/mab` (21 sites), `examples/inv_single` (9) and
+  `examples/dynamic_pricing` (1) — filed as issue #42, which measures the blast
+  radius: regroup those schemas and collection drops 69 → 0, 26 → 0, 9 → 0.
 - **`mdp.model` is the theory, and it is NOT where design choices go** (§5.0).
   Three things this case renders are design, not model, and the file now says
   so: the arithmetic cost ladder (the paper assumes only `c_1 < … < c_N < r`),
