@@ -54,7 +54,7 @@ The repo-root `CLAUDE.md` carries the cross-domain rules.
 | doc | what it is |
 |---|---|
 | `README.md` | layout, usage commands, leaderboards |
-| `ESCALATION.md` | the campaign: §MAP, §IR-CHANGELOG (F1), §LEDGER #E1–#E9. **Closed 2026-08-14** |
+| `ESCALATION.md` | the campaign: §MAP, §IR-CHANGELOG (F1, F2), §LEDGER #E1–#E11. **Closed 2026-08-14** |
 | `INTERPRET.md` | policy readback, both branches — the structure IS recovered (§14) |
 | `PLAYBOOK.md` | the case-close digest: LV1–LV7, FM1–FM3, MR1–MR2, envelope verdict |
 | `fnv_schema.json` | **the IR — authoritative** for the problem definition |
@@ -71,13 +71,21 @@ checked out. The campaign below was run against **v0.8.0**. The IR half landed
 in v0.8.0 (demoted from `examples/` for shipping no train/eval pair); the solve
 leg and campaign record were contributed after.
 
+**Declarations carried through v0.9.5** (2026-08-17, `ESCALATION.md`
+§IR-CHANGELOG F2) — `mdp.model`, the grouped `mdp` layout, `benchmarks` and
+`research_questions`. Numbers were **not** re-run and did not move: F2 declared
+the theory layer only, the structural (rendering) fingerprint is unmoved, and
+the step-7b trajectory re-renders byte-identical. Gates at v0.9.5: conformance
+**20/22** (was 17/22), laws 7/9, differential MATCH on both instances, 19 domain
+tests — zero FAILs.
+
 ## Commands
 
 Run from `fnv/` unless noted. Always pin threads for training — torch
 oversubscribes.
 
 ```bash
-# gates (conformance/laws/differential run from the PARENT of fnv/)
+# gates (conformance/laws/differential run from cases/, the parent of fnv/)
 python -m mdp_ir fnv/fnv_schema.json
 python -m mdp_conformance fnv
 python -m mdp_ir.laws fnv
@@ -137,6 +145,22 @@ same day**, citing the finding (#E…) that paid for it.
   from `fnv_gym.py` — an artifact of the period when the IR half was kept
   byte-identical to a downstream copy. Harmless, and asserted against the gym in
   that file's `__main__` smoke test.
+- **The `mdp` block is in the GROUPED layout** (`model` / `design` /
+  `rendering`, v0.9.1). It is a *file layout only* — in memory the block is
+  flat, both layouts load, and every hash is computed after flattening. But
+  **anything reading the raw JSON by path must not assume the flat shape**:
+  `["mdp"]["scenario"]` exists only in the flat layout, and that exact read is
+  what broke `fnv_test.py` at collection time when F2 regrouped the file. Go
+  through `load_ir`, which flattens both. `--regroup` does not warn, and the
+  same read still sits in `examples/inv_single` and `examples/dynamic_pricing`.
+- **`mdp.model` is the theory, and it is NOT where design choices go** (§5.0).
+  Three things this case renders are design, not model, and the file now says
+  so: the arithmetic cost ladder (the paper assumes only `c_1 < … < c_N < r`),
+  the Brownian volatility schedule (the per-epoch variances are free), and
+  `order_max` (the model bounds an order only below, at 0). Before adding a
+  quantity, apply §5.0's tie-breaker — *delete it: does the model change?* —
+  and keep benchmark/tractability vocabulary out of the model layer entirely;
+  `model.boundary` WARNs on it.
 - **The record eval is the deterministic argmax here** — the action is a
   single continuous order quantity and exploration plays no role at
   inference, so `deterministic=True` is the deployment mode. A stochastic

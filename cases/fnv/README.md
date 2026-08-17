@@ -189,12 +189,18 @@ conclusion changes at that factor (the smallest, Δ(L1−L0), is ~14 SE either
 way), but one §14.2 claim did — see `INTERPRET.md`. Report the median and a
 sign test beside any grid mean whose per-cell deltas are heavy-tailed.
 
-| arm | what it is | profit | Δ vs optimum | % of bar |
-|---|---|---|---|---|
-| `prop2` | **optimum** — the paper's Prop 2 recursion (`--reference`) | **0.888334** | — | — |
-| `dp` | **the same optimum**, by an independent value-function solver | **0.888334** | −0.0000001 | 0.00% |
-| PPO, best of 9 | best confirmed checkpoint (L0 seed2, step 1.4M) | 0.886428 | −0.001907 ± 0.000077 | −0.21% |
-| `myopic` | **must-beat baseline** — safety stocks that ignore future ordering (`--baseline`) | 0.878686 | −0.009649 ± 0.000517 | −1.09% |
+Roles are the ones declared in `fnv_schema.json`'s `benchmarks` block (§9.9):
+`exact` = solves the MDP, `feasible` = a real policy under the real information
+set. FNV has no `relaxed` arm — it does not need one, because it has an exact
+bar. A `feasible` arm above an `exact` one would be a **bug report**, not a
+result, and `mdp_gates --ir fnv/fnv_schema.json` now enforces that.
+
+| arm | role | what it is | profit | Δ vs optimum | % of bar |
+|---|---|---|---|---|---|
+| `prop2` | **exact** | **optimum** — the paper's Prop 2 recursion (`--reference`) | **0.888334** | — | — |
+| `dp` | **exact** | **the same optimum**, by an independent value-function solver | **0.888334** | −0.0000001 | 0.00% |
+| PPO, best of 9 | feasible | best confirmed checkpoint (L0 seed2, step 1.4M) | 0.886428 | −0.001907 ± 0.000077 | −0.21% |
+| `myopic` | feasible | **must-beat baseline** — safety stocks that ignore future ordering (`--baseline`) | 0.878686 | −0.009649 ± 0.000517 | −1.09% |
 
 `dp` and `prop2` are two independent derivations of the *same* optimal policy,
 so they are one bar, not two arms — they agree to a paired mean of 1e-07
@@ -226,12 +232,12 @@ Two caveats that the single number hides:
 **A separate board.** Demand is `exp(mu + I)` here, so profits are on a
 different scale and are never comparable with the aMMFE table above.
 
-| arm | what it is | profit | Δ vs optimum | % of bar |
-|---|---|---|---|---|
-| `prop2` | **optimum** — the paper's Prop 2 recursion | **2.291618** | — | — |
-| `dp` | the same optimum, independent value-function solver | 2.291616 | −0.000002 | 0.00% |
-| PPO, best of 9 | best confirmed checkpoint (L1′ seed3, step 1.7M) | 2.279888 | −0.011730 ± 0.000793 | −0.51% |
-| `myopic` | must-beat baseline | 2.240843 | −0.050776 ± 0.002640 | −2.22% |
+| arm | role | what it is | profit | Δ vs optimum | % of bar |
+|---|---|---|---|---|---|
+| `prop2` | **exact** | **optimum** — the paper's Prop 2 recursion | **2.291618** | — | — |
+| `dp` | **exact** | the same optimum, independent value-function solver | 2.291616 | −0.000002 | 0.00% |
+| PPO, best of 9 | feasible | best confirmed checkpoint (L1′ seed3, step 1.7M) | 2.279888 | −0.011730 ± 0.000793 | −0.51% |
+| `myopic` | feasible | must-beat baseline | 2.240843 | −0.050776 ± 0.002640 | −2.22% |
 
 All nine models clear the baseline. The learned policy lands **0.51% under the
 optimum** (again best-of-9; the L1′ across-seed mean of 2.277242 is
@@ -327,9 +333,30 @@ between two arms needs.
 ## Gates
 
 ```bash
-# from the PARENT of fnv/
+# from cases/ (the parent of fnv/)
 python -m mdp_ir fnv/fnv_schema.json
 python -m mdp_conformance fnv
+python -m mdp_ir.laws fnv
 python -m mdp_ir.differential fnv/fnv_schema.json --episodes 40 --all-instances
 cd fnv && pytest fnv_test.py
 ```
+
+Last re-gated **2026-08-17 at v0.9.5**, all green:
+
+| gate | result | not covered |
+|---|---|---|
+| `mdp_ir` validate | OK — `mdp` `d415b34e8c33`, structural `36f5c3aaf7a6` | — |
+| `mdp_conformance` | **20/22, zero FAILs** | `scenario.samplers` SKIPs (the sampling lives in `GRIDS`, not `SCENARIOS`); `run.provenance` SKIPs — see below |
+| `mdp_ir.laws` | 7/9, zero FAILs | `path_independence` and `mixture_equivalence` SKIP (no unguarded draw in a row field; no mixtures declared) |
+| `mdp_ir.differential` | MATCH on base + `mmmfe`, 40 episodes | — |
+| `pytest fnv_test.py` | 19 passed | — |
+
+`run.provenance` **SKIPs here, and WARNs where the runs live**. `results/` is
+gitignored, so in this repo there is no args log to read at all. In a tree that
+still holds the campaign's 18 run dirs the same check WARNs, because those runs
+predate the convention: `fnv_ppo_train.py` now writes the §8.4 set
+(`algo_class`, `sb3_version`, `ir_mdp_fingerprint`), but the keys are
+deliberately **not** backfilled into old logs — `ir_mdp_fingerprint` records
+*which frozen model a run was trained against*, and inventing it after the fact
+is exactly the re-attribution the key exists to prevent. The check clears on the
+next training run.

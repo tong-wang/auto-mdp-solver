@@ -28,10 +28,18 @@ committed. Read the sources via their DOI or a library. What a case reimplements
 from one are mathematical facts, attributed at the call site.
 
 Gates green at v0.9.5, **zero FAILs on all three**: conformance `clark_scarf`
-18/21, `fnv` 17/22, `adi_flex` 15/21; `mdp_ir.laws` 8/9, 7/9, 7/9. Every
+18/21, `fnv` **20/22**, `adi_flex` 15/21; `mdp_ir.laws` 8/9, 7/9, 7/9. Every
 un-passed law is a SKIP, and which one it is says something: on all three it is
 `mixture_equivalence` (none declares a mixture), plus `path_independence` on
 `fnv` and `invariants` on `adi_flex`, which declares none to check.
+
+`fnv` moved 17/22 → 20/22 on 2026-08-17 by **declaring** what it already was —
+`mdp.model`, `benchmarks` and `research_questions` — with no number re-run; its
+`built` tag is therefore still v0.8.0 while its `gated` tag is v0.9.5, which is
+the intended state for a case whose declarations have been carried forward and
+whose results have been left alone. The three checks it turns from SKIP to PASS
+are the ones a bare conformance count hides: a SKIP is not a pass, and
+`model.boundary` in particular cannot fire at all until the theory layer exists.
 
 **`adi_flex` does not meet the contract below** and is kept because it gates,
 not as an exemplar of a contribution. It has no `CLAUDE.md`, no `ESCALATION.md`,

@@ -219,12 +219,28 @@ def resolve_paths(outdir_arg: str, scenario_name: str, run_name: str) -> tuple[P
     return outdir, ckpt_dir
 
 
+def _ir_fingerprint() -> str:
+    """The frozen model this run trained against, or '?' if unreadable (§8.4)."""
+    try:
+        from mdp_ir.schema import load_ir
+        return load_ir(Path(__file__).resolve().parent / "fnv_schema.json").mdp_fingerprint()
+    except Exception:
+        return "?"
+
+
 def write_args(args: argparse.Namespace, outdir: Path) -> None:
-    """Record the config, including the SB3 version (§8.6 L0 rule)."""
+    """Record the config and the §8.4 run-provenance set."""
     with open(outdir / f"{args.scenario_name}_ppo_args.txt", "w") as f:
         for k, v in sorted(vars(args).items()):
             f.write(f"{k}: {v}\n")
-        f.write(f"stable_baselines3_version: {stable_baselines3.__version__}\n")
+        # spec §8.4 provenance set: the resolved class, the SB3 version, and
+        # the frozen IR this run was trained against — literal keys, so a
+        # checker reads them without knowing what any domain flag means.
+        # `algo_class` is the adoption marker; FNV's action space is a
+        # continuous box, so the class is plain PPO on every path here.
+        f.write("algo_class: PPO\n")
+        f.write(f"sb3_version: {stable_baselines3.__version__}\n")
+        f.write(f"ir_mdp_fingerprint: {_ir_fingerprint()}\n")
         f.write(f"T_bar_basis: {T_BAR}\n")
 
 
