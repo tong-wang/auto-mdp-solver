@@ -90,11 +90,87 @@ def _iid_parts(settings: dict) -> tuple[str, dict]:
     return of, {k: v for k, v in settings.items() if k not in ("of", "size")}
 
 
+def is_vector(value: Any) -> bool:
+    """A resolved setting that carries one entry per component."""
+    return isinstance(value, (list, tuple))
+
+
+def independent_parts(settings: dict) -> tuple[str, dict]:
+    """Split an ``independent`` recipe into (base family, its settings).
+
+    ``independent`` is ``iid``'s non-identical sibling (upstream #49): same
+    ``{of, size, ...base settings}`` shape, except that a base setting may
+    resolve to a length-``size`` vector consumed **positionally**, with scalars
+    broadcasting. ``iid`` is the all-scalar degenerate case; the two are kept
+    apart because ``iid``'s moments legitimately drop ``size`` (its components
+    agree) and ``independent``'s cannot.
+    """
+    of = settings.get("of")
+    if not isinstance(of, str) or of in ("iid", "independent"):
+        raise FamilyError(
+            f"independent setting 'of' must name a base family, got {of!r}"
+        )
+    return of, {k: v for k, v in settings.items() if k not in ("of", "size")}
+
+
+def check_component_lengths(resolved: dict, size: int, family: str) -> None:
+    """Every vector setting must have exactly ``size`` entries.
+
+    Checked wherever the settings first resolve to concrete values — at
+    generator construction and at moment derivation, both of which run well
+    before any episode — rather than left to bite mid-draw. A wrong-length
+    vector is always an error: never recycled, never truncated, because both
+    silently change the process the IR declares.
+    """
+    for key, val in resolved.items():
+        if is_vector(val) and len(val) != size:
+            raise FamilyError(
+                f"{family}.{key} has {len(val)} entries but size is {size} — "
+                f"a per-component setting must have exactly one entry per "
+                f"component (scalars broadcast; wrong-length vectors are "
+                f"never recycled or truncated)"
+            )
+
+
+def _component_settings(resolved: dict, i: int) -> dict:
+    """The i-th component's settings: vectors indexed, scalars broadcast."""
+    return {k: (v[i] if is_vector(v) else v) for k, v in resolved.items()}
+
+
+def _independent_envelope(settings: dict, resolve: Resolver, derive, reduce_, attr):
+    """``min``/``max`` of an ``independent`` vector: derive the base family's
+    envelope per component, then reduce.
+
+    This is the whole envelope of the vector, which is what a bound site
+    means — a state variable sized to hold any component. Unlike ``mean``,
+    the reduction is unambiguous, so these two do have a scalar answer.
+    """
+    of, sub = independent_parts(settings)
+    resolved = {k: resolve(v, attr) for k, v in sub.items()}
+    size = int(resolve(settings["size"], attr))
+    check_component_lengths(resolved, size, "independent")
+    return float(reduce_(
+        derive(of, _component_settings(resolved, i), resolve) for i in range(size)
+    ))
+
+
 def mean(family: str, settings: dict, resolve: Resolver) -> float:
     """E[X] of one draw, composed through latent settings via ``resolve``."""
     g = lambda key: _get(settings, family, key, resolve, "mean")  # noqa: E731
     if family == "iid":
         return mean(*_iid_parts(settings), resolve)
+    if family == "independent":
+        # No scalar answer exists, and guessing one is worse than refusing:
+        # E[X] of an inid vector is a vector, and the scalar a bound site
+        # usually wants is the SUM over components, not their average. For
+        # rates (2, 1, 3) that is 6 against a mean of 2 — a bound built on the
+        # wrong one is a third too small and nothing says so. Name the
+        # aggregate you mean, in the expression (upstream #49).
+        raise FamilyError(
+            "independent has no scalar mean — its components are not "
+            "identically distributed. Write the aggregate you mean over the "
+            "settings vector (e.g. sum(rate)), or read a component"
+        )
     if family == "deterministic":
         return g("value")
     if family == "categorical":
@@ -150,6 +226,8 @@ def min_value(family: str, settings: dict, resolve: Resolver) -> float:
     g = lambda key: _get(settings, family, key, resolve, "min")  # noqa: E731
     if family == "iid":
         return min_value(*_iid_parts(settings), resolve)
+    if family == "independent":
+        return _independent_envelope(settings, resolve, min_value, min, "min")
     if family == "deterministic":
         return g("value")
     if family == "categorical":
@@ -180,6 +258,8 @@ def max_value(family: str, settings: dict, resolve: Resolver) -> float:
     g = lambda key: _get(settings, family, key, resolve, "max")  # noqa: E731
     if family == "iid":
         return max_value(*_iid_parts(settings), resolve)
+    if family == "independent":
+        return _independent_envelope(settings, resolve, max_value, max, "max")
     if family == "deterministic":
         return g("value")
     if family == "categorical":
