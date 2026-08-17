@@ -59,16 +59,33 @@ def _skip(law: str, detail: str) -> LawResult:
 # ---------------------------------------------------------------------------
 
 
-def _fixed_decisions(ir: MdpIR, at: float) -> dict:
+def _fixed_decisions(ir: MdpIR, at: float, inst: str | None = None) -> dict:
     """A constant decision dict at a fraction ``at`` of each decision's range —
-    a concrete policy for any IR, without knowing what the decisions mean."""
+    a concrete policy for any IR, without knowing what the decisions mean.
+
+    Both the range and the WIDTH resolve against ``inst``. #36 taught the
+    interpreter to honour a vector ``dim``; this builds its own decision dict
+    and was missed, so every policy law raised on a vector decision (#38).
+
+    Resolving per instance is not optional here: a width may be overridden per
+    instance (2/3/4 echelons across one sweep), so a base-resolved width hands
+    a 3-wide action to a 2-echelon world. Bounds move the same way — ``mab``
+    narrows ``arm`` from ``(0, 9)`` to ``(0, 4)`` on its 5-arm instances, and
+    resolving at base fed those laws an arm index the instance does not have.
+
+    Width 1 stays SCALAR, as in the interpreter: every IR predating vector
+    decisions indexes the name directly.
+    """
+    # a mixture NAME is not a scenario instance, and resolving against one
+    # would KeyError — the same guard `_episode_rows` applies
+    key = inst if inst in (ir.mdp.scenario.instances or {}) else None
     out: dict = {}
     for d in ir.mdp.decisions:
-        lo, hi = ir.mdp.decision_bounds(d.name)
+        lo, hi = ir.mdp.decision_bounds(d.name, key)
         v = lo + at * (hi - lo)
-        out[d.name] = (
-            int(round(v)) if d.type.value is DecisionType.discrete else float(v)
-        )
+        val = int(round(v)) if d.type.value is DecisionType.discrete else float(v)
+        n = ir.mdp.decision_dim(d.name, key)
+        out[d.name] = val if n == 1 else [val] * n
     return out
 
 
@@ -142,7 +159,7 @@ def _path_independent_draws(ir: MdpIR) -> list[str]:
 
 def law_determinism(ir: MdpIR, inst: str | None, path: Path | None) -> LawResult:
     """Same (instance, seed, decisions) must replay bit-identically."""
-    dec = _fixed_decisions(ir, 0.5)
+    dec = _fixed_decisions(ir, 0.5, inst)
     for seed in range(3):
         a = IrInterpreter(ir, instance=inst).run(seed, decisions=dec).rows
         b = IrInterpreter(ir, instance=inst).run(seed, decisions=dec).rows
@@ -161,7 +178,7 @@ def law_seed_sensitivity(ir: MdpIR, inst: str | None, path: Path | None) -> LawR
     fams = {s.distribution.family for s in ir.mdp.uncertainty_sources}
     if fams <= {"deterministic"}:
         return _skip("seed_sensitivity", "all sources are deterministic")
-    dec = _fixed_decisions(ir, 0.5)
+    dec = _fixed_decisions(ir, 0.5, inst)
     runs = [IrInterpreter(ir, instance=inst).run(s, decisions=dec).rows
             for s in range(EPISODES)]
     if all(r == runs[0] for r in runs[1:]):
@@ -176,8 +193,8 @@ def law_decision_path_independence(ir: MdpIR, inst: str | None, path: Path | Non
     if not targets:
         return _skip("path_independence",
                      "no unguarded state-independent draw lands in a row field")
-    lo = IrInterpreter(ir, instance=inst).run(5, decisions=_fixed_decisions(ir, 0.0))
-    hi = IrInterpreter(ir, instance=inst).run(5, decisions=_fixed_decisions(ir, 1.0))
+    lo = IrInterpreter(ir, instance=inst).run(5, decisions=_fixed_decisions(ir, 0.0, inst))
+    hi = IrInterpreter(ir, instance=inst).run(5, decisions=_fixed_decisions(ir, 1.0, inst))
     n = min(len(lo.rows), len(hi.rows))
     for fld in targets:
         a = [r[fld] for r in lo.rows[:n]]
@@ -194,7 +211,7 @@ def law_invariants(ir: MdpIR, inst: str | None, path: Path | None) -> LawResult:
         return _skip("invariants", "none declared")
     names = [i.name for i in ir.mdp.invariants]
     for at in (0.0, 0.5, 1.0, None):
-        dec = None if at is None else _fixed_decisions(ir, at)
+        dec = None if at is None else _fixed_decisions(ir, at, inst)
         for seed in range(EPISODES):
             traj = IrInterpreter(ir, instance=inst).run(seed, decisions=dec)
             if traj.violations:
