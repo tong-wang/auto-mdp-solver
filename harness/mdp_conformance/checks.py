@@ -1162,13 +1162,21 @@ _PROSE_KEYS = {"desc", "source", "rationale", "basis", "notation", "out_of_scope
 _ORDINALS = ("now", "next", "later", "first", "second", "third", "cur", "prev", "last")
 
 
-def _referenced_tokens(mdp: dict) -> set[str]:
+def _referenced_tokens(doc: dict, mdp: dict) -> set[str]:
     """Every identifier the *rendering* actually reads.
 
     Prose fields are skipped: naming a constant in its own `desc` is not a
     reference, and counting it would let a decorative constant hide behind its
     documentation. The `model` block is skipped entirely — it is the theory,
     written in the theory's own vocabulary (spec §5.0).
+
+    `gym` and `rl` are in scope, and must be: a constant can be consumed
+    outside the `mdp` block entirely. `fnv`'s `t_last` is a feature of the gym's
+    observation vector — one policy trains across a whole design grid and has to
+    condition on which cell it is in (spec §5.6) — so scanning only `mdp` called
+    a load-bearing constant decorative. Nothing else in the document is scanned:
+    `benchmarks` and `research_questions` are prose about solutions, not
+    consumers of constants.
     """
     found: list[str] = []
 
@@ -1186,6 +1194,7 @@ def _referenced_tokens(mdp: dict) -> set[str]:
     scenario = mdp.get("scenario") or {}
     walk({k: v for k, v in mdp.items() if k not in ("model", "scenario")})
     walk({k: v for k, v in scenario.items() if k != "constants"})
+    walk({k: v for k, v in doc.items() if k in ("gym", "rl")})
     toks = set()
     for s in found:
         toks |= set(re.findall(r"[A-Za-z_][A-Za-z_0-9]*", s))
@@ -1197,12 +1206,22 @@ def _referenced_tokens(mdp: dict) -> set[str]:
     return toks
 
 
-def _enumeration_findings(mdp: dict) -> tuple[list[str], int]:
-    """The three shapes, on a **flattened** mdp block. Pure, so it is testable
-    on synthetic IRs; returns (problems, constant count)."""
+def _enumeration_findings(doc: dict) -> tuple[list[str], int]:
+    """The three shapes, on a whole IR document. Pure, so it is testable on
+    synthetic IRs; returns (problems, constant count).
+
+    Known under-report: the re-bake detector is numeric-**list**-only. `fnv`'s
+    `order_max` is the same defect at scalar width (`mu + 5*stdev`, re-baked
+    1.5 -> 7.389 in `mmmfe`) and is not reported, because most scalar instance
+    overrides are genuine design inputs rather than derived values — `stdev:
+    0.2` in that same instance is exactly one. Separating them needs the
+    derivation to be declarable, which is the point of upstream #45.
+    """
+    from mdp_ir.schema import ungroup_mdp
+    mdp = ungroup_mdp(copy.deepcopy(doc["mdp"]))
     scenario = mdp.get("scenario") or {}
     consts = {c["name"]: c for c in (scenario.get("constants") or [])}
-    seen = _referenced_tokens(mdp)
+    seen = _referenced_tokens(doc, mdp)
     problems: list[str] = []
 
     dead = [n for n in consts if n not in seen]
@@ -1266,14 +1285,12 @@ def check_no_enumeration(h: DomainHandle) -> CheckResult:
         return CheckResult("schema.no_enumeration", "SKIP", "no single *_schema.json")
     try:
         import json
-
-        from mdp_ir.schema import ungroup_mdp
-        mdp = ungroup_mdp(json.loads(schemas[0].read_text())["mdp"])
+        doc = json.loads(schemas[0].read_text())
+        problems, n_consts = _enumeration_findings(doc)
     except Exception as e:
         return CheckResult("schema.no_enumeration", "SKIP",
                            f"schema not readable ({type(e).__name__}: {e})")
 
-    problems, n_consts = _enumeration_findings(mdp)
     if problems:
         return CheckResult("schema.no_enumeration", "WARN", "; ".join(problems)[:400])
     return CheckResult("schema.no_enumeration", "PASS",

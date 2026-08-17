@@ -13,7 +13,7 @@ from mdp_conformance.checks import _enumeration_findings
 
 
 def _findings(doc) -> str:
-    problems, _ = _enumeration_findings(doc["mdp"])
+    problems, _ = _enumeration_findings(doc)
     return " | ".join(problems)
 
 
@@ -46,6 +46,19 @@ def test_a_constant_named_at_a_width_site_is_referenced(ir_doc):
          "length": "pipe_len", "element_bounds": [0, 100],
          "observability": "observable"})
     assert "pipe_len" not in _findings(ir_doc)
+
+
+def test_a_constant_the_gym_observes_is_referenced(ir_doc):
+    """Regression: scanning only the `mdp` block called `fnv`'s `t_last`
+    decorative, when it is a feature of the gym's observation vector — a
+    generalist trained across a design grid has to see which cell it is in
+    (spec §5.6). A constant can be consumed outside `mdp` entirely."""
+    ir_doc["mdp"]["scenario"]["constants"].append(
+        {"name": "t_last", "value": 0.9, "axis": "epoch"})
+    assert "t_last" in _findings(ir_doc)          # not yet read anywhere
+    ir_doc["gym"]["observation_modes"][0]["features"].append(
+        {"derived": "t_last", "expr": "t_last"})
+    assert "t_last" not in _findings(ir_doc)
 
 
 def test_a_constant_only_an_instance_overrides_is_referenced(ir_doc):
