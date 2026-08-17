@@ -171,6 +171,23 @@ def sample_family(
         size = int(get(settings["size"]))
         sub = {k: v for k, v in settings.items() if k not in ("of", "size")}
         return [sample_family(rng, of, sub, resolve) for _ in range(size)]
+    if family == "independent":
+        # `size` independent draws of `of`, NOT identically distributed: any
+        # base setting may resolve to a length-`size` vector consumed
+        # positionally, scalars broadcast. `iid` is the all-scalar degenerate
+        # case and stays exactly that — its name is a semantic contract, and
+        # its moments legitimately drop `size` because the components agree
+        # (upstream #49).
+        of, sub = families.independent_parts(settings)
+        size = int(get(settings["size"]))
+        # resolved ONCE, not per component: an expression setting must not be
+        # re-evaluated `size` times, and the lengths have to be checkable
+        resolved = {k: get(v) for k, v in sub.items()}
+        families.check_component_lengths(resolved, size, "independent")
+        return [
+            sample_family(rng, of, families._component_settings(resolved, i))
+            for i in range(size)
+        ]
     # any other numpy Generator scalar distribution, by name: settings map
     # straight to numpy's own parameters (see NUMPY_SCALAR_DISTS). `.item()`
     # surfaces numpy's native int/float, so discrete families coerce to int

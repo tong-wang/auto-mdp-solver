@@ -232,7 +232,7 @@ verifying rather than dictating.
               "generator": "DiscreteDemand",
               // `family` is any explicitly-aliased family (categorical, poisson,
               // normal, lognormal, uniform, bernoulli, choice_without_replacement,
-              // normalized_uniform_weights, iid) OR any numpy Generator scalar
+              // normalized_uniform_weights, iid, independent) OR any numpy Generator scalar
               // distribution by name (gamma, beta, binomial, exponential, zipf, …),
               // whose `settings` are numpy's own kwargs. See interpreter._sample_family.
               "family": "categorical",
@@ -814,7 +814,23 @@ with bit-identical draws.
   `iid` — `{of: <base family>, size: N, ...base settings}`, `size`
   independent base-family draws. `iid` is the latent-vector idiom (e.g. N
   bandit arm means, `iid` of `uniform` or `beta`); a per-period source then
-  consumes one component by indexing, e.g. `"p": "arm_means[arm]"`. **In the catalog form these are never authored**: a draw
+  consumes one component by indexing, e.g. `"p": "arm_means[arm]"`.
+  **`independent` is the non-identical sibling** — same shape, except a base
+  setting may resolve to a length-`size` vector consumed *positionally*, with
+  scalars broadcasting: `{"of": "poisson", "size": "T_dl + 1", "rate":
+  "lambda_seg"}` draws one Poisson per component at its own rate. Choose by
+  whether the components share a distribution, not by which is convenient:
+  `iid` says they are the same law, and its `mean`/`max` drop `size` on that
+  basis. `independent` therefore has **no scalar `mean`** and asks for the
+  aggregate you meant (the one a bound usually wants is `sum(rate)`, not the
+  average); `min`/`max` reduce over components, which is what an envelope is.
+  Components are drawn **in index order from the one rng**, so an
+  `independent` whose settings are all scalars reproduces the matching `iid`
+  bit-for-bit — the migration between them moves no number. Both are legal as
+  a setting-level draw spec and as a stage family. Use `independent` instead
+  of enumerating one draw statement per component: an enumerated vector
+  restates a design point in the dynamics body, and keying the stage on a
+  loop index costs the `path_independence` law. **In the catalog form these are never authored**: a draw
   spec inside a candidate's settings (§1) desugars at load time into one
   sampler per slot — named `{slot}_latent`, `substream_id` = the slot's
   `stream_id` (one stream identity per source of randomness, both branches),
