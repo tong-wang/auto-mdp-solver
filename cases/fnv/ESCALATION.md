@@ -294,7 +294,17 @@ Two side-effects worth their own line:
   the drop is silent — verified, declared `['mmmfe', 'tvar']` against resolved
   `['mmmfe']`, so `COMPOSITIONS` shrinks, a parametrized differential case
   disappears, and the suite stays green. Now reads the document via
-  `ungroup_mdp`, `clark_scarf`'s idiom.
+  `ungroup_mdp`, `clark_scarf`'s idiom, behind one `_declared_scenario()` helper
+  so the file has a single blessed path for catalog questions. Review found a
+  **second** site of the same shape —
+  `test_the_mode_selector_is_a_categorical_constant` read the `mmmfe` override
+  off a resolved IR — moved with it; that one would have failed loudly
+  (`KeyError`) rather than silently, which is the only reason it was not the
+  dangerous one. Recorded while fixing it: `load_ir`
+  with an `instance=` selects the **world** and does *not* apply that instance's
+  constants — `load_ir(SCHEMA, instance="mmmfe")` still reports
+  `mmfe_mode="additive"` — which is why the interpreter calls pass `instance=`
+  a second time.
 
   **Filed upstream as issue #42** (2026-08-17), which measures what the counts
   above only imply: regroup those three schemas and collection goes 69 → 0,
