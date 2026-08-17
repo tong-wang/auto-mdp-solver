@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from mdp_ir.interpreter import IrInterpreter
+from mdp_ir.interpreter import IrInterpreter, parse_decisions
 from mdp_ir.schema import MdpIR, ungroup_mdp
 
 # adapter: (episode_seed, decisions per period) -> per-period rows to compare
@@ -278,16 +278,19 @@ def main(argv: list[str]) -> int:
         name, _, val = spec.partition("=")
         select[name.strip()] = val.strip()
 
-    fixed: dict[str, float] = {}
-    for spec in args.decision:
-        name, _, val = spec.partition("=")
-        fixed[name.strip()] = float(val)
-
     instances = covering_set(args.ir_file) if args.all_instances else [args.instance]
 
     ok = True
     for inst in instances:
         ir = load_ir(args.ir_file, instance=inst, select=select or None)
+        # parsed INSIDE the loop: a swept width constant resolves to a
+        # different `n` per instance, so one dict cannot serve a covering-set
+        # run — #38's lesson applied at the CLI boundary. This also validates
+        # the names, which this CLI never did (a typo silently held nothing).
+        try:
+            fixed = parse_decisions(args.decision, ir, inst)
+        except ValueError as exc:
+            ap.error(str(exc))
         try:
             factory = load_adapter_factory(args.ir_file, ir)
         except FileNotFoundError as exc:

@@ -683,6 +683,58 @@ def simulate(
     ).run(episode_seed, decisions=decisions, max_periods=max_periods)
 
 
+def parse_decisions(specs: list[str], ir: MdpIR, instance: str | None = None) -> dict:
+    """``--decision NAME=VALUE`` into a decision dict of the DECLARED shape.
+
+    Shared by both CLIs, which had identical scalar-only parsers — #38's sweep
+    concluded that nothing constructs a decision value without consulting the
+    width, and that held for the libraries while both argument parsers were
+    still calling ``float(val)`` (#39). Spec Phase-A step 7b names the
+    interpreter CLI as the route to a REQUIRED artifact, so a domain adopting a
+    symbolic ``dim`` could not produce its round-trip trajectory as documented.
+
+    A single value BROADCASTS to the resolved width, so ``--decision ship=10``
+    means the obvious thing; a comma-separated list sets components. Width 1
+    stays scalar, so every pre-vector invocation parses to exactly what it does
+    today.
+
+    Raises ``ValueError`` with a CLI-ready message — names are validated BEFORE
+    any width lookup, since ``decision_dim`` raises ``StopIteration`` on a name
+    it does not know, and "unknown decision 'shp'" is the message that helps.
+    """
+    declared = {d.name for d in ir.mdp.decisions}
+    # `--instance` may name a MIXTURE, which is not a scenario instance and
+    # would KeyError in a width lookup — the guard #38 established
+    key = instance if instance in (ir.mdp.scenario.instances or {}) else None
+    out: dict = {}
+    for spec in specs:
+        name, _, val = spec.partition("=")
+        name = name.strip()
+        if name not in declared:
+            raise ValueError(
+                f"unknown decision {name!r}; declared: {sorted(declared)}"
+            )
+        try:
+            parts = [float(x) for x in val.split(",")]
+        except ValueError:
+            raise ValueError(
+                f"decision {name!r}: {val!r} is not a number or a "
+                f"comma-separated list of numbers"
+            ) from None
+        n = ir.mdp.decision_dim(name, key)
+        if len(parts) == 1:
+            out[name] = parts[0] if n == 1 else [parts[0]] * n
+        elif len(parts) == n:
+            out[name] = parts
+        else:
+            raise ValueError(
+                f"decision {name!r} has width {n}"
+                f"{'' if key is None else f' for instance {key!r}'}; "
+                f"got {len(parts)} value(s)"
+            )
+    return out
+
+
 def main(argv: list[str]) -> int:
     import argparse
 
@@ -710,13 +762,10 @@ def main(argv: list[str]) -> int:
     ir = load_ir(args.ir_file, instance=args.instance)
     interp = IrInterpreter(ir, instance=args.instance, seed_salt=args.seed_salt)
 
-    fixed: dict[str, float] = {}
-    for spec in args.decision:
-        name, _, val = spec.partition("=")
-        fixed[name.strip()] = float(val)
-    unknown = set(fixed) - {d.name for d in ir.mdp.decisions}
-    if unknown:
-        ap.error(f"unknown decision(s) {sorted(unknown)}")
+    try:
+        fixed = parse_decisions(args.decision, ir, args.instance)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     if len(fixed) == len(ir.mdp.decisions):
         decisions: object = fixed

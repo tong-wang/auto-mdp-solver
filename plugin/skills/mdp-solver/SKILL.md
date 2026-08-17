@@ -331,7 +331,12 @@ continuous decision?" gates the bounds/masking question.)
    b. Render a sample trajectory with
       `python -m mdp_ir.interpreter {name}/{name}_schema.json
       --decision <name>=<value> --episode-seed 3` and append one annotated
-      trajectory to that file.
+      trajectory to that file. For a decision whose `dim` is above 1, one value
+      broadcasts to the resolved width (`--decision ship=10`) and a
+      comma-separated list sets components (`ship=10,0,5`); add `--instance` to
+      render the width that instance selects. **Re-render this whenever the
+      model changes** — it is the artifact a human reads to check the world, so
+      a stale one is worse than none.
    c. Transcribe the user's **invariants** into `mdp.invariants` — the things
       they said must always be true ("stock only changes by what arrives and
       what sells", "every arrival either buys or is lost"). Write them as
