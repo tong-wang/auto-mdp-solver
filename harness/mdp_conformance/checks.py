@@ -713,8 +713,13 @@ def _axis_tiers(ir) -> dict[str, str]:
     tiers: dict[str, str] = {}
     m = ir.mdp
     for sv in m.state_variables:
-        if isinstance(sv.length, str):
-            tiers[sv.length] = f"tier-2 obs-dim (sets length of state {sv.name!r})"
+        for axis_pos, part in enumerate(
+                sv.length if isinstance(sv.length, list) else [sv.length]):
+            if isinstance(part, str):
+                where = (f"sets length of state {sv.name!r}"
+                         if not isinstance(sv.length, list)
+                         else f"sets axis {axis_pos} of state {sv.name!r}")
+                tiers[part] = f"tier-2 obs-dim ({where})"
         for raw in (sv.bounds, sv.element_bounds):
             for x in raw or []:
                 if isinstance(x, str):
@@ -723,6 +728,8 @@ def _axis_tiers(ir) -> dict[str, str]:
     if isinstance(m.horizon.T, str):
         tiers[m.horizon.T] = "tier-2 horizon"
     for d in m.decisions:
+        if isinstance(d.dim, str):
+            tiers[d.dim] = f"tier-1 (sets dim of decision {d.name!r})"
         for x in d.bounds.value:
             if isinstance(x, str):
                 tiers[x] = f"tier-1 (sets action bounds of decision {d.name!r})"
@@ -841,6 +848,25 @@ def _domain_bounds(spec: str) -> tuple[float | None, float | None, bool]:
     return low, high, integral
 
 
+
+_CAP_SUFFIXES = ("_cap", "_max", "_limit")
+
+
+def _capped_quantity(cap_name: str, constants: dict, quantities: dict) -> str | None:
+    """The quantity a cap constant caps, or None if the pairing is not stated.
+
+    A cap is named for what it bounds — `leadtime_max` caps `leadtime` — so the
+    suffix is the only link the IR carries today. No match means no claim: the
+    check reports the width as unpaired rather than inventing a comparison.
+    """
+    for suffix in _CAP_SUFFIXES:
+        if cap_name.endswith(suffix):
+            base = cap_name[: -len(suffix)]
+            if base in constants or base in quantities:
+                return base
+    return None
+
+
 def check_model_boundary(h: DomainHandle) -> CheckResult:
     """The model layer says theory; widths are named constants (spec §5.0, #29).
 
@@ -897,21 +923,41 @@ def check_model_boundary(h: DomainHandle) -> CheckResult:
     # declares, is the sweep-frozen-as-capacity defect at its source
     widths = _axis_tiers(ir)                       # constant -> what it renders
     for sv in ir.mdp.state_variables:
-        if isinstance(sv.length, int):
+        parts = sv.length if isinstance(sv.length, list) else [sv.length]
+        if any(isinstance(part, int) for part in parts):
+            literal = next(part for part in parts if isinstance(part, int))
             for qname in model.quantities:
                 if qname in sv.name or sv.name in qname:
                     problems.append(
-                        f"state {sv.name!r} has a literal length {sv.length} while the "
+                        f"state {sv.name!r} has a literal length {literal} while the "
                         f"model declares {qname!r} ({model.quantities[qname].domain!r}) — "
                         f"name a scenario constant so the width is a design choice, "
                         f"not a capacity the model appears to state")
 
-    # gate 3 — a width constant must cover every value the study designs
+    # gate 3 — a genuine CAP must cover the quantity it caps.
+    #
+    # The two shapes a width site can have are already distinguished by the IR:
+    # an `axis`-tagged constant IS the design value, resolved per instance, so
+    # "outrun" is impossible by construction — comparing it against its own
+    # overrides fails the very pattern §5.0 recommends (#30). An untagged
+    # constant is a cap, and the thing it caps is a DIFFERENT constant.
+    unpaired = []
     for cname, role in widths.items():
-        vals = designed(cname)
-        cap = constants[cname].value if cname in constants else None
+        const = constants.get(cname)
+        if const is None:
+            continue
+        if getattr(const, "axis", ""):
+            continue                     # the design value itself; nothing to outrun
+        capped = _capped_quantity(cname, constants, model.quantities)
+        if capped is None:
+            unpaired.append(cname)
+            continue
+        vals = designed(capped)
+        cap = const.value
         if isinstance(cap, (int, float)) and vals and max(vals) > cap:
-            problems.append(f"{cname}={cap} ({role}) is outrun by a designed {max(vals)}")
+            problems.append(
+                f"cap {cname}={cap} ({role}) is outrun by a designed "
+                f"{capped}={max(vals)} — the study outruns its own rendering")
 
     # gate 4 — the stochastic structure the theory states must be the one the
     # IR renders. Read at the CATALOG level: a slot whose selected candidate is
@@ -956,9 +1002,12 @@ def check_model_boundary(h: DomainHandle) -> CheckResult:
                            f"tractability rationale inside the theory layer is a "
                            f"design choice filed as model")
     inventory = ", ".join(f"{n} ({r.split('(')[0].strip()})" for n, r in sorted(widths.items()))
-    return CheckResult("model.boundary", "PASS",
-                       f"{len(model.quantities)} quantities declared; widths derived "
-                       f"from their references [{inventory or 'none'}]")
+    detail = (f"{len(model.quantities)} quantities declared; widths derived "
+              f"from their references [{inventory or 'none'}]")
+    if unpaired:
+        detail += (f"; unpaired caps {sorted(unpaired)} — named for no declared "
+                   f"quantity, so coverage is unchecked")
+    return CheckResult("model.boundary", "PASS", detail)
 
 
 def check_run_provenance(h: DomainHandle) -> CheckResult:

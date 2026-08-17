@@ -449,7 +449,7 @@ The executable `mdp` block is always a *rendering*: static shapes, unrolled slot
 }
 ```
 
-A rendering width is **not a fourth declaration**. Every width site already takes a symbol — `state_variables[].length` / `.bounds` / `.element_bounds`, `decisions[].bounds`, `horizon.T` — so a width *names a scenario constant*, and what it caps and what it renders are **derived from the reference** (the same classification `grids.axes` uses: a constant sizing a state vector is an obs-dim width, one in a decision's bounds is an action-scale width, `horizon.T` is a horizon width). Declaring caps separately would restate what the IR already knows.
+A rendering width is **not a fourth declaration**. Every width site takes a symbol — `state_variables[].length` (a scalar, or a **list for a multi-dimensional state**: `["grid_size", "grid_size"]`) / `.bounds` / `.element_bounds`, `decisions[].dim`, `decisions[].bounds`, `horizon.T` — so a width *names a scenario constant*, and what it caps and what it renders are **derived from the reference** (the same classification `grids.axes` uses: a constant sizing a state vector is an obs-dim width, one in a decision's bounds is an action-scale width, `horizon.T` is a horizon width). Declaring caps separately would restate what the IR already knows.
 
 ```jsonc
 "state_variables": [
@@ -460,9 +460,9 @@ A rendering width is **not a fourth declaration**. Every width site already take
 
 Rules, each mechanically checked by `mdp_conformance model.boundary`:
 
-- **The model speaks in quantified rules, never rendered names.** `forall s in 1..L-1: pipe[s] <- pipe[s+1]`, not `pipe1 <- pipe2`.
+- **The model speaks in quantified rules, never rendered names.** `forall s in 1..L-1: pipe[s] <- pipe[s+1]`, not `pipe1 <- pipe2`. Expressions may use comprehensions (`sum(sum(pipe[k]) for k in range(n_echelons))`); the index binds itself.
 - **A width site holding a literal, for a quantity the model declares, is a defect.** That is exactly how a sweep maximum becomes a capacity limit nobody chose — so name the constant, and the cap becomes a design choice on the record instead of a number the model appears to state.
-- **Every width constant covers every designed value.** A sweep that outruns its own rendering is caught before it is frozen.
+- **A width site has two legal shapes, and they are checked differently.** A width may *name the swept design value itself* — `length: "pipeline_len"`, `axis`-tagged, resolved per instance — in which case it renders exactly what each instance selects and cannot be outrun. Or it may name a *cap*: an untagged constant bounding a different quantity (`leadtime_max` over `leadtime`). **A cap must cover every designed value of the quantity it caps**; a sweep that outruns its own rendering is caught before it is frozen. The `axis` tag is what distinguishes them, so no new declaration is needed — and comparing a design value against its own overrides would fail the first shape, which is the recommended one.
 - **Every declared instance sits inside the declared domains.**
 - **No model-layer rationale argues from a benchmark, a solver, or tractability.** That vocabulary inside the theory layer is the tell that a design choice has been filed as model — "kept integral so the DP reference stays exact" is a *design* statement, and it belongs to the layer that chose it.
 - **One vocabulary.** The model object uses the schema's own identifiers; a source's symbols are recorded in `notation` with citations and never adopted, which would create a third vocabulary nobody consumes. Verify quotes against the source rather than memory — a false citation is how a design choice launders itself into the model layer.

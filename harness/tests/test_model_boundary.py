@@ -130,21 +130,6 @@ def test_a_literal_width_for_a_declared_quantity_fails(tmp_path, ir_doc):
     result = check_model_boundary(_domain(tmp_path, doc))
     assert result.status == "FAIL" and "literal length 2" in result.detail
 
-
-def test_a_named_width_the_sweep_outruns_fails(tmp_path, ir_doc):
-    """The width constant must cover every designed value."""
-    doc = json.loads(json.dumps(ir_doc))
-    doc["mdp"]["model"] = MODEL
-    doc["mdp"]["scenario"]["constants"].append(
-        {"name": "leadtime_max", "value": 2, "axis": "size"})
-    doc["mdp"]["state_variables"].append(
-        {"name": "pipe", "role": "core", "type": "float_vector", "length": "leadtime_max"})
-    doc["mdp"]["initial_state"]["pipe"] = 0
-    doc["mdp"]["scenario"]["instances"] = {"long": {"leadtime_max": 4}}
-    result = check_model_boundary(_domain(tmp_path, doc))
-    assert result.status == "FAIL" and "outrun by a designed" in result.detail
-
-
 def test_a_value_outside_the_declared_domain_fails(tmp_path, ir_doc):
     doc = json.loads(json.dumps(ir_doc))
     doc["mdp"]["model"] = MODEL                      # leadtime: integer >= 1
@@ -227,3 +212,87 @@ def test_a_declared_source_satisfies_the_stochastic_claim(tmp_path, ir_doc):
     doc["mdp"]["model"] = {"quantities": {
         source: {"domain": "any distribution on [0, inf)", "stochastic": True}}}
     assert check_model_boundary(_domain(tmp_path, doc)).status == "PASS"
+
+
+# --- the review round: #30 #31 #32 #33 -------------------------------------
+
+def test_a_width_naming_the_swept_value_is_not_outrun(tmp_path, ir_doc):
+    """#30: an axis-tagged width IS the design value, resolved per instance —
+    comparing it against its own overrides failed the pattern §5.0 recommends,
+    which is what examples/inv_single ships (`length: "pipeline_len"`)."""
+    doc = json.loads(json.dumps(ir_doc))
+    doc["mdp"]["model"] = {"quantities": {"leadtime": {"domain": "integer >= 1"}}}
+    doc["mdp"]["scenario"]["constants"].append(
+        {"name": "pipeline_len", "value": 1, "axis": "leadtime"})
+    doc["mdp"]["state_variables"].append(
+        {"name": "pipeline", "role": "core", "type": "float_vector",
+         "length": "pipeline_len"})
+    doc["mdp"]["initial_state"]["pipeline"] = 0
+    doc["mdp"]["scenario"]["instances"] = {"lt6": {"pipeline_len": 6}}
+    assert check_model_boundary(_domain(tmp_path, doc)).status == "PASS"
+
+
+def test_a_genuine_cap_outrun_by_its_quantity_fails(tmp_path, ir_doc):
+    """#30's false negative: cap and capped are DIFFERENT constants."""
+    doc = json.loads(json.dumps(ir_doc))
+    doc["mdp"]["model"] = {"quantities": {"leadtime": {"domain": "integer >= 1"}}}
+    doc["mdp"]["scenario"]["constants"] += [
+        {"name": "leadtime", "value": 1, "axis": "leadtime"},
+        {"name": "leadtime_max", "value": 2, "axis": ""},
+    ]
+    doc["mdp"]["state_variables"].append(
+        {"name": "pipe", "role": "core", "type": "float_vector", "length": "leadtime_max"})
+    doc["mdp"]["initial_state"]["pipe"] = 0
+    doc["mdp"]["scenario"]["instances"] = {"overrun": {"leadtime": 9}}
+    result = check_model_boundary(_domain(tmp_path, doc))
+    assert result.status == "FAIL" and "outruns its own rendering" in result.detail
+
+
+def test_a_multi_dimensional_width_names_each_axis(ir_doc):
+    """#31: a 2-D state had no width site, so a flat derived constant was
+    carried instead and neither dimension was visible."""
+    from mdp_conformance.checks import _axis_tiers
+
+    doc = json.loads(json.dumps(ir_doc))
+    doc["mdp"]["scenario"]["constants"].append(
+        {"name": "grid_size", "value": 3, "axis": "board"})
+    doc["mdp"]["state_variables"].append(
+        {"name": "board", "role": "core", "type": "int_vector",
+         "length": ["grid_size", "grid_size"]})
+    doc["mdp"]["initial_state"]["board"] = 0
+    ir = MdpIR.model_validate(doc)
+    assert ir.mdp.state_variables[-1].length == ["grid_size", "grid_size"]
+    assert "sets axis" in _axis_tiers(ir)["grid_size"]
+
+
+def test_a_decision_width_may_name_a_constant(ir_doc):
+    """#33: `bounds` could name a constant and `dim` — the width of the same
+    decision — could not, so an action count a study sweeps had to be padded."""
+    doc = json.loads(json.dumps(ir_doc))
+    doc["mdp"]["scenario"]["constants"].append(
+        {"name": "n_products", "value": 3, "axis": "size"})
+    doc["mdp"]["decisions"][0]["dim"] = "n_products"
+    doc["mdp"]["scenario"]["instances"] = {"wide": {"n_products": 8}}
+    ir = MdpIR.model_validate(doc)
+    assert ir.mdp.decision_dim("act") == 3
+    assert ir.mdp.decision_dim("act", "wide") == 8
+
+
+@pytest.mark.parametrize("expr", [
+    "sum(sum(pipe[k]) for k in range(n_echelons))",
+    "[pipe[k][1:] + [0] for k in range(n_echelons)]",
+    "[x + y for x, y in pairs]",
+])
+def test_a_comprehension_binds_its_own_index(expr):
+    """#32: for/in/range were whitelisted and the evaluator ran comprehensions,
+    but the validator rejected every one on its own index."""
+    from mdp_ir.schema import _check_expr
+
+    _check_expr(expr, {"pipe", "n_echelons", "pairs"}, "probe")
+
+
+def test_an_undeclared_name_still_fails_inside_a_comprehension():
+    from mdp_ir.schema import _check_expr
+
+    with pytest.raises(ValueError, match="undeclared_name"):
+        _check_expr("sum(undeclared_name[k] for k in range(3))", {"pipe"}, "probe")

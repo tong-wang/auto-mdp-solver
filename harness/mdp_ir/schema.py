@@ -217,8 +217,34 @@ def _identifiers(expr: str) -> set[str]:
     ))
 
 
+def _comprehension_targets(expr: str) -> set[str]:
+    """Names a comprehension binds itself, e.g. `k` in `... for k in range(n)`.
+
+    `_BUILTINS` admits `for`/`in`/`range` and the evaluator runs comprehensions,
+    but the validator subtracted only `known` and `_BUILTINS` — so every
+    comprehension was rejected on its own index before it could run (#32).
+    Parsed rather than regexed, so tuple targets and nested comprehensions bind
+    correctly.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(expr.strip(), mode="eval")
+    except SyntaxError:
+        # statement-shaped exprs (`x += 1`) and other non-eval forms never
+        # carry comprehension bindings this check would miss
+        return set()
+    bound: set[str] = set()
+    for node in ast.walk(tree):
+        for gen in getattr(node, "generators", []) or []:
+            for name in ast.walk(gen.target):
+                if isinstance(name, ast.Name):
+                    bound.add(name.id)
+    return bound
+
+
 def _check_expr(expr: str, known: set[str], where: str) -> None:
-    unknown = _identifiers(expr) - known - _BUILTINS
+    unknown = _identifiers(expr) - known - _BUILTINS - _comprehension_targets(expr)
     if unknown:
         raise ValueError(
             f"{where}: unresolved identifier(s) {sorted(unknown)} in expr {expr!r}"
@@ -293,7 +319,12 @@ class StateVariable(_Narrowable):
     # instance, like horizon.T) — e.g. a pipeline whose length tracks the
     # selected lead time. Metadata only: the runtime vector comes from
     # initial_state (`zeros(<len>)`), so nothing downstream must resolve it.
-    length: int | str | None = None
+    # a width: a literal, the NAME of a scenario constant, or a LIST of either
+    # for a multi-dimensional state (`["grid_size", "grid_size"]`). Scalar-only
+    # forced a 2-D state to carry a derived flat length as its own constant, so
+    # neither dimension was named at a width site and the boundary machinery
+    # could not see either (#31)
+    length: int | str | list[int | str] | None = None
     element_bounds: list[float | str] | None = None
     categories: list[str] | None = None
     desc: str = ""
@@ -312,7 +343,12 @@ class InfoField(_Base):
 class Decision(_Narrowable):
     name: str
     type: Confirmable[DecisionType]
-    dim: int = Field(ge=1)
+    # a literal width, or the NAME of a scenario constant — the same terms
+    # `bounds` already takes, and for the same reason: an action count a study
+    # sweeps is a scenario dimension. Without this the one width site that
+    # sizes the action space could not follow §5.0's name-the-constant rule,
+    # so a padded maximum was unavoidable rather than a design choice (#33)
+    dim: int | str = 1
     # [lo, hi], applied to every dim (per-dim bounds are out of v1 scope).
     # An entry may be a number or the *name of a scenario constant* — like
     # horizon.T, bounds are a scenario dimension and may vary per instance.
@@ -1071,6 +1107,22 @@ class MdpBlock(_Base):
     def builtin_names(self) -> set[str]:
         """Names of the domain-owned builtins this IR declares."""
         return {b.name for b in self.expr_builtins}
+
+    def decision_dim(self, name: str, instance: str | None = None) -> int:
+        """Effective width of a decision: a literal, or a scenario constant
+        overridable per instance (like `horizon_T` and `bounds`)."""
+        d = next(dd for dd in self.decisions if dd.name == name)
+        if isinstance(d.dim, int):
+            return d.dim
+        consts = {c.name: c.value for c in self.scenario.constants}
+        if instance is not None:
+            consts.update(self.scenario.instances[instance])
+        v = consts[d.dim]
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise TypeError(f"decision {name!r} dim {d.dim!r} resolved to non-integer {v!r}")
+        if v < 1:
+            raise ValueError(f"decision {name!r} dim {d.dim!r} resolved to {v} < 1")
+        return v
 
     def decision_bounds(
         self, name: str, instance: str | None = None
