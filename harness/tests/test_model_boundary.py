@@ -172,3 +172,58 @@ def test_model_prose_arguing_from_a_benchmark_warns(tmp_path, ir_doc, prose):
     doc["mdp"]["model"] = {**MODEL, "out_of_scope": [prose]}
     result = check_model_boundary(_domain(tmp_path, doc))
     assert result.status == "WARN" and "design choice filed as model" in result.detail
+
+
+# --- the grouped file layout, and the stochastic structure ------------------
+
+def test_the_grouped_layout_round_trips_to_the_same_hashes(ir_doc, catalog_doc):
+    """The grouping is for human readers; a recorded fingerprint is what a
+    frozen case cites. A cosmetic regroup that moved one would be a defect."""
+    from mdp_ir.schema import group_mdp
+
+    flat_token = MdpIR.model_validate(ir_doc).mdp_fingerprint()
+    grouped = json.loads(json.dumps(ir_doc))
+    grouped["mdp"] = group_mdp(grouped["mdp"])
+    assert set(grouped["mdp"]) <= {"model", "design", "rendering"}
+    assert MdpIR.model_validate(grouped).mdp_fingerprint() == flat_token
+
+    cat = json.loads(json.dumps(catalog_doc))
+    cat["mdp"] = group_mdp(cat["mdp"])
+    assert structural_fingerprint(cat) == structural_fingerprint(catalog_doc)
+
+
+def test_grouping_is_idempotent_and_reversible(ir_doc):
+    from mdp_ir.schema import group_mdp, ungroup_mdp
+
+    once = group_mdp(ir_doc["mdp"])
+    assert group_mdp(once) == once                      # idempotent
+    assert ungroup_mdp(once) == ungroup_mdp(ir_doc["mdp"])   # reversible
+
+
+def test_a_quantity_declared_stochastic_needs_an_uncertainty_source(tmp_path, ir_doc):
+    doc = json.loads(json.dumps(ir_doc))
+    doc["mdp"]["model"] = {"quantities": {
+        "leadtime": {"domain": "integer >= 1", "stochastic": True}}}
+    result = check_model_boundary(_domain(tmp_path, doc))
+    assert result.status == "FAIL" and "dropped randomness" in result.detail
+
+
+def test_a_quantity_declared_deterministic_may_not_be_a_source(tmp_path, ir_doc):
+    """clark_scarf's case: the paper holds leadtime deterministic BY ASSUMPTION,
+    so an slt candidate would be out of scope rather than a new option."""
+    doc = json.loads(json.dumps(ir_doc))
+    source = doc["mdp"]["uncertainty_sources"][0]["name"]
+    doc["mdp"]["model"] = {"quantities": {
+        source: {"domain": "integer >= 1", "stochastic": False}}}
+    result = check_model_boundary(_domain(tmp_path, doc))
+    assert result.status == "FAIL" and "out of scope" in result.detail
+
+
+def test_a_declared_source_satisfies_the_stochastic_claim(tmp_path, ir_doc):
+    """inv_single's case: the slot exists, and which candidate a scenario picks
+    is design — a degenerate default is not a scope reduction."""
+    doc = json.loads(json.dumps(ir_doc))
+    source = doc["mdp"]["uncertainty_sources"][0]["name"]
+    doc["mdp"]["model"] = {"quantities": {
+        source: {"domain": "any distribution on [0, inf)", "stochastic": True}}}
+    assert check_model_boundary(_domain(tmp_path, doc)).status == "PASS"

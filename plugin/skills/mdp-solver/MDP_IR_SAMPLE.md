@@ -9,7 +9,7 @@ code*, and what the user confirms at the Phase-A gate.
 The IR is JSON (a pydantic model at runtime, `mdp_ir/schema.py`). Comments
 below the block explain the design intent of each section.
 
-## 0. The three layers
+## 0. The three blocks, and the three layers inside `mdp`
 
 The root is `{domain, mdp, gym, rl, assumptions_log}` — three blocks that
 mirror the codebase's own layering (spec §1.1) and differ in **owner,
@@ -25,6 +25,26 @@ Dependencies point strictly downward (gym → mdp, rl → gym/mdp); root
 validators enforce each edge. `Confirmable[T]` fields live (almost) entirely
 in `mdp` — that is exactly where no oracle exists. Editing `gym`/`rl` does not
 change the fingerprint and needs no re-confirmation.
+
+**Inside `mdp`, three headed groups say which layer an edit touches** (spec
+§5.0). The block below is written in them, so a reader never has to consult the
+spec to know what a change will move:
+
+| group | what it is | an edit here moves |
+|---|---|---|
+| `model` | the **theory**: what the source admits, what it excludes, quantified dynamics | freeze token **+** `model_fingerprint()` |
+| `design` | **which points this study evaluates**: scenario constants and instances | freeze token |
+| `rendering` | **what the interpreter runs**: state, decisions, uncertainty, dynamics, objective, invariants, initial state | freeze token **+** `structural_fingerprint()` |
+
+The grouping is a file layout only — in memory the block is flat
+(`ir.mdp.state_variables`), a flat file still loads, and hashes are computed
+after flattening, so `python -m mdp_ir <schema> --regroup` converts an existing
+file **and refuses to write if any fingerprint would move**.
+
+Placing something new? *Delete it — does the model change? does the system
+evolve differently?* If both answers are no, it is not model. That is why
+**invariants are rendering**: derived from the theory, adding no information,
+verifying rather than dictating.
 
 ---
 
@@ -45,296 +65,321 @@ change the fingerprint and needs no re-confirmation.
   // ════════════════════════ mdp — the problem (frozen) ════════════════════════
   "mdp": {
 
-    "horizon": { "T": 30, "period_indexing": "0-based" },   // v1 = finite only
-    // T may instead name a scenario constant (e.g. "T": "n_periods") so the
-    // horizon varies per instance like any other scenario attribute; resolve
-    // with MdpBlock.horizon_T(instance).
-
-    "entity_structure": {
-      "kind": "single",
-      "entity_id_in_seed": false      // no entity dimension → derived seed keys omit entity_id
+    // ---- MODEL: what the theory admits. Moves the freeze token AND
+    //      model_fingerprint(). Speaks in quantified rules, never in
+    //      rendered slot names (spec §5.0).
+    "model": {
+      "quantities": {
+        "demand":   {"domain": "any distribution on [0, inf), i.i.d. across periods",
+                     "stochastic": true, "source": "the problem statement"},
+        "leadtime": {"domain": "integer >= 1", "stochastic": true,
+                     "source": "stochastic lead time is permitted; a scenario may select a point mass"}
+      },
+      "out_of_scope": ["fixed ordering costs", "capacity limits on the order"],
+      "dynamics": ["forall s in 1..L-1: pipe[s] <- pipe[s+1]"],
+      "notation": {}
     },
 
-    // --- STATE: minimal sufficient statistic for the next transition ONLY (§5.1) ---
-    "state_variables": [
-      {
-        "name": "period", "role": "time_index", "type": "int",
-        "bounds": [0, 30], "observability": "observable",
-        "desc": "current period t; horizon ends when period == T"
-      },
-      {
-        "name": "inventory", "role": "core", "type": "int",
-        // Bounds are the envelope the gym materializes into its spaces — the
-        // MDP itself often has none (demand is unbounded; a counter runs to
-        // the horizon). When the envelope follows from other parameters,
-        // DECLARE THE DERIVATION, never a literal frozen from it. Two forms:
-        //   expression over constants/slot stats — resolved once at load
-        //     ("40 * demand.mean", below);
-        //   bare name of a scenario constant instances override — kept
-        //     symbolic, resolved per instance via mdp.state_bounds()
-        //     ([0, "horizon_T"], like Decision.bounds and `length`).
-        // A union-over-instances literal is correct for no instance and drags
-        // the structural fingerprint every time a bigger cell is registered.
-        "bounds": ["-40 * demand.mean", "40 * demand.mean"],
-        "observability": "observable",
-        "desc": "net on-hand inventory after all period events; read by next transition"
-      },
-      {
-        "name": "pipeline", "role": "core", "type": "int_vector",
-        "length": 6,                    // leadtime.max()+1  (max L = 5); shapes stay literal (frozen)
-        "element_bounds": [0, "40 * demand.mean"],
-        "observability": "observable",
-        "desc": "pipeline[k] = quantity arriving at the k-th future R (receive) event"
-      }
-    ],
-
-    // --- INFO: per-transition outputs; NEVER read back by the simulator (§5.1) ---
-    "info_fields": [
-      {
-        "name": "demand", "type": "int", "desc": "realized demand this period (D event)",
-        // borderline state-vs-info call (§5.1) → Confirmable<enum>, reviewed → human_confirmed
-        "placement": {
-          "value": "info", "suggested": "info", "source": "human_confirmed",
-          "rationale": "no later transition reads it; exposed only via the vec_d observation mode"
+    // ---- DESIGN: which points this study evaluates. Moves the freeze token
+    //      only — values and the instance menu are free of the rendering hash.
+    "design": {
+      "scenario": {
+        "constants": [
+          { "name": "h", "value": 0.2,  "axis": "cost", "desc": "holding cost / unit" },
+          { "name": "b", "value": 2.0,  "axis": "cost", "desc": "shortage cost / unit" },
+          { "name": "K", "value": 25.0, "axis": "cost", "desc": "fixed cost / order" },
+          { "name": "c", "value": 1.0,  "axis": "cost", "desc": "variable cost / unit" },
+          { "name": "allow_backlog", "value": true, "axis": "variant" },
+          // a `variant` constant may be a bool OR a categorical STRING enum (the
+          // IR mirror of a `_scenarios.py` scenario mode): this toggle could
+          // instead read { "value": "backlog" } and be tested in a guard/update
+          // by string equality — `stockout_mode == 'lost_sales'`. String literals
+          // in exprs are fine; their contents are data, never identifiers.
+          { "name": "demand_support_size", "value": 5,  "axis": "demand" },
+          { "name": "demand_support_low",  "value": 10, "axis": "demand" },
+          { "name": "demand_support_high", "value": 50, "axis": "demand" },
+          { "name": "demand_alpha", "value": 9.0, "axis": "demand",
+            "desc": "poisson candidate: Gamma shape of the hidden rate" },
+          { "name": "demand_beta",  "value": 0.3, "axis": "demand",
+            "desc": "poisson candidate: Gamma rate; E[lambda] = alpha/beta = 30" },
+          { "name": "leadtime_values", "value": [2, 3, 4, 5], "axis": "leadtime" },
+          { "name": "leadtime_probs",  "value": [0.125, 0.375, 0.375, 0.125], "axis": "leadtime" }
+          // NOTE: no hand-authored placeholders and no `samplers` node — the
+          // draw specs inside the demand candidates desugar at load time into a
+          // `demand_latent` sampler (substream = the slot's stream_id) plus
+          // synthesized placeholder constants (demand_values / demand_probabilities
+          // / demand_rate). Instances sharing a candidate share the latent stream:
+          // common random numbers across instances by construction.
+        ],
+        // instances = the SCENARIOS registry: constant overrides AND slot
+        // selections compose freely — a permutation is one line, never a file.
+        // At resolution, instances inconsistent with the active selection are
+        // dropped and slot keys stripped, so the resolved IR is consistent.
+        "instances": {
+          "lost_sales":         { "allow_backlog": false },
+          "poisson":            { "demand": "poisson" },
+          "poisson_lost_sales": { "demand": "poisson", "allow_backlog": false }
         }
-      },
-      { "name": "received",     "type": "int", "desc": "units received this period (R event)" },
-      { "name": "leadtime",     "type": "int", "desc": "sampled lead time of this period's order" },
-      { "name": "lost_sales",   "type": "int", "desc": "unmet demand dropped (only if allow_backlog=false)" },
-      { "name": "action_period","type": "int", "desc": "period the emitting decision was taken (boundary invariant)" },
-      // must carry exactly the objective components + "total" (validated):
-      { "name": "cost", "type": "decomposition",
-        "components": ["holding", "shortage", "order_fixed", "order_variable", "total"] }
-    ],
+      }
+    },
 
-    "decisions": [
-      {
-        "name": "order",
-        // Confirmable<enum> — integrality is a no-oracle call (§6); still `derived` here
-        "type": {
-          "value": "continuous", "suggested": "continuous", "source": "derived",
-          "rationale": "'how much to order' stated no integrality; continuous is easier for PPO"
+    // ---- RENDERING: what the interpreter runs. Moves the freeze token AND
+    //      the structural (rendering) fingerprint. A width NAMES a design
+    //      constant — `"length": "pipeline_len"`, never a literal.
+    "rendering": {
+      "horizon": { "T": 30, "period_indexing": "0-based" },   // v1 = finite only
+      // T may instead name a scenario constant (e.g. "T": "n_periods") so the
+      // horizon varies per instance like any other scenario attribute; resolve
+      // with MdpBlock.horizon_T(instance).
+
+      "entity_structure": {
+        "kind": "single",
+        "entity_id_in_seed": false      // no entity dimension → derived seed keys omit entity_id
+      },
+
+      // --- STATE: minimal sufficient statistic for the next transition ONLY (§5.1) ---
+      "state_variables": [
+        {
+          "name": "period", "role": "time_index", "type": "int",
+          "bounds": [0, 30], "observability": "observable",
+          "desc": "current period t; horizon ends when period == T"
         },
-        "dim": 1,
-        // Confirmable<[lo,hi]> — the upper action scale is a codegen guess;
-        // symbolic, so it re-resolves when a different demand candidate is selected
-        "bounds": {
-          "value": [0, "20 * demand.mean"], "suggested": [0, "20 * demand.mean"],
-          "source": "derived",
-          "rationale": "20x mean demand; caps the action scale, not a physical limit"
+        {
+          "name": "inventory", "role": "core", "type": "int",
+          // Bounds are the envelope the gym materializes into its spaces — the
+          // MDP itself often has none (demand is unbounded; a counter runs to
+          // the horizon). When the envelope follows from other parameters,
+          // DECLARE THE DERIVATION, never a literal frozen from it. Two forms:
+          //   expression over constants/slot stats — resolved once at load
+          //     ("40 * demand.mean", below);
+          //   bare name of a scenario constant instances override — kept
+          //     symbolic, resolved per instance via mdp.state_bounds()
+          //     ([0, "horizon_T"], like Decision.bounds and `length`).
+          // A union-over-instances literal is correct for no instance and drags
+          // the structural fingerprint every time a bigger cell is registered.
+          "bounds": ["-40 * demand.mean", "40 * demand.mean"],
+          "observability": "observable",
+          "desc": "net on-hand inventory after all period events; read by next transition"
         },
-        "feasibility": ["non_negative"],
-        "desc": "replenishment quantity placed at the O (order) event"
-      }
-    ],
-
-    // --- UNCERTAINTY: authored as SLOTS with a candidate pool (catalog ⊕
-    //     selection, §7 below; IR_LAYERING_PLAN §10). A slot fixes the
-    //     structural skeleton — name, interface, stream_id, stages (whose
-    //     `realization` DERIVES the seed key, §5.3 — never hand-written) —
-    //     and declares the candidate families that can fill it, the way
-    //     _uncertainty.py declares generator classes. `load_ir` resolves the
-    //     selected candidate into a plain `uncertainty_sources` entry, so
-    //     nothing downstream sees the catalog. (A file carrying
-    //     `uncertainty_sources` directly is the legacy resolved form and
-    //     still loads.)
-    "uncertainty_slots": [
-      {
-        "name": "demand", "interface": "DemandGenerator", "stream_id": 0,
-        "latent": false,
-        // one per-period stage → seed_key() = [period, source:0, 1, episode_seed, seed_salt]
-        "stages": [ { "name": "sample", "realization": "period" } ],
-        "default": "discrete",
-        "candidates": {
-          "discrete": {
-            "generator": "DiscreteDemand",
-            // `family` is any explicitly-aliased family (categorical, poisson,
-            // normal, lognormal, uniform, bernoulli, choice_without_replacement,
-            // normalized_uniform_weights, iid) OR any numpy Generator scalar
-            // distribution by name (gamma, beta, binomial, exponential, zipf, …),
-            // whose `settings` are numpy's own kwargs. See interpreter._sample_family.
-            "family": "categorical",
-            "settings": {
-              // a setting whose value is a DRAW SPEC is this slot's WORLD
-              // LATENT (spec §5.2): drawn once per episode on the meta branch
-              // at THIS SLOT's stream_id, then consumed as a plain constant.
-              // The loader desugars it into a scenario sampler + a synthesized
-              // placeholder constant ({slot}_{setting}, value = `example`).
-              // hidden: true flips the requires_memory derivation and bars the
-              // realized value from observation modes.
-              "values": {
-                "draw": { "family": "choice_without_replacement",
-                          "settings": { "low": "demand_support_low",
-                                        "high": "demand_support_high",
-                                        "size": "demand_support_size" } },
-                "example": [10, 20, 30, 40, 50], "hidden": true
-              },
-              "probabilities": {
-                "draw": { "family": "normalized_uniform_weights",
-                          "settings": { "size": "demand_support_size" } },
-                "example": [0.2, 0.2, 0.2, 0.2, 0.2], "hidden": true
-              }
-            },
-            "is_discrete": true
-          },
-          // a second candidate is ~10 lines appended HERE — selected per
-          // instance ({"demand": "poisson"}) or --select demand=poisson —
-          // never a second schema file. Symbolic bounds re-resolve to its
-          // scale automatically (derived demand.mean: 30 either way here).
-          "poisson": {
-            "generator": "PoissonDemand", "family": "poisson",
-            "settings": {
-              "rate": { "draw": { "family": "gamma",
-                                  "settings": { "shape": "demand_alpha",
-                                                "scale": "1.0 / demand_beta" } },
-                        "example": 30.0, "hidden": true }
-            },
-            "is_discrete": true
-          }
+        {
+          "name": "pipeline", "role": "core", "type": "int_vector",
+          "length": 6,                    // leadtime.max()+1  (max L = 5); shapes stay literal (frozen)
+          "element_bounds": [0, "40 * demand.mean"],
+          "observability": "observable",
+          "desc": "pipeline[k] = quantity arriving at the k-th future R (receive) event"
         }
-      },
-      {
-        "name": "leadtime", "interface": "LeadtimeGenerator", "stream_id": 1,
-        "latent": false,
-        // event: decision-triggered; trigger REQUIRED (validated)
-        // → seed_key() = [period, source:1, 1, episode_seed, seed_salt]
-        "stages": [ { "name": "draw", "realization": "event", "trigger": "O && order>0" } ],
-        "default": "discrete",
-        "candidates": {
-          "discrete": {
-            "generator": "DiscreteLeadtime", "family": "categorical",
-            // plain settings (no draw spec) = no world latent for this slot
-            "settings": { "values": "leadtime_values", "probabilities": "leadtime_probs" },
-            "is_discrete": true
-          }
-        }
-      }
-    ],
-
-    "dynamics": {
-      // a literal list, or the NAME of a scenario constant whose value is
-      // the list (the horizon.T precedent): event order is then a scenario
-      // dimension — event-order variants (R-D-O vs O-R-D) become instances
-      // overriding that constant, and the interpreter executes transitions
-      // in the resolved order. A constant here is in control position
-      // (§10d): a structural parameter — each used setting needs
-      // differential coverage. Literal form: transitions must be declared
-      // in sequence order (validated), so the IR reads as it runs.
-      "event_sequence": ["O", "R", "D"],    // order → receive → demand
-      "observation_point": "pre-order",
-      // every identifier in updates/guards must resolve (state ∪ info ∪ decisions
-      // ∪ constants ∪ sources/stages ∪ locals like L) — validated, no phantom names
-      "transitions": [
-        { "event": "O", "guard": "order > 0",
-          "updates": ["L ~ leadtime.draw", "leadtime = L", "pipeline[L] += order"] },
-        { "event": "R",
-          "updates": ["received = pipeline[0]", "inventory += received",
-                       "pipeline = pipeline[1:] + [0]"] },
-        { "event": "D",
-          "updates": ["demand ~ demand.sample", "inventory -= demand",
-                       "if not allow_backlog: lost_sales = max(0, -inventory); inventory = max(0, inventory)"] },
-        { "event": "END_OF_PERIOD", "updates": ["action_period = period", "period += 1"] }
-      ]
-    },
-
-    // --- OBJECTIVE: mdp-layer economics; travel in info (spec §6.4). Evaluated at
-    //     END_OF_PERIOD on end-of-period state. Reward construction is gym's job.
-    "objective": {
-      "sense": "minimize",
-      // β — the problem's intrinsic discount (time value of money /
-      // continuation probability), from the Phase-A interview. Part of the
-      // objective, never a solver knob: eval + all baselines score Σ β^t r_t,
-      // training gamma defaults to β (spec §8.6), rewards are never
-      // pre-discounted in the env. 1.0 = undiscounted (the default).
-      "discount_factor": 1.0,
-      "per_step_components": [
-        { "name": "holding",        "expr": "h * max(0,  inventory)" },
-        { "name": "shortage",       "expr": "b * max(0, -inventory) if allow_backlog else b * lost_sales" },
-        { "name": "order_fixed",    "expr": "K if order > 0 else 0" },
-        { "name": "order_variable", "expr": "c * order" }
-      ]
-    },
-
-    // --- INVARIANTS: what the user said must ALWAYS be true, transcribed at
-    //     Phase A. The differential gate proves the interpreter and the
-    //     generated domain AGREE; it cannot prove either is RIGHT — a wrong
-    //     sign both sides share passes it. A claim taken from the problem
-    //     statement is independent of the model, so it does not.
-    //     `expr` is a boolean over the END_OF_PERIOD namespace, plus
-    //     `prev.<name>` (previous period's value; the initial state at t=0) and
-    //     `t` (the row's INPUT period — prefer it to the time-index variable,
-    //     which END_OF_PERIOD has already advanced). Use `close(a, b[, tol])`
-    //     for float balances, not `==`. `scope` is "period" (default) or
-    //     "terminal". Violations are collected, not raised: advisory at Phase
-    //     A, fatal at the Stage-1 gate.
-    //     STRUCTURAL: editing a claim moves the structural fingerprint and
-    //     re-opens the Phase-A confirmation, exactly like editing dynamics.
-    "invariants": [
-      { "name": "inventory_balance",
-        "expr": "close(inventory, prev.inventory + received - demand + lost_sales)",
-        "desc": "on-hand changes only by what arrives and what demand takes; under lost_sales the unmet part lands in lost_sales instead of negative inventory — so one claim covers both stockout modes" },
-      { "name": "pipeline_balance",
-        "expr": "close(sum(pipeline), sum(prev.pipeline) + order - received)",
-        "desc": "outstanding orders change only by what is placed and what arrives — holds under every event order and lead-time candidate" },
-      { "name": "no_negative_stock_under_lost_sales",
-        "expr": "stockout_mode != 'lost_sales' or inventory >= 0",
-        "desc": "lost-sales mode drops unmet demand rather than backlogging it" }
-    ],
-
-    // --- SCENARIO: the single home for every number (or categorical selector). Exprs reference constants by
-    //     name; `axis` tags scenario dimensions; `instances` → the SCENARIOS registry.
-    "scenario": {
-      "constants": [
-        { "name": "h", "value": 0.2,  "axis": "cost", "desc": "holding cost / unit" },
-        { "name": "b", "value": 2.0,  "axis": "cost", "desc": "shortage cost / unit" },
-        { "name": "K", "value": 25.0, "axis": "cost", "desc": "fixed cost / order" },
-        { "name": "c", "value": 1.0,  "axis": "cost", "desc": "variable cost / unit" },
-        { "name": "allow_backlog", "value": true, "axis": "variant" },
-        // a `variant` constant may be a bool OR a categorical STRING enum (the
-        // IR mirror of a `_scenarios.py` scenario mode): this toggle could
-        // instead read { "value": "backlog" } and be tested in a guard/update
-        // by string equality — `stockout_mode == 'lost_sales'`. String literals
-        // in exprs are fine; their contents are data, never identifiers.
-        { "name": "demand_support_size", "value": 5,  "axis": "demand" },
-        { "name": "demand_support_low",  "value": 10, "axis": "demand" },
-        { "name": "demand_support_high", "value": 50, "axis": "demand" },
-        { "name": "demand_alpha", "value": 9.0, "axis": "demand",
-          "desc": "poisson candidate: Gamma shape of the hidden rate" },
-        { "name": "demand_beta",  "value": 0.3, "axis": "demand",
-          "desc": "poisson candidate: Gamma rate; E[lambda] = alpha/beta = 30" },
-        { "name": "leadtime_values", "value": [2, 3, 4, 5], "axis": "leadtime" },
-        { "name": "leadtime_probs",  "value": [0.125, 0.375, 0.375, 0.125], "axis": "leadtime" }
-        // NOTE: no hand-authored placeholders and no `samplers` node — the
-        // draw specs inside the demand candidates desugar at load time into a
-        // `demand_latent` sampler (substream = the slot's stream_id) plus
-        // synthesized placeholder constants (demand_values / demand_probabilities
-        // / demand_rate). Instances sharing a candidate share the latent stream:
-        // common random numbers across instances by construction.
       ],
-      // instances = the SCENARIOS registry: constant overrides AND slot
-      // selections compose freely — a permutation is one line, never a file.
-      // At resolution, instances inconsistent with the active selection are
-      // dropped and slot keys stripped, so the resolved IR is consistent.
-      "instances": {
-        "lost_sales":         { "allow_backlog": false },
-        "poisson":            { "demand": "poisson" },
-        "poisson_lost_sales": { "demand": "poisson", "allow_backlog": false }
-      }
-    },
 
-    // literal or expr over constants; must cover every `core` state var (validated)
-    "initial_state": { "inventory": 0, "pipeline": "zeros(6)" },
+      // --- INFO: per-transition outputs; NEVER read back by the simulator (§5.1) ---
+      "info_fields": [
+        {
+          "name": "demand", "type": "int", "desc": "realized demand this period (D event)",
+          // borderline state-vs-info call (§5.1) → Confirmable<enum>, reviewed → human_confirmed
+          "placement": {
+            "value": "info", "suggested": "info", "source": "human_confirmed",
+            "rationale": "no later transition reads it; exposed only via the vec_d observation mode"
+          }
+        },
+        { "name": "received",     "type": "int", "desc": "units received this period (R event)" },
+        { "name": "leadtime",     "type": "int", "desc": "sampled lead time of this period's order" },
+        { "name": "lost_sales",   "type": "int", "desc": "unmet demand dropped (only if allow_backlog=false)" },
+        { "name": "action_period","type": "int", "desc": "period the emitting decision was taken (boundary invariant)" },
+        // must carry exactly the objective components + "total" (validated):
+        { "name": "cost", "type": "decomposition",
+          "components": ["holding", "shortage", "order_fixed", "order_variable", "total"] }
+      ],
 
-    // OPTIONAL: domain-owned expression builtins. Expressions may call only
-    // the core builtins (min/max/exp/phi/topk/...); a domain needing more
-    // declares each extra function here and ships `def {name}` in
-    // `{module}.py` next to this IR (portable-domain contract). The
-    // interpreter resolves the module lazily on first call — nothing
-    // domain-specific is ever hard-coded in mdp_ir.
-    "expr_builtins": [
-      // { "name": "bayes_topk", "module": "mydomain_probit_map",
-      //   "desc": "Bayes-optimal top-k selection via probit MAP" }
-    ]
+      "decisions": [
+        {
+          "name": "order",
+          // Confirmable<enum> — integrality is a no-oracle call (§6); still `derived` here
+          "type": {
+            "value": "continuous", "suggested": "continuous", "source": "derived",
+            "rationale": "'how much to order' stated no integrality; continuous is easier for PPO"
+          },
+          "dim": 1,
+          // Confirmable<[lo,hi]> — the upper action scale is a codegen guess;
+          // symbolic, so it re-resolves when a different demand candidate is selected
+          "bounds": {
+            "value": [0, "20 * demand.mean"], "suggested": [0, "20 * demand.mean"],
+            "source": "derived",
+            "rationale": "20x mean demand; caps the action scale, not a physical limit"
+          },
+          "feasibility": ["non_negative"],
+          "desc": "replenishment quantity placed at the O (order) event"
+        }
+      ],
+
+      // --- UNCERTAINTY: authored as SLOTS with a candidate pool (catalog ⊕
+      //     selection, §7 below; IR_LAYERING_PLAN §10). A slot fixes the
+      //     structural skeleton — name, interface, stream_id, stages (whose
+      //     `realization` DERIVES the seed key, §5.3 — never hand-written) —
+      //     and declares the candidate families that can fill it, the way
+      //     _uncertainty.py declares generator classes. `load_ir` resolves the
+      //     selected candidate into a plain `uncertainty_sources` entry, so
+      //     nothing downstream sees the catalog. (A file carrying
+      //     `uncertainty_sources` directly is the legacy resolved form and
+      //     still loads.)
+      "uncertainty_slots": [
+        {
+          "name": "demand", "interface": "DemandGenerator", "stream_id": 0,
+          "latent": false,
+          // one per-period stage → seed_key() = [period, source:0, 1, episode_seed, seed_salt]
+          "stages": [ { "name": "sample", "realization": "period" } ],
+          "default": "discrete",
+          "candidates": {
+            "discrete": {
+              "generator": "DiscreteDemand",
+              // `family` is any explicitly-aliased family (categorical, poisson,
+              // normal, lognormal, uniform, bernoulli, choice_without_replacement,
+              // normalized_uniform_weights, iid) OR any numpy Generator scalar
+              // distribution by name (gamma, beta, binomial, exponential, zipf, …),
+              // whose `settings` are numpy's own kwargs. See interpreter._sample_family.
+              "family": "categorical",
+              "settings": {
+                // a setting whose value is a DRAW SPEC is this slot's WORLD
+                // LATENT (spec §5.2): drawn once per episode on the meta branch
+                // at THIS SLOT's stream_id, then consumed as a plain constant.
+                // The loader desugars it into a scenario sampler + a synthesized
+                // placeholder constant ({slot}_{setting}, value = `example`).
+                // hidden: true flips the requires_memory derivation and bars the
+                // realized value from observation modes.
+                "values": {
+                  "draw": { "family": "choice_without_replacement",
+                            "settings": { "low": "demand_support_low",
+                                          "high": "demand_support_high",
+                                          "size": "demand_support_size" } },
+                  "example": [10, 20, 30, 40, 50], "hidden": true
+                },
+                "probabilities": {
+                  "draw": { "family": "normalized_uniform_weights",
+                            "settings": { "size": "demand_support_size" } },
+                  "example": [0.2, 0.2, 0.2, 0.2, 0.2], "hidden": true
+                }
+              },
+              "is_discrete": true
+            },
+            // a second candidate is ~10 lines appended HERE — selected per
+            // instance ({"demand": "poisson"}) or --select demand=poisson —
+            // never a second schema file. Symbolic bounds re-resolve to its
+            // scale automatically (derived demand.mean: 30 either way here).
+            "poisson": {
+              "generator": "PoissonDemand", "family": "poisson",
+              "settings": {
+                "rate": { "draw": { "family": "gamma",
+                                    "settings": { "shape": "demand_alpha",
+                                                  "scale": "1.0 / demand_beta" } },
+                          "example": 30.0, "hidden": true }
+              },
+              "is_discrete": true
+            }
+          }
+        },
+        {
+          "name": "leadtime", "interface": "LeadtimeGenerator", "stream_id": 1,
+          "latent": false,
+          // event: decision-triggered; trigger REQUIRED (validated)
+          // → seed_key() = [period, source:1, 1, episode_seed, seed_salt]
+          "stages": [ { "name": "draw", "realization": "event", "trigger": "O && order>0" } ],
+          "default": "discrete",
+          "candidates": {
+            "discrete": {
+              "generator": "DiscreteLeadtime", "family": "categorical",
+              // plain settings (no draw spec) = no world latent for this slot
+              "settings": { "values": "leadtime_values", "probabilities": "leadtime_probs" },
+              "is_discrete": true
+            }
+          }
+        }
+      ],
+
+      "dynamics": {
+        // a literal list, or the NAME of a scenario constant whose value is
+        // the list (the horizon.T precedent): event order is then a scenario
+        // dimension — event-order variants (R-D-O vs O-R-D) become instances
+        // overriding that constant, and the interpreter executes transitions
+        // in the resolved order. A constant here is in control position
+        // (§10d): a structural parameter — each used setting needs
+        // differential coverage. Literal form: transitions must be declared
+        // in sequence order (validated), so the IR reads as it runs.
+        "event_sequence": ["O", "R", "D"],    // order → receive → demand
+        "observation_point": "pre-order",
+        // every identifier in updates/guards must resolve (state ∪ info ∪ decisions
+        // ∪ constants ∪ sources/stages ∪ locals like L) — validated, no phantom names
+        "transitions": [
+          { "event": "O", "guard": "order > 0",
+            "updates": ["L ~ leadtime.draw", "leadtime = L", "pipeline[L] += order"] },
+          { "event": "R",
+            "updates": ["received = pipeline[0]", "inventory += received",
+                         "pipeline = pipeline[1:] + [0]"] },
+          { "event": "D",
+            "updates": ["demand ~ demand.sample", "inventory -= demand",
+                         "if not allow_backlog: lost_sales = max(0, -inventory); inventory = max(0, inventory)"] },
+          { "event": "END_OF_PERIOD", "updates": ["action_period = period", "period += 1"] }
+        ]
+      },
+
+      // --- OBJECTIVE: mdp-layer economics; travel in info (spec §6.4). Evaluated at
+      //     END_OF_PERIOD on end-of-period state. Reward construction is gym's job.
+      "objective": {
+        "sense": "minimize",
+        // β — the problem's intrinsic discount (time value of money /
+        // continuation probability), from the Phase-A interview. Part of the
+        // objective, never a solver knob: eval + all baselines score Σ β^t r_t,
+        // training gamma defaults to β (spec §8.6), rewards are never
+        // pre-discounted in the env. 1.0 = undiscounted (the default).
+        "discount_factor": 1.0,
+        "per_step_components": [
+          { "name": "holding",        "expr": "h * max(0,  inventory)" },
+          { "name": "shortage",       "expr": "b * max(0, -inventory) if allow_backlog else b * lost_sales" },
+          { "name": "order_fixed",    "expr": "K if order > 0 else 0" },
+          { "name": "order_variable", "expr": "c * order" }
+        ]
+      },
+
+      // --- INVARIANTS: what the user said must ALWAYS be true, transcribed at
+      //     Phase A. The differential gate proves the interpreter and the
+      //     generated domain AGREE; it cannot prove either is RIGHT — a wrong
+      //     sign both sides share passes it. A claim taken from the problem
+      //     statement is independent of the model, so it does not.
+      //     `expr` is a boolean over the END_OF_PERIOD namespace, plus
+      //     `prev.<name>` (previous period's value; the initial state at t=0) and
+      //     `t` (the row's INPUT period — prefer it to the time-index variable,
+      //     which END_OF_PERIOD has already advanced). Use `close(a, b[, tol])`
+      //     for float balances, not `==`. `scope` is "period" (default) or
+      //     "terminal". Violations are collected, not raised: advisory at Phase
+      //     A, fatal at the Stage-1 gate.
+      //     STRUCTURAL: editing a claim moves the structural fingerprint and
+      //     re-opens the Phase-A confirmation, exactly like editing dynamics.
+      "invariants": [
+        { "name": "inventory_balance",
+          "expr": "close(inventory, prev.inventory + received - demand + lost_sales)",
+          "desc": "on-hand changes only by what arrives and what demand takes; under lost_sales the unmet part lands in lost_sales instead of negative inventory — so one claim covers both stockout modes" },
+        { "name": "pipeline_balance",
+          "expr": "close(sum(pipeline), sum(prev.pipeline) + order - received)",
+          "desc": "outstanding orders change only by what is placed and what arrives — holds under every event order and lead-time candidate" },
+        { "name": "no_negative_stock_under_lost_sales",
+          // reads the variant constant this IR actually declares. Were the
+          // toggle the string-enum form the constants comment describes, the
+          // same claim would read `stockout_mode != 'lost_sales' or ...`
+          "expr": "allow_backlog or inventory >= 0",
+          "desc": "lost-sales mode drops unmet demand rather than backlogging it" }
+      ],
+
+      // literal or expr over constants; must cover every `core` state var (validated)
+      "initial_state": { "inventory": 0, "pipeline": "zeros(6)" },
+
+      // OPTIONAL: domain-owned expression builtins. Expressions may call only
+      // the core builtins (min/max/exp/phi/topk/...); a domain needing more
+      // declares each extra function here and ships `def {name}` in
+      // `{module}.py` next to this IR (portable-domain contract). The
+      // interpreter resolves the module lazily on first call — nothing
+      // domain-specific is ever hard-coded in mdp_ir.
+      "expr_builtins": [
+        // { "name": "bayes_topk", "module": "mydomain_probit_map",
+        //   "desc": "Bayes-optimal top-k selection via probit MAP" }
+      ]
+    }
   },
 
   // ═══════════════ gym — interface menus (mutable design axes) ═══════════════

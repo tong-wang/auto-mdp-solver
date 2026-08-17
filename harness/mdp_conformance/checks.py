@@ -913,7 +913,30 @@ def check_model_boundary(h: DomainHandle) -> CheckResult:
         if isinstance(cap, (int, float)) and vals and max(vals) > cap:
             problems.append(f"{cname}={cap} ({role}) is outrun by a designed {max(vals)}")
 
-    # gate 4 — declared instances sit inside the declared domains
+    # gate 4 — the stochastic structure the theory states must be the one the
+    # IR renders. Read at the CATALOG level: a slot whose selected candidate is
+    # a point mass is still a slot, so choosing inv_single's `deterministic`
+    # leadtime is a design choice, never a scope reduction
+    import json as _json
+    raw = _json.loads(schemas[0].read_text())
+    from mdp_ir.layering import _flat_mdp
+    flat = _flat_mdp(raw)
+    slot_names = {s["name"] for s in
+                  (flat.get("uncertainty_slots") or flat.get("uncertainty_sources") or [])
+                  if isinstance(s, dict) and "name" in s}
+    for qname, q in model.quantities.items():
+        if q.stochastic is True and qname not in slot_names:
+            problems.append(
+                f"{qname!r} is declared stochastic by the model but is no "
+                f"uncertainty source — the rendering dropped randomness the "
+                f"theory states")
+        if q.stochastic is False and qname in slot_names:
+            problems.append(
+                f"{qname!r} is declared deterministic by the model but is an "
+                f"uncertainty source — either the source is out of scope or the "
+                f"model statement is wrong")
+
+    # gate 5 — declared instances sit inside the declared domains
     for qname, q in model.quantities.items():
         low, high, integral = _domain_bounds(q.domain)
         for val in designed(qname):

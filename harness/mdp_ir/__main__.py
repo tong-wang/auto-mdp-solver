@@ -1,6 +1,7 @@
 """Validate IR JSON files against the schema.
 
     python -m mdp_ir plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json [more.json ...]
+    python -m mdp_ir <schema.json> --regroup    # rewrite into model/design/rendering groups
 
 A catalog schema (per-slot candidates, IR_LAYERING_PLAN §10) is validated by
 resolving its base selection **and every named instance** — each must produce
@@ -19,10 +20,49 @@ from mdp_ir import layering
 from mdp_ir.schema import load_ir
 
 
+def regroup(paths: list[str]) -> int:
+    """Rewrite each file into the three headed groups, in place.
+
+    Refuses to write if any fingerprint would move: the grouping is a file
+    layout for human readers, and a recorded fingerprint is what a frozen case
+    cites. A cosmetic change that moved one would be a defect, not a feature.
+    """
+    from mdp_ir.schema import group_mdp
+
+    failed = 0
+    for path in paths:
+        p = Path(path)
+        raw = json.loads(p.read_text())
+        before = (load_ir(p).mdp_fingerprint(), _rendering_hash(raw))
+        grouped = dict(raw)
+        grouped["mdp"] = group_mdp(raw["mdp"])
+        tmp = p.with_suffix(".regrouped.tmp")
+        tmp.write_text(json.dumps(grouped, indent=2) + "\n")
+        try:
+            after = (load_ir(tmp).mdp_fingerprint(), _rendering_hash(grouped))
+        finally:
+            if before != after:
+                tmp.unlink(missing_ok=True)
+        if before != after:
+            print(f"REFUSED  {path}: fingerprints would move {before} -> {after}")
+            failed += 1
+            continue
+        tmp.replace(p)
+        print(f"regrouped {path}  (fingerprints unmoved: {before[0]}"
+              + (f" / {before[1]}" if before[1] else "") + ")")
+    return 1 if failed else 0
+
+
+def _rendering_hash(raw: dict) -> str | None:
+    return layering.structural_fingerprint(raw) if layering.is_catalog(raw) else None
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__)
         return 2
+    if "--regroup" in argv:
+        return regroup([a for a in argv if a != "--regroup"])
 
     failures = 0
     for path in argv:
@@ -30,7 +70,7 @@ def main(argv: list[str]) -> int:
             raw = json.loads(Path(path).read_text())
             catalog = layering.is_catalog(raw)
             if catalog:
-                scenario_raw = (raw["mdp"].get("scenario") or {})
+                scenario_raw = (layering._flat_mdp(raw).get("scenario") or {})
                 inst_names = sorted(scenario_raw.get("instances") or {})
                 inst_names += sorted(
                     m["name"] for m in scenario_raw.get("mixtures") or []
@@ -61,7 +101,7 @@ def main(argv: list[str]) -> int:
             f"obs_norm={r.obs_normalization.enabled}"
         )
         if catalog:
-            slots = raw["mdp"]["uncertainty_slots"]
+            slots = layering._flat_mdp(raw)["uncertainty_slots"]
             menu = "  ".join(
                 f"{s['name']}: "
                 + " | ".join(

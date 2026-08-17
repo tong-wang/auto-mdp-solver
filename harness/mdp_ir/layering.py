@@ -88,6 +88,12 @@ class LayeringError(ValueError):
 # ---------------------------------------------------------------------------
 
 
+def _flat_mdp(data: dict) -> dict:
+    """The mdp block, ungrouped — raw-dict readers accept either file layout."""
+    from mdp_ir.schema import ungroup_mdp
+    return ungroup_mdp(data.get("mdp", {}) or {})
+
+
 def is_catalog(data: dict) -> bool:
     """True for the catalog form (``mdp.uncertainty_slots``); False for a
     legacy resolved single file (``mdp.uncertainty_sources``). The retired
@@ -99,7 +105,7 @@ def is_catalog(data: dict) -> bool:
             "(IR_LAYERING_PLAN.md §10): merge into a single catalog "
             "{domain}_schema.json with per-slot candidates"
         )
-    return "uncertainty_slots" in (data.get("mdp") or {})
+    return "uncertainty_slots" in _flat_mdp(data)
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +372,10 @@ def resolve_catalog(
     mean of means, max of maxes). ``_expand_mixtures`` is internal recursion
     control: component resolutions never expand their own mixtures."""
     merged = copy.deepcopy(data)
-    mdp = merged.get("mdp") or {}
+    # the file may present the block grouped (model / design / rendering);
+    # resolution works on the flat form, as every consumer does
+    mdp = _flat_mdp(merged)
+    merged["mdp"] = mdp
     where = (merged.get("domain") or {}).get("name") or "catalog"
 
     slots = mdp.pop("uncertainty_slots", None)
@@ -582,7 +591,7 @@ def structural_fingerprint(data: dict) -> str:
 
     if not is_catalog(data):
         raise LayeringError("structural_fingerprint takes a catalog document")
-    core = copy.deepcopy(data["mdp"])
+    core = copy.deepcopy(_flat_mdp(data))
     # the model layer has its own hash (MdpIR.model_fingerprint); this one is
     # explicitly the RENDERING fingerprint, so a theory edit and a re-slotting
     # of the same theory are distinguishable (upstream #29)

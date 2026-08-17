@@ -396,6 +396,37 @@ from {domain}_exceptions import ...
 
 ### 5.0 Three layers: model, design, rendering
 
+**The file says which is which.** The `mdp` block is presented in three headed groups, so a reader sees at a glance what an edit will move:
+
+```jsonc
+"mdp": {
+  "model":     { "quantities": {...}, "out_of_scope": [...], "dynamics": [...], "notation": {...} },
+  "design":    { "scenario": { "constants": [...], "instances": {...} } },
+  "rendering": { "horizon": {...}, "state_variables": [...], "decisions": [...],
+                 "uncertainty_sources": [...], "dynamics": {...}, "objective": {...},
+                 "invariants": [...], "expr_builtins": [...], "initial_state": {...} }
+}
+```
+
+| group | moves | reading |
+|---|---|---|
+| `model` | freeze token **+** model fingerprint | the theory's statement changed |
+| `design` | freeze token | which points this study evaluates changed |
+| `rendering` | freeze token **+** rendering fingerprint | the executable form changed |
+
+The grouping is a **file layout only**: in memory the block is flat (`ir.mdp.state_variables`), both layouts load, and every hash is computed after flattening — so `python -m mdp_ir <schema> --regroup` converts a flat file in place and **refuses to write if any fingerprint would move**.
+
+**The tie-breaker for placing anything new**: *delete it — does the model change? does the system evolve differently?* If both answers are no, it is not model. That is why **invariants are rendering**: they are derived from the theory, add no information, and verify rather than dictate — and their expressions are written in rendered names (`sum(pipeline)`), sometimes conditioned on a selection (`stockout_mode == 'lost_sales' or …`). And why the **horizon** splits: "finite horizon, T ≥ 1" is model, the value of `T` is a design constant, and `rendering.horizon` is the executable form that names it.
+
+**Randomness is a model statement.** Each quantity carries `stochastic`, describing what the *theory* permits rather than what a scenario realizes:
+
+```jsonc
+"demand":   {"domain": "any density on [0, inf); may differ period to period", "stochastic": true},
+"leadtime": {"domain": "integer >= 1", "stochastic": false, "source": "deterministic BY ASSUMPTION"}
+```
+
+Two domains can look identical from outside — a leadtime slot with a degenerate default — and mean opposite things: `inv_single` permits stochastic lead time and a scenario selects a point mass (design); `clark_scarf`'s source holds it deterministic (model), so a stochastic candidate would be out of scope. `model.boundary` checks both directions, reading the **catalog**: a declared-stochastic quantity with no uncertainty slot is randomness the rendering dropped; a declared-deterministic quantity that *is* a slot is either out of scope or a wrong model statement. Which candidate an instance selects is design and never triggers a model gate.
+
 Formalizing is a statement about **theory** — what the model admits, what the source puts out of scope. Three layers follow, and Phase A lives entirely in the first:
 
 | layer | question | where it lives |

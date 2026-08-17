@@ -882,6 +882,49 @@ def _prune_absent(node):
     return node
 
 
+# The file may present the mdp block in three headed groups — model (theory),
+# design (which points this study evaluates), rendering (what the interpreter
+# runs) — so a human opening the JSON sees immediately which section moves
+# which fingerprint. In memory the block stays flat, so no consumer changes,
+# and every hash is computed on the flat form: regrouping a file must never
+# move a recorded fingerprint.
+_DESIGN_KEYS = ("scenario",)
+_RENDERING_KEYS = (
+    "horizon", "entity_structure", "state_variables", "info_fields", "decisions",
+    "uncertainty_sources", "uncertainty_slots", "dynamics", "objective",
+    "invariants", "expr_builtins", "initial_state",
+)
+
+
+def ungroup_mdp(mdp: dict) -> dict:
+    """Flatten the grouped file layout. A flat block passes through unchanged."""
+    if not isinstance(mdp, dict) or not ({"design", "rendering"} & set(mdp)):
+        return mdp
+    flat: dict = {}
+    for key, value in mdp.items():
+        if key in ("design", "rendering"):
+            flat.update(value or {})
+        else:
+            flat[key] = value        # `model` reads the same in both layouts
+    return flat
+
+
+def group_mdp(mdp: dict) -> dict:
+    """Present a flat block in the three headed groups (round-trips exactly)."""
+    flat = ungroup_mdp(mdp)
+    out: dict = {}
+    if flat.get("model"):
+        out["model"] = flat["model"]
+    out["design"] = {k: flat[k] for k in _DESIGN_KEYS if k in flat}
+    out["rendering"] = {k: flat[k] for k in _RENDERING_KEYS if k in flat}
+    # anything the groups do not name stays at the top rather than being
+    # silently swallowed — a new key must be placed deliberately
+    for key, value in flat.items():
+        if key != "model" and key not in _DESIGN_KEYS and key not in _RENDERING_KEYS:
+            out[key] = value
+    return out
+
+
 class ModelQuantity(_Base):
     """One quantity of the *theory*, at the theory's generality.
 
@@ -892,6 +935,14 @@ class ModelQuantity(_Base):
     """
 
     domain: str                  # what the theory admits, transcribed
+    # does the THEORY make this quantity random? Describes what the model
+    # permits, never what a scenario realizes: a domain whose catalog offers a
+    # point-mass candidate is still `stochastic: true` if the theory admits
+    # randomness (inv_single's leadtime), while a quantity the source holds
+    # deterministic BY ASSUMPTION is `false` (clark_scarf's). Those two look
+    # identical from outside — a leadtime slot with a degenerate default — and
+    # mean opposite things
+    stochastic: bool | None = None
     source: str = ""             # where in the source document it is stated
 
 
@@ -945,6 +996,11 @@ class MdpBlock(_Base):
     renders are derived from the reference rather than re-declared. `model` is
     optional and omitted from the freeze token when absent, so an IR that
     predates it hashes exactly as before."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_grouped_layout(cls, data):
+        return ungroup_mdp(data) if isinstance(data, dict) else data
 
     model: ModelStatement | None = None
     horizon: Horizon
