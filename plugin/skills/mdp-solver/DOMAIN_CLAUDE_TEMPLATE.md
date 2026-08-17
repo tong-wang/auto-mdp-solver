@@ -151,6 +151,15 @@ and deliberate.
 Seeded by the pipeline; **every trap the campaign pays for is added here the
 same day**, citing the finding (#E…) that paid for it.
 
+- **The IR declares vectors; it never enumerates them** (spec §5.0,
+  `mdp_conformance schema.no_enumeration`). A pipeline is one state variable
+  with `length: "{width_constant}"` and a quantified update, never
+  `x_now`/`x_next` or `x1`/`x2`; a constant that names a width must actually
+  be *read* by the rendering, or it is decoration and changing it changes
+  nothing. This is not style: the schema is the first artifact the user reads
+  back as the statement of their problem, and an enumerated one reads as a
+  transcript of one case rather than a formalization. Before adding a
+  sibling, ask whether it is element `k` of something.
 - **The record eval is {`--stochastic` | deterministic argmax} here** —
   {one line on why: e.g. policy entropy IS the exploration mechanism /
   masked argmax is the deployment mode}. The other mode is a separate,

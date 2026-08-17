@@ -27,11 +27,21 @@ changes; **gated** is the tag its conformance has been carried through.
 committed. Read the sources via their DOI or a library. What a case reimplements
 from one are mathematical facts, attributed at the call site.
 
-Gates green at v0.9.5, **zero FAILs on all three**: conformance `clark_scarf`
-18/21, `fnv` **20/22**, `adi_flex` 15/21; `mdp_ir.laws` 8/9, 7/9, 7/9. Every
+Gates green at v0.9.6, **zero FAILs on all three**: conformance `clark_scarf`
+18/22, `fnv` **20/23**, `adi_flex` 15/22; `mdp_ir.laws` 8/9, 7/9, 7/9. Every
 un-passed law is a SKIP, and which one it is says something: on all three it is
 `mixture_equivalence` (none declares a mixture), plus `path_independence` on
 `fnv` and `invariants` on `adi_flex`, which declares none to check.
+
+Every denominator gained one at v0.9.6: `schema.no_enumeration` (spec §5.0) is
+new, and **all three cases WARN on it** — `adi_flex` for enumerating one demand
+pipeline as `due_now`/`due_next` and one rate vector as
+`lambda_now`/`lambda_next`/`lambda_later`, with a `demand_window` constant that
+appears exactly once in the file and therefore controls nothing; `clark_scarf`
+and `fnv` for re-baking a derived numeric vector per instance (`h_install` in
+ten instances, `signal_stdevs` in one). It WARNs rather than FAILs because the
+re-baking shape has no declarable alternative yet (issue #45). The counts above
+are otherwise unchanged: no check that passed before stopped passing.
 
 `fnv` moved 17/22 → 20/22 on 2026-08-17 by **declaring** what it already was —
 `mdp.model`, `benchmarks` and `research_questions` — with no number re-run; its
