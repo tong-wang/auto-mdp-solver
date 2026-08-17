@@ -35,7 +35,37 @@ from mab_bayes import bayes_post_mean, bayes_post_sd
 
 SCHEMA = schema_beside(__file__)
 EPISODES = 4        # x T=1000 periods x every composition
-RAW = json.loads(SCHEMA.read_text())
+
+
+def _raw_flat() -> dict:
+    """The schema document with its `mdp` block FLATTENED.
+
+    v0.9.1 lets the file present `mdp` in three headed groups — model (theory),
+    design (which points this study evaluates), rendering (what the interpreter
+    runs). This domain uses that layout, and the grouping is a *file* layout
+    only: `ungroup_mdp` is the harness's own flattener and passes a flat block
+    through unchanged, so every raw-JSON assertion below is written against the
+    flat form and holds under either layout. (`load_ir` flattens internally, so
+    the pydantic path never needed this.)
+
+    **`ungroup_mdp` and not `load_ir`, and here the difference bites.**
+    `load_ir` resolves the catalog, so it walks the *selected* IR and drops any
+    instance that re-selects an uncertainty slot — on this schema that is
+    exactly `bernoulli`, one of the two independent leaderboards (34 declared
+    instances, 33 after `load_ir`). Every assertion here is about the
+    **declared** document — the covering set, `arm_max == n_arms - 1` in every
+    instance, both candidates' priors — so resolving first would silently
+    narrow the sweep to the Gaussian branch and still pass. Claims about the
+    resolved model are the other idiom's job (upstream issue #42).
+    """
+    from mdp_ir.schema import ungroup_mdp
+
+    doc = json.loads(SCHEMA.read_text())
+    doc["mdp"] = ungroup_mdp(doc["mdp"])
+    return doc
+
+
+RAW = _raw_flat()
 
 
 def _compositions() -> list[str | None]:

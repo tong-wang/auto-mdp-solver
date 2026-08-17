@@ -78,12 +78,15 @@ Solver provenance — **two versions, two meanings**
 - **Built and gated at: v0.7.0** (`2e50c60`). Every number in this folder was
   produced under that tag. This line never moves; moving it would claim the
   results were re-measured.
-- **Conformance maintained through: v0.8.11.** Declarations, drawing
-  conventions and gate compatibility have been carried forward by the
-  maintainer — the `benchmarks` block (including the column-sourced oracle),
-  the `research_questions` stances, the §8.4 provenance emit, and the §MAP
-  retype to the `cases`/`means`/`designs` taxonomy. Each is logged in
-  `ESCALATION.md` §FRAME-CHANGELOG. **No verdict, mark or number moved.**
+- **Conformance maintained through: v0.9.6.** Declarations, drawing
+  conventions and gate compatibility have been carried forward **without
+  re-running anything** — the `benchmarks` block (including the column-sourced
+  oracle), the `research_questions` stances, the §8.4 provenance emit, the §MAP
+  retype to the `cases`/`means`/`designs` taxonomy, and the `mdp.model` theory
+  layer plus the grouped `mdp` file layout (**F6**). Each is logged in
+  `ESCALATION.md` §FRAME-CHANGELOG, and F6 additionally in §IR-CHANGELOG
+  because declaring the model layer moves the freeze token. **No verdict, mark
+  or number moved.**
 
 The two lines differing is the intended state, not drift (`cases/README.md`,
 "After a case is merged"). Verify before relying on either.
@@ -137,6 +140,37 @@ and deliberate.
 Seeded by the pipeline; **every trap the campaign pays for is added here the
 same day**, citing the finding (#E…) that paid for it.
 
+- **The IR declares vectors; it never enumerates them** (spec §5.0,
+  `mdp_conformance schema.no_enumeration`). A pipeline is one state variable
+  with `length: "n_arms"` and a quantified update, never `x_now`/`x_next` or
+  `x1`/`x2`; a constant that names a width must actually be *read* by the
+  rendering, or it is decoration and changing it changes nothing. This is not
+  style: the schema is the first artifact the user reads back as the statement
+  of their problem, and an enumerated one reads as a transcript of one case
+  rather than a formalization. Before adding a sibling, ask whether it is
+  element `k` of something.
+- **The `mdp` block is in the GROUPED layout** (`model` / `design` /
+  `rendering`, spec §5.0, adopted as **F6**). It is a *file layout only* — in
+  memory the block is flat, both layouts load, and every hash is computed after
+  flattening — but **anything reading the raw JSON by path must flatten first**,
+  because `["mdp"]["scenario"]` exists only in the flat layout. Use
+  `mdp_ir.schema.ungroup_mdp`, **not** `load_ir`, for any claim about the
+  *declared* document: `load_ir` resolves the catalog and silently drops every
+  instance that re-selects a slot, which here means `bernoulli` — one of the two
+  leaderboards (34 declared instances, 33 after `load_ir`). `mab_test.py`'s
+  `_raw_flat()` is the only raw reader and carries that reasoning;
+  `mab_ppo_train.py` goes through `load_ir` and needed no change. `--regroup`
+  warns about neither, and regrouping before the reader was fixed would have
+  taken this file from 69 tests to 0 at collection (issue #42).
+- **`mdp.model` is the theory, and design/rendering choices do not go in it**
+  (§5.0). The model says `n_arms >= 2` and `horizon_T >= 1` with **no upper
+  limit**; K=10/T=1000 are *design* values, and `arm_max` plus the
+  state-variable `bounds` are *rendering* widths. Keep it that way — writing a
+  swept maximum into the model layer is how a sweep ceiling becomes a capacity
+  limit nobody chose, which is the failure §5.0 exists to prevent and the one
+  **F4** already paid for once from the other direction. `arm_means` carries no
+  `stochastic` flag on purpose (see its `source`); benchmark and tractability
+  vocabulary stays out of the layer entirely — `model.boundary` WARNs on it.
 - **The record eval is `--stochastic` here** — policy entropy *is* this
   domain's exploration mechanism, and an argmax eval once re-pruned an entire
   encoding whose whole value lived in its sampling (#E30). The other mode is
