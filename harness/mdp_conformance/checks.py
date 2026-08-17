@@ -1156,6 +1156,131 @@ def _check_grid_axes(h: DomainHandle, GRIDS: dict) -> CheckResult:
     return CheckResult("grids.axes", "SKIP", "no grid declares axes metadata")
 
 
+_PROSE_KEYS = {"desc", "source", "rationale", "basis", "notation", "out_of_scope",
+               "domain", "claim", "instrument", "structure", "narrowed",
+               "assumptions_log"}
+_ORDINALS = ("now", "next", "later", "first", "second", "third", "cur", "prev", "last")
+
+
+def _referenced_tokens(mdp: dict) -> set[str]:
+    """Every identifier the *rendering* actually reads.
+
+    Prose fields are skipped: naming a constant in its own `desc` is not a
+    reference, and counting it would let a decorative constant hide behind its
+    documentation. The `model` block is skipped entirely — it is the theory,
+    written in the theory's own vocabulary (spec §5.0).
+    """
+    found: list[str] = []
+
+    def walk(node) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k not in _PROSE_KEYS:
+                    walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+        elif isinstance(node, str):
+            found.append(node)
+
+    scenario = mdp.get("scenario") or {}
+    walk({k: v for k, v in mdp.items() if k not in ("model", "scenario")})
+    walk({k: v for k, v in scenario.items() if k != "constants"})
+    toks = set()
+    for s in found:
+        toks |= set(re.findall(r"[A-Za-z_][A-Za-z_0-9]*", s))
+    # an instance override and a sampler draw both name a constant
+    for over in (scenario.get("instances") or {}).values():
+        toks |= set(over)
+    for sampler in scenario.get("samplers") or []:
+        toks |= {d["name"] for d in sampler.get("draws", [])}
+    return toks
+
+
+def _enumeration_findings(mdp: dict) -> tuple[list[str], int]:
+    """The three shapes, on a **flattened** mdp block. Pure, so it is testable
+    on synthetic IRs; returns (problems, constant count)."""
+    scenario = mdp.get("scenario") or {}
+    consts = {c["name"]: c for c in (scenario.get("constants") or [])}
+    seen = _referenced_tokens(mdp)
+    problems: list[str] = []
+
+    dead = [n for n in consts if n not in seen]
+    if dead:
+        problems.append(f"decorative constant(s) {sorted(dead)} — declared, "
+                        f"referenced nowhere; the rendering hardcodes them instead")
+
+    families: dict[str, list[str]] = {}
+    for name in list(consts) + [s["name"] for s in mdp.get("state_variables") or []]:
+        m = (re.match(r"^(.*?)_?(\d+)$", name)
+             or re.match(rf"^(.*?)_({'|'.join(_ORDINALS)})$", name))
+        if m and m.group(1):
+            families.setdefault(m.group(1), []).append(name)
+    enumerated = {k: sorted(v) for k, v in families.items() if len(v) > 1}
+    if enumerated:
+        problems.append("; ".join(
+            f"enumerated {k!r}: {v} — declare one vector with a named length"
+            for k, v in sorted(enumerated.items())))
+
+    rebaked: list[str] = []
+    for iname, over in (scenario.get("instances") or {}).items():
+        for key, val in over.items():
+            base = consts.get(key, {}).get("value")
+            # numeric only: a list of strings is a categorical choice (an event
+            # permutation), not a computed vector, and overriding it is correct
+            if (isinstance(val, list) and isinstance(base, list)
+                    and all(isinstance(x, (int, float)) and not isinstance(x, bool)
+                            for x in val)):
+                rebaked.append(f"{iname}.{key}")
+    if rebaked:
+        problems.append(f"re-baked numeric vector(s) {sorted(rebaked)} — a derived "
+                        f"value restated per instance, verified by nothing")
+    return problems, len(consts)
+
+
+def check_no_enumeration(h: DomainHandle) -> CheckResult:
+    """The IR is a model definition, not a rendering transcript (spec §5.0).
+
+    §5.0 already calls a literal at a *width site* a defect. The three shapes
+    here are the same defect one level down — in what is being sized rather
+    than in the size — and none of them is reachable by `model.boundary`, which
+    SKIPs entirely when the theory layer is undeclared. They are also the first
+    thing a reader sees, which is the other reason they matter.
+
+    * **decorative constant** — declared and referenced nowhere. It names a
+      quantity the rendering then hardcodes independently, so changing it
+      changes nothing and the IR silently disagrees with itself.
+    * **enumerated family** — one vector hand-unrolled into siblings
+      (`due_now`/`due_next`, `pipe1`/`pipe2`). The width stops being a symbol,
+      so nothing can sweep it and no width check can see it.
+    * **re-baked vector** — a numeric list an instance restates. The value is
+      derived, the derivation is not declarable (`ScenarioConstant.value` is a
+      literal by design), so every instance re-computes it by hand and nothing
+      verifies the arithmetic.
+
+    WARN, not FAIL: the third shape has no declarable alternative today, so a
+    hard failure would punish authors for a schema gap. Promote once that lands.
+    """
+    schemas = sorted(h.directory.glob("*_schema.json"))
+    if len(schemas) != 1:
+        return CheckResult("schema.no_enumeration", "SKIP", "no single *_schema.json")
+    try:
+        import json
+
+        from mdp_ir.schema import ungroup_mdp
+        mdp = ungroup_mdp(json.loads(schemas[0].read_text())["mdp"])
+    except Exception as e:
+        return CheckResult("schema.no_enumeration", "SKIP",
+                           f"schema not readable ({type(e).__name__}: {e})")
+
+    problems, n_consts = _enumeration_findings(mdp)
+    if problems:
+        return CheckResult("schema.no_enumeration", "WARN", "; ".join(problems)[:400])
+    return CheckResult("schema.no_enumeration", "PASS",
+                       f"{n_consts} constant(s) all referenced; no enumerated "
+                       f"families; no re-baked vectors")
+
+
 REGISTRY = [
     check_file_layout,
     check_layering,
@@ -1172,6 +1297,7 @@ REGISTRY = [
     check_research_questions,
     check_run_provenance,
     check_model_boundary,
+    check_no_enumeration,
     check_init_state,
     check_gym_contract,
     check_determinism,
