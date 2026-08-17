@@ -151,8 +151,13 @@ same day**, citing the finding (#E…) that paid for it.
   **anything reading the raw JSON by path must not assume the flat shape**:
   `["mdp"]["scenario"]` exists only in the flat layout, and that exact read is
   what broke `fnv_test.py` at collection time when F2 regrouped the file. Go
-  through `load_ir`, which flattens both. `--regroup` does not warn, and the
-  same read still sits in `examples/inv_single` and `examples/dynamic_pricing`.
+  through `load_ir`, which flattens both — or, if you need the raw doc,
+  `mdp_ir.schema.ungroup_mdp`, which is what `cases/clark_scarf` uses and is
+  the exact-enumeration path (`load_ir` resolves the catalog, so it drops any
+  instance that re-selects a slot; `fnv`'s `mmmfe` overrides constants only, so
+  the two agree here). `--regroup` does not warn, and the same read still sits
+  in `examples/mab` (18 sites), `examples/inv_single` (7) and
+  `examples/dynamic_pricing` (1).
 - **`mdp.model` is the theory, and it is NOT where design choices go** (§5.0).
   Three things this case renders are design, not model, and the file now says
   so: the arithmetic cost ladder (the paper assumes only `c_1 < … < c_N < r`),

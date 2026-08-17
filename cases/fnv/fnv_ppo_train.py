@@ -220,12 +220,17 @@ def resolve_paths(outdir_arg: str, scenario_name: str, run_name: str) -> tuple[P
 
 
 def _ir_fingerprint() -> str:
-    """The frozen model this run trained against, or '?' if unreadable (§8.4)."""
-    try:
-        from mdp_ir.schema import load_ir
-        return load_ir(Path(__file__).resolve().parent / "fnv_schema.json").mdp_fingerprint()
-    except Exception:
-        return "?"
+    """The frozen model this run trained against (§8.4).
+
+    Deliberately NOT wrapped in a fallback. `run.provenance` checks that the
+    key is *present*, not that it says anything, so a swallowed error would
+    write `ir_mdp_fingerprint: ?` and pass the gate while recording nothing —
+    the re-attribution this key exists to prevent, arriving through the back
+    door. `write_args` runs before `model.learn()`, so raising here costs no
+    training time: an unreadable IR stops the run at second zero.
+    """
+    from mdp_ir.schema import load_ir
+    return load_ir(Path(__file__).resolve().parent / "fnv_schema.json").mdp_fingerprint()
 
 
 def write_args(args: argparse.Namespace, outdir: Path) -> None:

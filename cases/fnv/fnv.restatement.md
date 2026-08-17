@@ -296,7 +296,7 @@ t  order  cost  demand  sales  inventory  information  total_cost  ordering  rev
 episode total = 0.81   reward total = 0.81   periods = 3
 ```
 
-Commands to reproduce (from the repo root):
+Commands to reproduce (from `cases/`, the parent of `fnv/`):
 
 ```
 python -m mdp_ir.interpreter fnv/fnv_schema.json --decision order=0.3 --episode-seed 3

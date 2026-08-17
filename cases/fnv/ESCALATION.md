@@ -271,10 +271,17 @@ Two side-effects worth their own line:
 - **The regroup broke `fnv_test.py`** — it read `["mdp"]["scenario"]` off the
   raw JSON, a path that exists only in the flat layout, so collection died with
   `KeyError: 'scenario'`. Fixed to read through `load_ir`, which flattens both.
-  **The same latent break sits in `examples/inv_single` and
-  `examples/dynamic_pricing`** — any case adopting the grouped layout breaks its
-  own test file at collection time, and `--regroup` gives no warning. Not fixed
-  here: it is a pipeline defect, not a `fnv` one, and belongs in its own change.
+  **The same latent break sits in `examples/mab` (18 raw `["mdp"]` reads),
+  `examples/inv_single` (7) and `examples/dynamic_pricing` (1)** — any case
+  adopting the grouped layout breaks its own test file at collection time, and
+  `--regroup` gives no warning. Not fixed here: it is a pipeline defect, not a
+  `fnv` one, and belongs in its own change. Note there are already **two
+  idioms** for the fix and they are not equivalent: `load_ir` (used here) walks
+  the resolved IR, so it drops instances that re-select a slot, while
+  `ungroup_mdp` (used by `cases/clark_scarf`) flattens the raw doc and preserves
+  the declared enumeration exactly. They agree on `fnv` because `mmmfe`
+  overrides constants only. Whichever the pipeline change picks, it should pick
+  one.
 
 ## LEDGER
 
@@ -318,7 +325,7 @@ plan: re-derive **within the spec's own stated ranges** — LR to the row's othe
 
 <a id="E3"></a>
 ### #E3  2026-08-13 — L1′: the corrected derivation recovers the loss
-address: scenario=FNV-aMMFE / method=ppo / level=L1
+address: scenario=FNV-aMMFE / method=ppo / level=L1'
 runs: `PPO_20260813_220047_lr0.0003_lrf3e-05_bs64`,
   `PPO_20260813_220046_seed2_lr0.0003_lrf3e-05_bs64`,
   `PPO_20260813_220047_seed3_lr0.0003_lrf3e-05_bs64`.
