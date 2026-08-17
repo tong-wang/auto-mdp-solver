@@ -38,7 +38,6 @@ their declared bounds (deterministically from the episode seed).
 
 from __future__ import annotations
 
-import math
 import re
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -65,20 +64,11 @@ _DRAW = re.compile(
 # the function whitelist matching the schema's _BUILTINS (minus keywords).
 # Core functions only — domain-owned builtins are declared per IR in
 # `mdp.expr_builtins` and injected in `IrInterpreter.__init__`.
-_FUNCS: dict[str, object] = {
-    "min": min, "max": max, "sum": sum, "abs": abs, "len": len,
-    "round": round, "int": int, "float": float,
-    "exp": math.exp, "log": math.log, "sqrt": math.sqrt,
-    "floor": math.floor, "ceil": math.ceil,
-    "zeros": lambda n: [0] * int(n),
-    "phi": lambda x: 0.5 * (1.0 + math.erf(x / math.sqrt(2.0))),
-    "topk": lambda values, k: sorted(values, reverse=True)[: int(k)],
-    "range": range,
-    # float-tolerant equality — the balance-law idiom in `mdp.invariants`,
-    # so a conservation claim reads as one expression instead of an
-    # abs()-difference-under-epsilon dance
-    "close": lambda a, b, tol=1e-9: abs(float(a) - float(b)) <= tol,
-}
+#
+# Defined once in `mdp_ir.exprs` and shared with the layering resolver, so the
+# two evaluators cannot drift: what `schema._BUILTINS` validates is what both
+# of them can evaluate.
+from mdp_ir.exprs import CORE_FUNCS as _FUNCS  # noqa: E402
 
 # the family→numpy sampling dispatch lives in mdp_ir.runtime (shared with
 # domain-side FamilyGenerator delegation, so the twin's two sides cannot
