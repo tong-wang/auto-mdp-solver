@@ -1,12 +1,16 @@
 # fnv — plain-English restatement (Phase A round-trip artifact)
 
-IR: `fnv_schema.json` · ir_version 0.4 · `mdp` fingerprint `40110193eba5` ·
+IR: `fnv_schema.json` · ir_version 0.4 · `mdp` fingerprint `d415b34e8c33` ·
 structural fingerprint `36f5c3aaf7a6` · seed scheme v2
 
-*(Fingerprints moved 2026-08-13 from `b992f2adead2` / `b1a471107c9d` when the
-two Phase-A confirmables were resolved and the `order` bound was re-derived —
-see "Decision, horizon, objective". Entries written before that date quote the
-old pair. Owes a §IR-CHANGELOG entry once a campaign log exists.)*
+*(The `mdp` token has moved twice, both recorded in `ESCALATION.md`
+§IR-CHANGELOG. **F1**, 2026-08-13: `b992f2adead2` → `40110193eba5`, when the two
+Phase-A confirmables were resolved and the `order` bound was re-derived — see
+"Decision, horizon, objective"; the structural hash moved with it,
+`b1a471107c9d` → `36f5c3aaf7a6`. **F2**, 2026-08-17: `40110193eba5` →
+`d415b34e8c33`, when `mdp.model` was declared at v0.9.5 — the structural
+hash did **not** move, because the rendering did not change. Entries written
+before each date quote the older token.)*
 
 > **Provenance: this IR was PORTED, not elicited here.** It arrived with the
 > upstream case folder (`mdp_solver` `cases/fnv/`, demoted from `examples/` in
@@ -42,6 +46,35 @@ minus everything you paid.
 
 The whole problem is the tension between those two effects: **order early and
 cheap under a vague forecast, or late and dear under a sharp one.**
+
+## What the theory admits, and what this study chose (`mdp.model`, §5.0)
+
+Declared 2026-08-17 (§IR-CHANGELOG F2). The point of the layer is that the
+envelope you sign off on is the **paper's**, not the code's — so three things
+the rendering fixes are now on the record as *this study's choices* rather than
+properties of the problem:
+
+| the model says (Wang, Atasu & Kurtuluş 2012) | this study renders | layer |
+|---|---|---|
+| costs need only satisfy `0 < c_1 < c_2 < … < c_N < r` (§3) | the arithmetic ladder `c_n = c1 + (n-1)·lamb` | **design** — `lamb` has no counterpart in the theory |
+| the per-epoch adjustment variances `σ_i²` are free and unrelated (§3) | `σ_i` derived from a total `stdev` and epoch spacing `t_last`, a Brownian information flow | **design** |
+| an order is bounded only below: `Q_n ≥ 0` (§4.1) | `[0, order_max]`, the ~5σ demand ceiling | **design** cap + **implementation** action box (`narrowed`) |
+| horizon of `N + 1` periods, `N ≥ 1` general (§3) | `N = 3`, `horizon.T = 4` | **design** value, **rendering** form |
+
+Ten quantities are declared with the domain the theory admits and a `source`
+quoting §3/§4.1. Six exclusions are the paper's own, not ours: **no salvage
+value, no shortage penalty beyond the lost margin, no discounting** (§3), **no
+fixed ordering costs and no cancelations** (§3 — the paper extends to these in
+its online supplement; this model does not), **no explicit holding cost** (§3 —
+"they can be easily embedded into ordering costs"), and **no delivery lead
+time**. The single-ordering model the paper studies in its §4.2 is a *different*
+decision problem (when to place one order) and is out of scope here.
+
+Randomness at the model layer sits in exactly one place: `signal`, the forecast
+adjustments, declared `stochastic: true` — and it is the IR's one uncertainty
+slot, which is what `mdp_conformance model.boundary` checks. `demand`,
+`inventory` and `information` are declared as **derived**: they make no
+independent randomness claim, because all of it enters through `signal`.
 
 ## Mode stance (source: derived, from the IR's `mmfe_mode` constant)
 
@@ -227,6 +260,12 @@ differential covers base + `mmmfe` only.
 
 ## Annotated sample trajectory (interpreter output, episode_seed=3, fixed `order=0.3`)
 
+> **Re-rendered 2026-08-17** on v0.9.5, after F2 declared `mdp.model` — SKILL
+> step 7b requires a re-render whenever the model changes, because this is the
+> artifact a human reads to check the world. Both branches came back
+> **byte-identical** to what is printed below, which is the independent
+> confirmation that declaring the theory layer moved no number.
+
 Base = **additive**. Three orders of 0.3 at rising cost (0.30, 0.33, 0.36);
 demand stays 0 until the horizon, then realizes as `mu + I = 1 + 0.06 = 1.06`.
 Inventory reached only 0.90, so sales are capped at 0.90 — the
@@ -257,7 +296,7 @@ t  order  cost  demand  sales  inventory  information  total_cost  ordering  rev
 episode total = 0.81   reward total = 0.81   periods = 3
 ```
 
-Commands to reproduce (from the repo root):
+Commands to reproduce (from `cases/`, the parent of `fnv/`):
 
 ```
 python -m mdp_ir.interpreter fnv/fnv_schema.json --decision order=0.3 --episode-seed 3
@@ -272,5 +311,9 @@ python -m mdp_ir.interpreter fnv/fnv_schema.json --instance mmmfe --decision ord
    the 6 features the gym emits. Part of the same owed-upstream fork as (1);
    moved no fingerprint.
 3. The campaign that followed this restatement is in `ESCALATION.md`
-   (§LEDGER #E1–#E10), its readback in `INTERPRET.md`, and its digest in
+   (§LEDGER #E1–#E11), its readback in `INTERPRET.md`, and its digest in
    `PLAYBOOK.md`.
+4. ~~**No theory layer**~~ — **declared 2026-08-17** (§IR-CHANGELOG F2). The
+   `mdp` block now separates model / design / rendering, and the three design
+   choices that had been reading as model structure are on the record. Moved the
+   freeze token once, by design; moved no number.
