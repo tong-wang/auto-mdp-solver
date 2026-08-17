@@ -164,12 +164,14 @@ above — was a tree all along.)
   typing cost, one per failure mode. **Mis-typing**: `game2048`'s root splits
   `3x3_20 (P1 ★) / 4x4_20 (P2)` — board size, a coverage axis by this guide's
   own example — as a selection split, so the coverage cell the guide names is
-  drawn formally prunable. **Mis-ranking**: `cases/fnv`'s map co-ranks two
+  drawn formally prunable. **Mis-ranking**: `cases/fnv`'s map co-ranked two
   children of one split `P1 ★` — `L0 faithful defaults` beside `L1' corrected
   derivation`, and again under its second target — which a selection split
   cannot mean, since spec §8.6 makes `L0` reporting-only and never
-  crown-eligible. That is the §8.6 ladder drawn as a selection split, and it is
-  what §3.2's floor-control rule now prevents.)*
+  crown-eligible. That was the §8.6 ladder drawn as a selection split, and it is
+  what §3.2's floor-control rule now prevents. **`fnv`'s map was redrawn to this
+  taxonomy on 2026-08-17** — the ladder is a chain there now — so read the
+  example from this text rather than from the live file.)*
 - **Every split edge carries a split id, `{locus}.{axis}`.** The `axis` is the
   same code-read name the child node uses, which is what makes the
   mis-attachment check below performable rather than aspirational — a node's
