@@ -26,6 +26,7 @@ import ast
 import copy
 import dataclasses
 import math
+import re
 from pathlib import Path
 
 import numpy as np
@@ -813,6 +814,130 @@ def _parse_args_log(path: Path) -> dict[str, str]:
     return out
 
 
+_LAYER_LEAK = ("benchmark", "solver", "tractab", "gridded", "dp reference")
+
+
+def _domain_bounds(spec: str) -> tuple[float | None, float | None, bool]:
+    """(low, high, integral) parsed from a model domain string, best effort.
+
+    Handles the forms the spec's examples use — "integer >= 1", "real, [0, inf)",
+    "integer >= 2" — and returns Nones for anything it cannot read, which the
+    caller treats as un-checkable rather than as a failure.
+    """
+    text = spec.lower()
+    integral = "integer" in text or "int " in text
+    low = high = None
+    m = re.search(r">=\s*(-?\d+(?:\.\d+)?)", text)
+    if m:
+        low = float(m.group(1))
+    m = re.search(r"<=\s*(-?\d+(?:\.\d+)?)", text)
+    if m:
+        high = float(m.group(1))
+    m = re.search(r"[\[(]\s*(-?\d+(?:\.\d+)?)\s*,\s*(inf|-?\d+(?:\.\d+)?)\s*[\])]", text)
+    if m:
+        low = float(m.group(1)) if low is None else low
+        if high is None and m.group(2) != "inf":
+            high = float(m.group(2))
+    return low, high, integral
+
+
+def check_model_boundary(h: DomainHandle) -> CheckResult:
+    """The model layer says theory; widths are named constants (spec §5.0, #29).
+
+    A rendering width is not a separate declaration — it is a scenario constant
+    named at the width site, so what it caps and what it renders are *derived*
+    from the reference (`_axis_tiers`, already used by the grid check). What the
+    IR must add is the theory it was previously silent about, and the discipline
+    that keeps the two apart:
+
+    * a **literal** at a width site, for a quantity the model declares, is the
+      defect this section exists for — that is how a sweep maximum becomes a
+      capacity limit nobody chose;
+    * a width constant must **cover every designed value**, or the study
+      outruns its own rendering;
+    * every declared instance must sit inside the declared domain;
+    * model-layer prose must not argue from a benchmark or from tractability.
+    """
+    schemas = sorted(h.directory.glob("*_schema.json"))
+    if len(schemas) != 1:
+        return CheckResult("model.boundary", "SKIP", "no single *_schema.json")
+    try:
+        from mdp_ir.schema import load_ir
+        ir = load_ir(schemas[0])
+    except Exception as e:
+        return CheckResult("model.boundary", "SKIP",
+                           f"schema not loadable ({type(e).__name__}: {e})")
+    model = ir.mdp.model
+    if model is None:
+        return CheckResult("model.boundary", "SKIP",
+                           "IR declares no mdp.model — the theory layer is "
+                           "undeclared, so nothing separates it from the rendering")
+    problems: list[str] = []
+    constants = {c.name: c for c in ir.mdp.scenario.constants}
+    instances = getattr(ir.mdp.scenario, "instances", {}) or {}
+
+    def designed(name: str) -> list[float]:
+        vals = [c.value for n, c in constants.items()
+                if n == name and isinstance(c.value, (int, float))]
+        for over in instances.values():
+            v = (over or {}).get(name)
+            if isinstance(v, (int, float)):
+                vals.append(v)
+        return vals
+
+    # gate 1 — the statement speaks in quantified rules, not rendered names
+    rendered = {v.name for v in ir.mdp.state_variables}
+    statement = " ".join(model.dynamics + model.out_of_scope
+                         + [q.domain for q in model.quantities.values()])
+    named = sorted(n for n in rendered if re.search(rf"\b{re.escape(n)}\d+\b", statement))
+    if named:
+        problems.append(f"model statement names rendered slots {named}")
+
+    # gate 2 — a width site holding a LITERAL, for a quantity the theory
+    # declares, is the sweep-frozen-as-capacity defect at its source
+    widths = _axis_tiers(ir)                       # constant -> what it renders
+    for sv in ir.mdp.state_variables:
+        if isinstance(sv.length, int):
+            for qname in model.quantities:
+                if qname in sv.name or sv.name in qname:
+                    problems.append(
+                        f"state {sv.name!r} has a literal length {sv.length} while the "
+                        f"model declares {qname!r} ({model.quantities[qname].domain!r}) — "
+                        f"name a scenario constant so the width is a design choice, "
+                        f"not a capacity the model appears to state")
+
+    # gate 3 — a width constant must cover every value the study designs
+    for cname, role in widths.items():
+        vals = designed(cname)
+        cap = constants[cname].value if cname in constants else None
+        if isinstance(cap, (int, float)) and vals and max(vals) > cap:
+            problems.append(f"{cname}={cap} ({role}) is outrun by a designed {max(vals)}")
+
+    # gate 4 — declared instances sit inside the declared domains
+    for qname, q in model.quantities.items():
+        low, high, integral = _domain_bounds(q.domain)
+        for val in designed(qname):
+            if low is not None and val < low:
+                problems.append(f"{qname}={val} is below its declared domain {q.domain!r}")
+            if high is not None and val > high:
+                problems.append(f"{qname}={val} is above its declared domain {q.domain!r}")
+            if integral and float(val) != int(val):
+                problems.append(f"{qname}={val} is not integral, domain {q.domain!r}")
+
+    leaks = [w for w in _LAYER_LEAK if w in statement.lower()]
+    if problems:
+        return CheckResult("model.boundary", "FAIL", "; ".join(problems[:4]))
+    if leaks:
+        return CheckResult("model.boundary", "WARN",
+                           f"model-layer prose argues from {leaks} — a benchmark or "
+                           f"tractability rationale inside the theory layer is a "
+                           f"design choice filed as model")
+    inventory = ", ".join(f"{n} ({r.split('(')[0].strip()})" for n, r in sorted(widths.items()))
+    return CheckResult("model.boundary", "PASS",
+                       f"{len(model.quantities)} quantities declared; widths derived "
+                       f"from their references [{inventory or 'none'}]")
+
+
 def check_run_provenance(h: DomainHandle) -> CheckResult:
     """Run directories record what produced them (spec §8.4).
 
@@ -974,6 +1099,7 @@ REGISTRY = [
     check_benchmarks,
     check_research_questions,
     check_run_provenance,
+    check_model_boundary,
     check_init_state,
     check_gym_contract,
     check_determinism,

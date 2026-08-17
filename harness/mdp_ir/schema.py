@@ -265,7 +265,16 @@ class EntityStructure(_Base):
     entity_id_in_seed: bool = False
 
 
-class StateVariable(_Base):
+class _Narrowable(_Base):
+    """Mixin: a rendered element whose form may be stricter than the theory."""
+
+    # set when the rendered type/bounds are stricter than the model's domain
+    # (§5.1). Absent on every IR written before #29, and pruned from the
+    # freeze token when absent, so adoption is opt-in
+    narrowed: "Narrowing | None" = None
+
+
+class StateVariable(_Narrowable):
     name: str
     role: StateRole
     type: str
@@ -300,7 +309,7 @@ class InfoField(_Base):
     placement: Confirmable[Placement] | None = None
 
 
-class Decision(_Base):
+class Decision(_Narrowable):
     name: str
     type: Confirmable[DecisionType]
     dim: int = Field(ge=1)
@@ -850,9 +859,94 @@ class ExprBuiltin(_Base):
         return self
 
 
-class MdpBlock(_Base):
-    """The problem. Frozen at the Phase-A gate; Stage-1 codegen input."""
+_OPTIONAL_SINCE_29 = ("model",)
+# a narrowing citation states which layer made an existing rendering stricter.
+# It adds no fact, so it is excluded from every hash unconditionally: a schema
+# that documents itself must not thereby void its own Phase-A confirmation
+_ANNOTATION_KEYS = ("narrowed",)
 
+
+def _prune_absent(node):
+    """Drop the #29 fields wherever they are empty, at any depth.
+
+    The freeze token must be byte-identical for an IR that predates them —
+    otherwise every downstream fingerprint moves on upgrade and the Phase-A
+    confirmations all read as voided.
+    """
+    if isinstance(node, dict):
+        return {k: _prune_absent(v) for k, v in node.items()
+                if k not in _ANNOTATION_KEYS
+                and not (k in _OPTIONAL_SINCE_29 and not v)}
+    if isinstance(node, list):
+        return [_prune_absent(v) for v in node]
+    return node
+
+
+class ModelQuantity(_Base):
+    """One quantity of the *theory*, at the theory's generality.
+
+    `domain` is what the model admits — "integer >= 1", "real, [0, inf)" — not
+    what this study sweeps and not what the code renders. Those are a scenario
+    constant's `axis` and its value at a width site; conflating them is how a
+    sweep maximum becomes a capacity limit nobody chose.
+    """
+
+    domain: str                  # what the theory admits, transcribed
+    source: str = ""             # where in the source document it is stated
+
+
+class ModelStatement(_Base):
+    """The model layer: what the theory says, before any design or rendering.
+
+    Three layers hide behind one `mdp` block — what the theory admits, which
+    points a study evaluates, and what the code renders. Only the second was
+    expressible (a constant's `axis`), so the third silently became the first:
+    a static shape defaults to the sweep's maximum and is then asserted back as
+    the model. Declaring the theory is what lets the restatement show a human
+    the envelope they are signing off on.
+
+    **No-hardcoding rule**: this object speaks in index variables and
+    quantified rules, never in rendered names or enumerated slots.
+    `pipe1..pipe4` is a rendering; a width belongs at its width site, as the
+    name of a scenario constant.
+    """
+
+    quantities: dict[str, ModelQuantity] = Field(default_factory=dict)
+    # what the source explicitly excludes ("fixed ordering costs (paper §5)")
+    out_of_scope: list[str] = Field(default_factory=list)
+    # quantified statements at the model's generality, e.g.
+    # "forall s in 1..L-1: pipe[s] <- pipe[s+1]"
+    dynamics: list[str] = Field(default_factory=list)
+    # source symbol -> this IR's identifier, with a citation. RECORDED, never
+    # adopted: one vocabulary (the schema's) across model, rendering and code
+    notation: dict[str, str] = Field(default_factory=dict)
+
+
+class Narrowing(_Base):
+    """A rendered form stricter than the model's domain, with its layer cited.
+
+    `by` names which layer did it: `selection:...` (a candidate choice),
+    `design:...` (an experiment-design decision), `implementation:...` (a
+    rendering cap). An uncited narrowing is how a design choice launders itself
+    into the model.
+    """
+
+    to: str
+    by: str
+
+
+class MdpBlock(_Base):
+    """The problem. Frozen at the Phase-A gate; Stage-1 codegen input.
+
+    Carries three layers and says which is which: `model` is the theory,
+    `scenario` is the design, and the rest is the executable rendering. A
+    rendering *width* is not a fourth thing — it is a scenario constant named
+    at the width site (`length: "leadtime_max"`), so what it caps and what it
+    renders are derived from the reference rather than re-declared. `model` is
+    optional and omitted from the freeze token when absent, so an IR that
+    predates it hashes exactly as before."""
+
+    model: ModelStatement | None = None
     horizon: Horizon
     entity_structure: EntityStructure
     state_variables: list[StateVariable] = Field(min_length=1)
@@ -1858,8 +1952,26 @@ class MdpIR(_Base):
     def mdp_fingerprint(self) -> str:
         """Stable hash of the mdp block — the freeze token. Phase B records it;
         any later mdp edit changes the fingerprint and voids the confirmation.
-        gym/rl edits do not."""
-        canonical = json.dumps(self.mdp.model_dump(mode="json"), sort_keys=True)
+        gym/rl edits do not.
+
+        `model` is dropped when empty, so every IR written before it existed
+        hashes exactly as it did — adoption is opt-in, and an IR that
+        does adopt moves its token once, which is the truth: its model
+        statement changed."""
+        payload = _prune_absent(self.mdp.model_dump(mode="json"))
+        canonical = json.dumps(payload, sort_keys=True)
+        return hashlib.sha256(canonical.encode()).hexdigest()[:12]
+
+    def model_fingerprint(self) -> str | None:
+        """Hash of the THEORY (spec §5.1, upstream #29), or None if undeclared.
+
+        Moves only when the model's statement changes. The structural
+        fingerprint is its counterpart over the *rendering*: a repair that
+        re-slots a pipeline moves the rendering hash and leaves this one still,
+        which is the distinction the single-hash instrument could not state."""
+        if self.mdp.model is None:
+            return None
+        canonical = json.dumps(self.mdp.model.model_dump(mode="json"), sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()[:12]
 
 

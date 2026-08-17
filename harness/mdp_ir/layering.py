@@ -560,6 +560,17 @@ def resolve_catalog(
 # ---------------------------------------------------------------------------
 
 
+
+def _strip_narrowings(node):
+    """Drop `narrowed` citations: they document an existing rendering rather
+    than change one, so citing a narrowing must not re-sign the structure."""
+    if isinstance(node, dict):
+        return {k: _strip_narrowings(v) for k, v in node.items() if k != "narrowed"}
+    if isinstance(node, list):
+        return [_strip_narrowings(v) for v in node]
+    return node
+
+
 def structural_fingerprint(data: dict) -> str:
     """Hash of the structural core of a catalog document: everything in the
     mdp block except the scenario node and the candidate pools, plus the
@@ -572,6 +583,11 @@ def structural_fingerprint(data: dict) -> str:
     if not is_catalog(data):
         raise LayeringError("structural_fingerprint takes a catalog document")
     core = copy.deepcopy(data["mdp"])
+    # the model layer has its own hash (MdpIR.model_fingerprint); this one is
+    # explicitly the RENDERING fingerprint, so a theory edit and a re-slotting
+    # of the same theory are distinguishable (upstream #29)
+    core.pop("model", None)
+    core = _strip_narrowings(core)
     scenario = core.pop("scenario", {}) or {}
     slots = core.pop("uncertainty_slots", [])
     core["uncertainty_slots"] = [

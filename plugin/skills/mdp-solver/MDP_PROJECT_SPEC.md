@@ -394,6 +394,52 @@ from {domain}_uncertainty import {Source}Generator, Normal{Source}, ...
 from {domain}_exceptions import ...
 ```
 
+### 5.0 Three layers: model, design, rendering
+
+Formalizing is a statement about **theory** — what the model admits, what the source puts out of scope. Three layers follow, and Phase A lives entirely in the first:
+
+| layer | question | where it lives |
+|---|---|---|
+| **model** | what does the theory admit? | `mdp.model` — "lead time L: integer ≥ 1" |
+| **design** | which points does this study evaluate? | a scenario constant's `axis`, and the instances — "sweep L ∈ {1, 2}" |
+| **rendering** | what does the executable form cap? | a **named scenario constant** at the width site — `length: "leadtime_max"` |
+
+The executable `mdp` block is always a *rendering*: static shapes, unrolled slots and concrete types are what an interpreter can run. The failure this separation prevents is not that the code is specific — it is that **the specific thing gets asserted back as the model.** With no field for the theory, a static width defaults to the sweep's maximum, and the cap is then restated as a property of the problem ("lead time must be 1 or 2"). The human confirmed a *sweep* at sign-off and received a *capacity limit*.
+
+```jsonc
+"model": {
+  "quantities": {
+    "leadtime":   {"domain": "integer >= 1", "source": "the paper's model; L=2 is its worked value"},
+    "n_echelons": {"domain": "integer >= 2", "source": "the [N] -> ... -> [1] scheme"}
+  },
+  "out_of_scope": ["fixed ordering costs (paper §5)"],
+  "dynamics": ["forall s in 1..L-1: pipe[s] <- pipe[s+1]"],
+  "notation": {"L": "leadtime (paper p. 478)"}
+}
+```
+
+A rendering width is **not a fourth declaration**. Every width site already takes a symbol — `state_variables[].length` / `.bounds` / `.element_bounds`, `decisions[].bounds`, `horizon.T` — so a width *names a scenario constant*, and what it caps and what it renders are **derived from the reference** (the same classification `grids.axes` uses: a constant sizing a state vector is an obs-dim width, one in a decision's bounds is an action-scale width, `horizon.T` is a horizon width). Declaring caps separately would restate what the IR already knows.
+
+```jsonc
+"state_variables": [
+  {"name": "pipe", "type": "float_vector", "length": "leadtime_max"}
+],
+"scenario": {"constants": [{"name": "leadtime_max", "value": 4, "axis": "size"}]}
+```
+
+Rules, each mechanically checked by `mdp_conformance model.boundary`:
+
+- **The model speaks in quantified rules, never rendered names.** `forall s in 1..L-1: pipe[s] <- pipe[s+1]`, not `pipe1 <- pipe2`.
+- **A width site holding a literal, for a quantity the model declares, is a defect.** That is exactly how a sweep maximum becomes a capacity limit nobody chose — so name the constant, and the cap becomes a design choice on the record instead of a number the model appears to state.
+- **Every width constant covers every designed value.** A sweep that outruns its own rendering is caught before it is frozen.
+- **Every declared instance sits inside the declared domains.**
+- **No model-layer rationale argues from a benchmark, a solver, or tractability.** That vocabulary inside the theory layer is the tell that a design choice has been filed as model — "kept integral so the DP reference stays exact" is a *design* statement, and it belongs to the layer that chose it.
+- **One vocabulary.** The model object uses the schema's own identifiers; a source's symbols are recorded in `notation` with citations and never adopted, which would create a third vocabulary nobody consumes. Verify quotes against the source rather than memory — a false citation is how a design choice launders itself into the model layer.
+
+Where the rendered form is stricter than the theory, say so and name the layer that did it: `"narrowed": {"to": "integer lattice", "by": "selection:poisson + design:integer_actions"}`.
+
+**Fingerprints follow the layers.** `model_fingerprint()` hashes the theory and moves only when the model's statement changes; the structural fingerprint is explicitly the *rendering* hash; `mdp_fingerprint()` remains the freeze token over the whole block. A repair that re-slots a pipeline then reads as "model unchanged, rendering re-signed" — which the single-hash instrument could not say. All three fields are optional and are omitted from the freeze token when absent, so an IR written before them hashes exactly as before; declaring them moves the token once, which is correct.
+
 ### 5.1 `{Domain}Scenario`
 
 ```python
