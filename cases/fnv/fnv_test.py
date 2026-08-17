@@ -12,6 +12,7 @@ that makes aMMFE and mMMFE two instances of one IR rather than two IRs.
 
 from __future__ import annotations
 
+import json
 import math
 
 import pytest
@@ -25,14 +26,38 @@ EPISODES = 8
 SALT = 1
 
 
+def _declared_scenario() -> dict:
+    """The ``scenario`` block exactly as **declared** — the one reading in this
+    file for a claim about the catalog rather than about a resolved world.
+
+    Two readings of the schema are wrong for that, in opposite ways:
+
+    * indexing ``["mdp"]["scenario"]`` raw assumes the flat layout. Since v0.9.1
+      the block may be presented in three headed groups (model / design /
+      rendering), where that path does not exist.
+    * ``load_ir`` yields the **resolved** model, which drops any instance that
+      re-selects an uncertainty slot — so a covering-set claim asked of it
+      silently *shrinks* (upstream #42; ``mab`` declares 34 instances and
+      resolves 33). It also selects the *world* without applying an instance's
+      constants: ``load_ir(SCHEMA, instance="mmmfe").mdp.scenario.constants``
+      still reports ``mmfe_mode="additive"``, the base value.
+
+    ``ungroup_mdp`` is the reading that matches: it flattens the raw document
+    and passes a flat block through unchanged, so this holds under either
+    layout. Same idiom as ``cases/clark_scarf``'s ``_raw_flat()``.
+    """
+    from mdp_ir.schema import ungroup_mdp
+
+    return ungroup_mdp(json.loads(SCHEMA.read_text())["mdp"])["scenario"]
+
+
 def _compositions() -> list[str | None]:
-    """Base plus every named composition — read through ``load_ir``, never off
-    the raw JSON. Since v0.9.1 the ``mdp`` block may be presented in three
-    headed groups (model / design / rendering), so ``["mdp"]["scenario"]`` is
-    a path that exists only in the flat layout; the loader flattens both."""
-    scenario = load_ir(SCHEMA).mdp.scenario
-    return ([None] + sorted(scenario.instances)
-            + sorted(m.name for m in scenario.mixtures))
+    """Base plus every named composition. Drives the parametrized differential
+    sweep, so it is a claim about what the IR *declares* — a shrunken list here
+    means a case vanishes and the suite stays green."""
+    scenario = _declared_scenario()
+    return ([None] + sorted(scenario.get("instances") or {})
+            + sorted(m["name"] for m in scenario.get("mixtures") or []))
 
 
 COMPOSITIONS = _compositions()
@@ -104,11 +129,14 @@ def test_signal_volatility_declines_over_the_horizon():
 
 
 def test_the_mode_selector_is_a_categorical_constant():
-    base = load_ir(SCHEMA)
-    variant = load_ir(SCHEMA, instance="mmmfe")
-    consts = {c.name: c.value for c in base.mdp.scenario.constants}
+    """The base value is a fact about the resolved base world; the ``mmmfe``
+    override is a fact about the **declared** catalog, so each is read through
+    the path that answers it. Reading the override off a resolved IR happens to
+    work today only because ``mmmfe`` overrides constants alone."""
+    consts = {c.name: c.value for c in load_ir(SCHEMA).mdp.scenario.constants}
     assert consts["mmfe_mode"] == "additive"
-    assert variant.mdp.scenario.instances["mmmfe"]["mmfe_mode"] == "multiplicative"
+    declared = _declared_scenario()["instances"]["mmmfe"]
+    assert declared["mmfe_mode"] == "multiplicative"
 
 
 def test_the_two_modes_share_one_signal_family():

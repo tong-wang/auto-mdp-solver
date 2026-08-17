@@ -283,6 +283,29 @@ Two side-effects worth their own line:
   overrides constants only. Whichever the pipeline change picks, it should pick
   one.
 
+  **The #42 disposition corrected this entry's own fix (2026-08-17).**
+  Enforcement supersedes the reader-contract half — the grouped layout becomes
+  the *only* layout from the next release, so a stale reader fails on first
+  contact instead of latently, and there is no adoption event left to warn
+  about. What survives is the **resolution** half, and it lands here:
+  `_compositions` is a claim about the **declared** catalog, and routing it
+  through `load_ir` asked the *resolved* model. Inert on `fnv` only because
+  `signal` carries one candidate; add a second plus an instance selecting it and
+  the drop is silent — verified, declared `['mmmfe', 'tvar']` against resolved
+  `['mmmfe']`, so `COMPOSITIONS` shrinks, a parametrized differential case
+  disappears, and the suite stays green. Now reads the document via
+  `ungroup_mdp`, `clark_scarf`'s idiom, behind one `_declared_scenario()` helper
+  so the file has a single blessed path for catalog questions. Review found a
+  **second** site of the same shape —
+  `test_the_mode_selector_is_a_categorical_constant` read the `mmmfe` override
+  off a resolved IR — moved with it; that one would have failed loudly
+  (`KeyError`) rather than silently, which is the only reason it was not the
+  dangerous one. Recorded while fixing it: `load_ir`
+  with an `instance=` selects the **world** and does *not* apply that instance's
+  constants — `load_ir(SCHEMA, instance="mmmfe")` still reports
+  `mmfe_mode="additive"` — which is why the interpreter calls pass `instance=`
+  a second time.
+
   **Filed upstream as issue #42** (2026-08-17), which measures what the counts
   above only imply: regroup those three schemas and collection goes 69 → 0,
   26 → 0, 9 → 0, because `mab` and `inv_single` bind the raw document at module
