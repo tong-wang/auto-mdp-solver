@@ -283,6 +283,19 @@ Two side-effects worth their own line:
   overrides constants only. Whichever the pipeline change picks, it should pick
   one.
 
+  **The #42 disposition corrected this entry's own fix (2026-08-17).**
+  Enforcement supersedes the reader-contract half — the grouped layout becomes
+  the *only* layout from the next release, so a stale reader fails on first
+  contact instead of latently, and there is no adoption event left to warn
+  about. What survives is the **resolution** half, and it lands here:
+  `_compositions` is a claim about the **declared** catalog, and routing it
+  through `load_ir` asked the *resolved* model. Inert on `fnv` only because
+  `signal` carries one candidate; add a second plus an instance selecting it and
+  the drop is silent — verified, declared `['mmmfe', 'tvar']` against resolved
+  `['mmmfe']`, so `COMPOSITIONS` shrinks, a parametrized differential case
+  disappears, and the suite stays green. Now reads the document via
+  `ungroup_mdp`, `clark_scarf`'s idiom.
+
   **Filed upstream as issue #42** (2026-08-17), which measures what the counts
   above only imply: regroup those three schemas and collection goes 69 → 0,
   26 → 0, 9 → 0, because `mab` and `inv_single` bind the raw document at module

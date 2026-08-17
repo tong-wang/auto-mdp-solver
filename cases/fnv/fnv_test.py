@@ -12,6 +12,7 @@ that makes aMMFE and mMMFE two instances of one IR rather than two IRs.
 
 from __future__ import annotations
 
+import json
 import math
 
 import pytest
@@ -26,13 +27,30 @@ SALT = 1
 
 
 def _compositions() -> list[str | None]:
-    """Base plus every named composition — read through ``load_ir``, never off
-    the raw JSON. Since v0.9.1 the ``mdp`` block may be presented in three
-    headed groups (model / design / rendering), so ``["mdp"]["scenario"]`` is
-    a path that exists only in the flat layout; the loader flattens both."""
-    scenario = load_ir(SCHEMA).mdp.scenario
-    return ([None] + sorted(scenario.instances)
-            + sorted(m.name for m in scenario.mixtures))
+    """Base plus every named composition, read off the **declared** document.
+
+    This drives the parametrized differential sweep, so it is a claim about the
+    catalog — what the IR *declares* — and two readings of the schema are wrong
+    for it, in opposite ways:
+
+    * indexing ``["mdp"]["scenario"]`` raw assumes the flat layout. Since v0.9.1
+      the block may be presented in three headed groups (model / design /
+      rendering), where that path does not exist.
+    * ``load_ir`` yields the **resolved** model, which drops any instance that
+      re-selects an uncertainty slot — so a covering-set claim asked of it
+      silently *shrinks* (upstream #42; ``mab`` declares 34 instances and
+      resolves 33). A parametrized case would vanish and the suite stay green.
+
+    ``ungroup_mdp`` is the reading that matches the claim: it flattens the raw
+    document, passes a flat block through unchanged — so this holds under either
+    layout — and enumerates exactly what the catalog declares. Same idiom as
+    ``cases/clark_scarf``'s ``_raw_flat()``.
+    """
+    from mdp_ir.schema import ungroup_mdp
+
+    scenario = ungroup_mdp(json.loads(SCHEMA.read_text())["mdp"])["scenario"]
+    return ([None] + sorted(scenario.get("instances") or {})
+            + sorted(m["name"] for m in scenario.get("mixtures") or []))
 
 
 COMPOSITIONS = _compositions()
