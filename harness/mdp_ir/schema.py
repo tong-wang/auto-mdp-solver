@@ -225,14 +225,23 @@ def _comprehension_targets(expr: str) -> set[str]:
     comprehension was rejected on its own index before it could run (#32).
     Parsed rather than regexed, so tuple targets and nested comprehensions bind
     correctly.
+
+    Both grammars are tried, because the site that motivated #32 is
+    statement-shaped: every entry in `dynamics.transitions[].updates` is an
+    assignment, so `eval` alone bound comprehensions everywhere EXCEPT the
+    place the fix was for (#35). Nothing here trusts the parse — the identifier
+    sweep is regex-based over the raw string and still flags an undeclared
+    name inside a comprehension, in either grammar.
     """
     import ast
 
-    try:
-        tree = ast.parse(expr.strip(), mode="eval")
-    except SyntaxError:
-        # statement-shaped exprs (`x += 1`) and other non-eval forms never
-        # carry comprehension bindings this check would miss
+    for mode in ("eval", "exec"):
+        try:
+            tree = ast.parse(expr.strip(), mode=mode)
+            break
+        except SyntaxError:
+            continue
+    else:
         return set()
     bound: set[str] = set()
     for node in ast.walk(tree):
@@ -243,11 +252,15 @@ def _comprehension_targets(expr: str) -> set[str]:
     return bound
 
 
-def _check_expr(expr: str, known: set[str], where: str) -> None:
+def _check_expr(expr: str, known: set[str], where: str, *, shown: str | None = None) -> None:
+    """`shown` is what the author wrote, when `expr` is a rewrite of it — the
+    invariant site checks `prev.x` as `x`, and quoting that back would point at
+    a line the file does not contain."""
     unknown = _identifiers(expr) - known - _BUILTINS - _comprehension_targets(expr)
     if unknown:
+        display = expr if shown is None else shown
         raise ValueError(
-            f"{where}: unresolved identifier(s) {sorted(unknown)} in expr {expr!r}"
+            f"{where}: unresolved identifier(s) {sorted(unknown)} in expr {display!r}"
         )
 
 
@@ -918,6 +931,28 @@ def _prune_absent(node):
     return node
 
 
+def _model_payload(model: dict) -> dict:
+    """What the model layer contributes to a hash: its *stated* facts only.
+
+    Inside the model block an unset field is an unmade statement, so it is
+    dropped — which makes the migration property hold for fields added after
+    the block shipped, not just for the block itself (upstream #34: `stochastic`
+    arrived three days after `model` and moved the token of the one IR that had
+    adopted it, with its schema untouched).
+
+    Only `None` prunes, never a falsy value. `stochastic: false` is a claim —
+    the theory holds this quantity deterministic *by assumption* — and it must
+    not hash as if the question had never been asked. Scoped to the model block
+    because the rendering has long-standing explicit nulls that are already
+    hashed; dropping those would move every token that exists.
+    """
+    if isinstance(model, dict):
+        return {k: _model_payload(v) for k, v in model.items() if v is not None}
+    if isinstance(model, list):
+        return [_model_payload(v) for v in model]
+    return model
+
+
 # The file may present the mdp block in three headed groups — model (theory),
 # design (which points this study evaluates), rendering (what the interpreter
 # runs) — so a human opening the JSON sees immediately which section moves
@@ -1455,8 +1490,16 @@ class MdpBlock(_Base):
 
         # invariants: `prev.<name>` resolves against the per-period names, and
         # the rest of the expression against the END_OF_PERIOD namespace. The
-        # prev-references are stripped before the general check so neither
-        # `prev` nor the attribute is read as a bare identifier.
+        # prev-references are rewritten to the bare name before the general
+        # check, so `prev` is not read as an identifier while the attribute
+        # resolves as itself — sound because the loop below has already
+        # rejected any `prev.x` that is not a per-period name, and those are a
+        # subset of `known | {"t"}`.
+        #
+        # It was a blanking substitution until #35: `sum(prev.stock[0:n])`
+        # became `sum( [0:n])`, which does not parse, so a conservation law
+        # over a matrix state lost its comprehension index and failed on it.
+        # Whatever is handed to the checker must stay valid Python.
         seen: set[str] = set()
         per_period = self.per_period_names
         for inv in self.invariants:
@@ -1471,8 +1514,8 @@ class MdpBlock(_Base):
                     f"decision)"
                 )
             _check_expr(
-                _PREV.sub(" ", inv.expr), known | {"t"},
-                f"invariant {inv.name!r}",
+                _PREV.sub(r"\1", inv.expr), known | {"t"},
+                f"invariant {inv.name!r}", shown=inv.expr,
             )
 
         for name, v in self.initial_state.items():
@@ -2065,8 +2108,12 @@ class MdpIR(_Base):
         `model` is dropped when empty, so every IR written before it existed
         hashes exactly as it did — adoption is opt-in, and an IR that
         does adopt moves its token once, which is the truth: its model
-        statement changed."""
+        statement changed. Once. A field added to the model layer later must
+        not move it a second time, so within that block an unset field is
+        pruned too (#34)."""
         payload = _prune_absent(self.mdp.model_dump(mode="json"))
+        if "model" in payload:
+            payload["model"] = _model_payload(payload["model"])
         canonical = json.dumps(payload, sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()[:12]
 
@@ -2079,7 +2126,8 @@ class MdpIR(_Base):
         which is the distinction the single-hash instrument could not state."""
         if self.mdp.model is None:
             return None
-        canonical = json.dumps(self.mdp.model.model_dump(mode="json"), sort_keys=True)
+        payload = _model_payload(self.mdp.model.model_dump(mode="json"))
+        canonical = json.dumps(payload, sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()[:12]
 
 

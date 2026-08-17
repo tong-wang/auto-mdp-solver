@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Callable
 
 from mdp_ir.interpreter import IrInterpreter
-from mdp_ir.schema import MdpIR
+from mdp_ir.schema import MdpIR, ungroup_mdp
 
 # adapter: (episode_seed, decisions per period) -> per-period rows to compare
 DomainAdapter = Callable[[int, list[dict]], list[dict]]
@@ -214,6 +214,35 @@ def load_adapter_factory(
 # ---------------------------------------------------------------------------
 
 
+def covering_set(ir_file: str | Path) -> list[str | None]:
+    """Every instance the file declares: base (``None``), named, mixtures.
+
+    Reads the RAW document rather than a loaded ``ir``, deliberately. The
+    covering set is what the file DECLARES, not what one resolution keeps:
+    ``resolve_catalog`` drops instances inconsistent with the active selection,
+    so a base-resolved IR would silently omit exactly the instances that
+    exercise a non-default candidate — the ones a covering sweep most wants.
+    Measured on ``inv_single``: 11 declared, 9 survive a base resolution.
+
+    Reading raw is why it must flatten. Under the grouped layout the scenario
+    sits at ``mdp.design.scenario``; ``mdp.scenario`` found nothing, so the
+    sweep ran the base alone and exited 0 — a covering-set gate that quietly
+    stopped covering (#37). ``ungroup_mdp`` passes a flat block through
+    unchanged, so both layouts yield the same list, which is the property worth
+    pinning: it survives the next layout change too.
+
+    Lifted out of ``main`` because a branch inside an argparse handler is one
+    no test was reaching, which is the reason the defect shipped.
+    """
+    import json
+
+    raw = json.loads(Path(ir_file).read_text())
+    scenario = (ungroup_mdp(raw.get("mdp") or {}) or {}).get("scenario") or {}
+    return [None] + sorted(scenario.get("instances") or {}) + sorted(
+        m["name"] for m in scenario.get("mixtures") or []
+    )
+
+
 def main(argv: list[str]) -> int:
     import argparse
 
@@ -254,16 +283,7 @@ def main(argv: list[str]) -> int:
         name, _, val = spec.partition("=")
         fixed[name.strip()] = float(val)
 
-    if args.all_instances:
-        import json
-
-        raw = json.loads(Path(args.ir_file).read_text())
-        scenario = (raw.get("mdp") or {}).get("scenario") or {}
-        instances = [None] + sorted(scenario.get("instances") or {}) + sorted(
-            m["name"] for m in scenario.get("mixtures") or []
-        )
-    else:
-        instances = [args.instance]
+    instances = covering_set(args.ir_file) if args.all_instances else [args.instance]
 
     ok = True
     for inst in instances:

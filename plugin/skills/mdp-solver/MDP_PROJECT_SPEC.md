@@ -451,6 +451,8 @@ The executable `mdp` block is always a *rendering*: static shapes, unrolled slot
 
 A rendering width is **not a fourth declaration**. Every width site takes a symbol — `state_variables[].length` (a scalar, or a **list for a multi-dimensional state**: `["grid_size", "grid_size"]`) / `.bounds` / `.element_bounds`, `decisions[].dim`, `decisions[].bounds`, `horizon.T` — so a width *names a scenario constant*, and what it caps and what it renders are **derived from the reference** (the same classification `grids.axes` uses: a constant sizing a state vector is an obs-dim width, one in a decision's bounds is an action-scale width, `horizon.T` is a horizon width). Declaring caps separately would restate what the IR already knows.
 
+A `decisions[].dim` above 1 makes the action a **vector of that width**, resolved per instance, and the interpreter draws and seeds it at that shape — so a sweep over the action width needs no padding and no surviving enumeration. Width 1 stays a scalar, not a one-element list.
+
 ```jsonc
 "state_variables": [
   {"name": "pipe", "type": "float_vector", "length": "leadtime_max"}
@@ -460,7 +462,7 @@ A rendering width is **not a fourth declaration**. Every width site takes a symb
 
 Rules, each mechanically checked by `mdp_conformance model.boundary`:
 
-- **The model speaks in quantified rules, never rendered names.** `forall s in 1..L-1: pipe[s] <- pipe[s+1]`, not `pipe1 <- pipe2`. Expressions may use comprehensions (`sum(sum(pipe[k]) for k in range(n_echelons))`); the index binds itself.
+- **The model speaks in quantified rules, never rendered names.** `forall s in 1..L-1: pipe[s] <- pipe[s+1]`, not `pipe1 <- pipe2`. Expressions may use comprehensions (`sum(sum(pipe[k]) for k in range(n_echelons))`); the index binds itself. This holds wherever an expression is written — including `dynamics.transitions[].updates`, whose entries are assignments, and including invariants that reference `prev.<name>`. A conservation law over a multi-dimensional state is the idiom to reach for: `close(sum(stock) + sum([sum(pipe[k]) for k in range(n)]), sum(prev.stock) + …)` — do not flatten by hand to keep a validator happy.
 - **A width site holding a literal, for a quantity the model declares, is a defect.** That is exactly how a sweep maximum becomes a capacity limit nobody chose — so name the constant, and the cap becomes a design choice on the record instead of a number the model appears to state.
 - **A width site has two legal shapes, and they are checked differently.** A width may *name the swept design value itself* — `length: "pipeline_len"`, `axis`-tagged, resolved per instance — in which case it renders exactly what each instance selects and cannot be outrun. Or it may name a *cap*: an untagged constant bounding a different quantity (`leadtime_max` over `leadtime`). **A cap must cover every designed value of the quantity it caps**; a sweep that outruns its own rendering is caught before it is frozen. The `axis` tag is what distinguishes them, so no new declaration is needed — and comparing a design value against its own overrides would fail the first shape, which is the recommended one.
 - **Every declared instance sits inside the declared domains.**
@@ -470,6 +472,8 @@ Rules, each mechanically checked by `mdp_conformance model.boundary`:
 Where the rendered form is stricter than the theory, say so and name the layer that did it: `"narrowed": {"to": "integer lattice", "by": "selection:poisson + design:integer_actions"}`.
 
 **Fingerprints follow the layers.** `model_fingerprint()` hashes the theory and moves only when the model's statement changes; the structural fingerprint is explicitly the *rendering* hash; `mdp_fingerprint()` remains the freeze token over the whole block. A repair that re-slots a pipeline then reads as "model unchanged, rendering re-signed" — which the single-hash instrument could not say. All three fields are optional and are omitted from the freeze token when absent, so an IR written before them hashes exactly as before; declaring them moves the token once, which is correct.
+
+**Once, and not again when the layer grows.** Inside `model`, an unset field is an unmade statement and is pruned from both hashes — so a field added after the block shipped does not re-tokenize the IRs that already adopted it. Only absence prunes, never a falsy value: `"stochastic": false` is the claim that the source holds a quantity deterministic *by assumption*, and it must not hash as if the question had never been asked. The rule stops at the model block, because the rendering carries explicit nulls that existing tokens already hash.
 
 ### 5.1 `{Domain}Scenario`
 

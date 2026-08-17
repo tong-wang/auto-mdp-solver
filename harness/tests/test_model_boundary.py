@@ -18,11 +18,12 @@ from __future__ import annotations
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from mdp_conformance.checks import check_model_boundary
 from mdp_conformance.loader import DomainHandle
 from mdp_ir.layering import structural_fingerprint
-from mdp_ir.schema import MdpIR
+from mdp_ir.schema import MdpIR, _model_payload, _prune_absent
 
 
 MODEL = {
@@ -85,6 +86,68 @@ def test_the_model_fingerprint_tracks_only_the_theory(ir_doc):
     recap = json.loads(json.dumps(doc))
     recap["mdp"]["scenario"]["constants"][0]["value"] = 999
     assert MdpIR.model_validate(recap).model_fingerprint() == first
+
+
+# --- migration, part two: the block itself keeps moving ---------------------
+#
+# The property above ("silence costs nothing") was written about the arrival of
+# `model`. It said nothing about what happens when the block GAINS a field, and
+# v0.9.2's `stochastic` proved the difference: absent from the prune list, it
+# put a `null` in every declared quantity and re-tokenized the one downstream
+# that had adopted the layer, its schema untouched (upstream #34). Adoption was
+# the trigger, so the shipped suite could not see it — no example declares a
+# model. These literals stand in for that: they were computed under v0.9.0 and
+# are hard-coded, so any future field that escapes the prune fails here first.
+
+V090_MDP_TOKEN = "be72884e6d65"
+V090_MODEL_TOKEN = "00a8513dfd82"
+
+
+def test_a_field_added_after_the_model_shipped_does_not_move_the_token(ir_doc):
+    """Both hashes, against values recorded before the field existed."""
+    doc = json.loads(json.dumps(ir_doc))
+    doc["mdp"]["model"] = MODEL
+    ir = MdpIR.model_validate(doc)
+    assert ir.mdp_fingerprint() == V090_MDP_TOKEN
+    assert ir.model_fingerprint() == V090_MODEL_TOKEN
+
+
+def test_declaring_determinism_is_not_the_same_as_saying_nothing(ir_doc):
+    """`stochastic` is tri-state, and the pruning must not flatten it.
+
+    `false` is a claim — the source holds this quantity deterministic *by
+    assumption* — while unset is an unasked question. They differ from each
+    other and from `true`. Pruning on falsiness rather than on absence would
+    hash the first two alike, which is why the prune list is the wrong home
+    for this field even though joining it would have fixed the token.
+    """
+    def token(**q):
+        doc = json.loads(json.dumps(ir_doc))
+        doc["mdp"]["model"] = {"quantities": {"leadtime": {"domain": "integer >= 1", **q}}}
+        return MdpIR.model_validate(doc).model_fingerprint()
+
+    assert len({token(), token(stochastic=False), token(stochastic=True)}) == 3
+
+
+def test_only_absence_prunes_and_only_inside_the_model():
+    """The scope is load-bearing in both directions.
+
+    Falsy-but-stated values survive; and the rule stops at the model block,
+    because the rendering has explicit nulls that every existing token already
+    hashes — pruning those would move every fingerprint in existence.
+    """
+    assert _model_payload({"a": None, "b": False, "c": 0, "d": "", "e": []}) == {
+        "b": False, "c": 0, "d": "", "e": []}
+    assert _model_payload({"q": {"x": {"deep": None, "kept": False}}}) == {
+        "q": {"x": {"kept": False}}}
+    assert _model_payload({"l": [{"n": None, "k": 1}]}) == {"l": [{"k": 1}]}
+
+
+def test_the_rendering_keeps_its_explicit_nulls(ir_doc):
+    """Guards the scoping from the other side: a null in the rendering is part
+    of the hashed payload, so widening the prune would be caught here."""
+    payload = _prune_absent(MdpIR.model_validate(ir_doc).mdp.model_dump(mode="json"))
+    assert json.dumps(payload).count(": null") > 0
 
 
 def test_a_narrowing_citation_parses_and_names_its_layer(ir_doc):
@@ -296,3 +359,71 @@ def test_an_undeclared_name_still_fails_inside_a_comprehension():
 
     with pytest.raises(ValueError, match="undeclared_name"):
         _check_expr("sum(undeclared_name[k] for k in range(3))", {"pipe"}, "probe")
+
+
+# --- #35: the binding has to reach the site that asked for it ---------------
+#
+# Every test above uses an EXPRESSION. `updates` entries are statements, and
+# `mode="eval"` alone returned no bindings for them — so #32's fix landed on
+# invariants and cost components and missed dynamics, the case that motivated
+# it. Invariants were missed too, by a second cause: `prev.x` was blanked to a
+# space before the check, leaving an unparseable string.
+
+@pytest.mark.parametrize("stmt", [
+    "a = [pipe[k] for k in range(n_echelons)]",
+    "total += sum([pipe[k][0] for k in range(n_echelons)])",
+    "stock = [stock[k] + pipe[k][0] for k in range(n_echelons)] + stock[n_echelons:]",
+])
+def test_a_comprehension_binds_its_index_in_a_statement_too(stmt):
+    from mdp_ir.schema import _check_expr
+
+    _check_expr(stmt, {"pipe", "n_echelons", "a", "total", "stock"}, "probe")
+
+
+@pytest.mark.parametrize("stmt", [
+    "a = [undeclared_name[k] for k in range(3)]",
+    "total += sum([undeclared_name[k] for k in range(n_echelons)])",
+])
+def test_a_statement_is_not_a_blanket_pass(stmt):
+    """The exec fallback must widen what BINDS, never what resolves."""
+    from mdp_ir.schema import _check_expr
+
+    with pytest.raises(ValueError, match="undeclared_name"):
+        _check_expr(stmt, {"pipe", "n_echelons", "a", "total"}, "probe")
+
+
+def _with_invariant(doc, expr):
+    doc = json.loads(json.dumps(doc))
+    doc["mdp"]["invariants"] = [{"name": "conserve", "expr": expr}]
+    return doc
+
+
+def test_a_conservation_law_may_quantify_over_a_prev_reference(ir_doc):
+    """The idiom this unblocks: a balance law over a multi-dimensional state,
+    which is exactly where a comprehension is wanted and where `prev` is
+    unavoidable."""
+    MdpIR.model_validate(_with_invariant(
+        ir_doc,
+        "close(sum([level for k in range(1)]), sum([prev.level for k in range(1)]))",
+    ))
+
+
+def test_an_undeclared_name_still_fails_in_a_prev_referencing_invariant(ir_doc):
+    with pytest.raises(ValidationError, match="undeclared_name"):
+        MdpIR.model_validate(_with_invariant(
+            ir_doc, "close(sum([undeclared_name[k] for k in range(1)]), prev.level)"))
+
+
+def test_prev_must_still_name_a_per_period_value(ir_doc):
+    """`rate` is a scenario constant — fixed for the episode, so `prev.rate`
+    is meaningless. The rewrite must not smuggle it into scope."""
+    with pytest.raises(ValidationError, match="names no per-period value"):
+        MdpIR.model_validate(_with_invariant(ir_doc, "close(level, prev.rate)"))
+
+
+def test_the_error_quotes_what_the_author_wrote(ir_doc):
+    """The checker sees `prev.x` rewritten to `x`; quoting that back would
+    point at a line the file does not contain."""
+    with pytest.raises(ValidationError, match=r"prev\.level"):
+        MdpIR.model_validate(_with_invariant(
+            ir_doc, "close(undeclared_name, prev.level)"))

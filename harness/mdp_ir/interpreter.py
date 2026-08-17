@@ -469,9 +469,17 @@ class IrInterpreter:
                     for x in d.bounds.value
                 )
                 if d.type.value is DecisionType.discrete:
-                    out[d.name] = int(rng.integers(int(lo), int(hi) + 1))
+                    draw = lambda: int(rng.integers(int(lo), int(hi) + 1))  # noqa: E731
                 else:
-                    out[d.name] = float(rng.uniform(lo, hi))
+                    draw = lambda: float(rng.uniform(lo, hi))               # noqa: E731
+                # a width may name a scenario constant, so it is resolved per
+                # instance (#33). Width 1 stays SCALAR rather than becoming a
+                # one-element list: every IR written before `dim` could be a
+                # vector indexes the decision name directly, and the scalar
+                # path draws exactly once — which is what keeps their random
+                # action streams identical across this change (#36)
+                n = self.ir.mdp.decision_dim(d.name, self.instance)
+                out[d.name] = draw() if n == 1 else [draw() for _ in range(n)]
             return out
 
         return policy
@@ -484,7 +492,13 @@ class IrInterpreter:
         set as a real row, so an invariant cannot KeyError only at t=0."""
         snap = lambda v: list(v) if isinstance(v, list) else v  # noqa: E731
         row: dict = {"t": self._origin - 1}
-        row.update({d.name: 0 for d in self.ir.mdp.decisions})
+        # same shape as a real row, per decision — a vector decision's `prev`
+        # must not be a scalar 0 for one period only (#36)
+        row.update({
+            d.name: (0 if (n := self.ir.mdp.decision_dim(d.name, self.instance)) == 1
+                     else [0] * n)
+            for d in self.ir.mdp.decisions
+        })
         row.update({f: 0 for f in self._scalar_info})
         row.update({
             sv.name: snap(ns[sv.name])

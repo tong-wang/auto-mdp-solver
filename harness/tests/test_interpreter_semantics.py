@@ -351,3 +351,74 @@ def test_close_honours_an_explicit_tolerance(ir_doc):
 def test_checking_can_be_switched_off(ir_doc):
     ir = _with_invariants(ir_doc, {"name": "wrong", "expr": "False"})
     assert simulate(ir, 0, ACT, check_invariants=False).violations == []
+
+
+# --- vector decisions (#33 declared them, #36 made them runnable) -----------
+#
+# `Decision.dim` could name a scenario constant, and `decision_dim()` resolved
+# it, but nothing GENERATED a value of that shape: `_random_policy` emitted one
+# scalar per decision. Since `mdp_ir.differential` drives the random policy by
+# default, the gate that proves domain and interpreter agree could not exercise
+# a vector decision at all.
+
+def _vector_doc(width=3, instances=None):
+    doc = minimal_ir()
+    doc["mdp"]["scenario"]["constants"].append(
+        {"name": "n_arms", "value": width, "axis": "size"})
+    doc["mdp"]["decisions"][0]["dim"] = "n_arms"
+    if instances:
+        doc["mdp"]["scenario"]["instances"].update(instances)
+    return doc
+
+
+def test_the_random_policy_draws_the_declared_width():
+    it = IrInterpreter(build(_vector_doc()))
+    act = it._random_policy(7)({})["act"]
+    assert isinstance(act, list) and len(act) == 3
+
+
+def test_the_width_resolves_per_instance():
+    """The property a sweep over the width needs: same IR, different shape."""
+    doc = _vector_doc(instances={"wide": {"n_arms": 5}})
+    assert len(IrInterpreter(build(doc), instance="wide")._random_policy(7)({})["act"]) == 5
+    assert len(IrInterpreter(build(doc))._random_policy(7)({})["act"]) == 3
+
+
+def test_a_scalar_decision_stays_scalar_and_draws_exactly_once(ir_doc):
+    """The migration property. Every existing IR has `dim: 1` and indexes the
+    decision name directly, so a one-element list would break all of them —
+    and drawing n values where one was drawn would advance the policy stream
+    differently, silently changing every recorded random-action sequence.
+
+    Pinned as a sequence, not just a type: this is the assertion that fails if
+    someone later 'simplifies' the scalar path into the general one. The
+    literals were read off the interpreter as it stood BEFORE the change, so
+    they witness continuity rather than merely restating current behaviour.
+    """
+    it = IrInterpreter(build(ir_doc))
+    drawn = [it._random_policy(s)({})["act"] for s in (0, 1, 7)]
+    assert all(isinstance(a, float) for a in drawn)
+    assert drawn == pytest.approx(
+        [8.387465041803736, 2.9442243984207375, 6.9448547537120655])
+
+
+def test_the_first_draw_is_the_same_value_scalar_or_vector(ir_doc):
+    """Corollary of drawing from one stream in one order: widening a decision
+    does not re-roll what the scalar case already drew."""
+    scalar = IrInterpreter(build(ir_doc))._random_policy(7)({})["act"]
+    vector = IrInterpreter(build(_vector_doc()))._random_policy(7)({})["act"]
+    assert vector[0] == scalar
+
+
+def test_prev_for_a_vector_decision_has_the_row_shape_at_t0():
+    """`prev.<decision>` was a scalar 0 for the first period only, regardless
+    of width — an invariant referencing it would see the wrong type on one row
+    out of the episode."""
+    it = IrInterpreter(build(_vector_doc()))
+    row = it._seed_prev_row({"period": 0, "level": 0.0}, [])
+    assert row["act"] == [0, 0, 0]
+
+
+def test_prev_for_a_scalar_decision_is_unchanged(ir_doc):
+    it = IrInterpreter(build(ir_doc))
+    assert it._seed_prev_row({"period": 0, "level": 0.0}, [])["act"] == 0
