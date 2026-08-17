@@ -1,0 +1,9 @@
+results/
+scratch/
+__pycache__/
+
+# the source paper is a copyrighted JSTOR reprint: kept locally, never in git
+# history. This folder is a PORTABLE domain (it can be promoted to
+# mdp_solver/examples/ or contributed to the PUBLIC auto-mdp-solver repo), and
+# git history travels with it. README.md cites the paper instead.
+*.pdf

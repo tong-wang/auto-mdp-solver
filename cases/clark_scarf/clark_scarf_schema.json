@@ -1,0 +1,681 @@
+{
+  "ir_version": "0.4",
+  "seed_scheme": "v2",
+  "domain": {
+    "name": "clark_scarf",
+    "class_prefix": "ClarkScarf",
+    "one_line": "Serial multi-echelon inventory control with backlogging and echelon-based holding costs (Clark & Scarf 1960).",
+    "problem_class": "inventory_control"
+  },
+  "mdp": {
+    "model": {
+      "quantities": {
+        "n_echelons": {
+          "domain": "integer >= 2",
+          "source": "the paper's scheme [N] -> ... -> [2] -> [1], stated for general N",
+          "stochastic": false
+        },
+        "horizon_T": {
+          "domain": "integer >= 1",
+          "source": "",
+          "stochastic": false
+        },
+        "discount_factor": {
+          "domain": "real in [0, 1]",
+          "source": "",
+          "stochastic": false
+        },
+        "h_install": {
+          "domain": "real >= 0",
+          "source": "",
+          "stochastic": false
+        },
+        "p_short": {
+          "domain": "real >= 0",
+          "source": "",
+          "stochastic": false
+        },
+        "leadtime_k": {
+          "domain": "integer >= 1",
+          "source": "p.1783: delivery lag \u03bb; the paper admits per-installation lags and states no upper bound. leadtime_k = 0 is out of scope, see out_of_scope",
+          "stochastic": false
+        },
+        "c_ship": {
+          "domain": "real >= 0",
+          "source": "p.1784: 'The unit shipping cost from 2 to 1 will be denoted by c_1'; Assumption 2: linear at every link, 'without any setup cost. The only exception ... at the highest installation'. Setting c_k = 0 is a DESIGN choice (operator convenience), not model structure",
+          "stochastic": false
+        },
+        "ship_k": {
+          "domain": "real >= 0",
+          "source": "real-valued and unbounded above in the model; every bound on it is design or implementation",
+          "stochastic": false
+        },
+        "demand": {
+          "domain": "distribution on [0, inf), independent across periods; stationarity not required by the model",
+          "source": "p.1783: density \u03c6(t), 'the demands being independent from period to period. (The demand distributions may actually differ from period to period.)' -- neither a family, nor integrality, nor stationarity is model structure",
+          "stochastic": true
+        }
+      },
+      "out_of_scope": [
+        "fixed (setup) ordering costs: Assumption 2 / section 5 permit a setup cost at the HIGHEST installation only; not modeled here at any level",
+        "leadtime_k = 0: void under the A -> S -> D event order -- a lag-0 dispatch would land before its own dispatch"
+      ],
+      "dynamics": [
+        "A: forall k: stock_k += pipe_{k,1};  forall k: pipe_{k,\u00b7} <- shift(pipe_{k,\u00b7}) (drop the head, append 0)",
+        "S: a_k = min(ship_k, stock_{k+1}) for k < n_echelons;  a_N = ship_N (outside supplier, unclipped);  forall k < n_echelons: stock_{k+1} -= a_k;  forall k: pipe_{k,leadtime_k} += a_k",
+        "D: stock_1 -= D_t,  D_t ~ demand_t",
+        "objective: minimize E[ sum_{t=0..horizon_T-1} discount_factor^t * (holding_t + shortage_t + shipping_t) ] where holding_t = h_install_1 * max(stock_1, 0) + sum_{k=2..n_echelons} h_install_k * stock_k + sum_{k=1..n_echelons-1} h_install_{k+1} * sum_{s=1..leadtime_k} pipe_{k,s} (in-transit stock charged at its SOURCE's rate, Assumption 3 / F1), shortage_t = p_short * max(-stock_1, 0), and shipping_t = sum_{k=1..n_echelons} c_ship_k * a_k (on executed shipments)"
+      ],
+      "notation": {
+        "stock_k": "the paper's x_1 at the retailer (installation on-hand); its x_i for i >= 2 is ECHELON stock (p.1784), derived here by echelon_stock()",
+        "pipe_{k,s}": "the paper's w_j, 'units to be delivered j periods in the future' (p.1783); its state C_n(x_1, w_1, ..., w_{lambda-1}) carries lambda-1 slots -- exactly the gym's observable slots",
+        "leadtime_k": "the paper's lambda (p.1783). Do NOT shorten to L: the paper's L(x) is the one-period holding+shortage cost function (Eq. 1)",
+        "discount_factor": "the paper's alpha (costs n periods out discounted by alpha^n, p.1783); the solver spec calls it beta",
+        "h_install, p_short": "the paper's h and p, 'the marginal holding and shortage costs' (Eq. 1)",
+        "c_ship": "the paper's c_1 unit shipping cost (p.1784); c(z) = K + c*z with K = 0 everywhere but the top (Eq. 5, Assumption 2)",
+        "D_t": "the paper's demand draw, written there as t with density phi(t) (p.1783) -- t is our period index, hence the rename",
+        "t vs n": "our t counts periods ELAPSED; the paper's n counts periods REMAINING, n = horizon_T - t. The DP table ybar[t] is the paper's xbar_n under that index change",
+        "u, y, xbar_n": "as the paper: f_n(u) over echelon position u, decision Min_{y>=u} (Eq. 4), critical value xbar_n (p.1784) -- DP and readback already use these"
+      }
+    },
+    "design": {
+      "scenario": {
+        "constants": [
+          {
+            "name": "n_echelons",
+            "value": 3,
+            "axis": "structure",
+            "desc": "number of live installations in the serial chain. Level 1 is the retailer facing demand; level n_echelons buys from the outside supplier. Independent of `leadtime`."
+          },
+          {
+            "name": "leadtime",
+            "value": 2,
+            "axis": "structure",
+            "desc": "transit time in periods on EVERY link: a shipment dispatched in period t lands at the arrival event of period t+leadtime. MODEL DOMAIN: per-link lead times L_k, each any integer >= 1 (the paper admits per-installation lags; L = 0 is void under this formalization's event order -- dispatch follows the arrival event within a period). THIS CONSTANT RENDERS A NARROWING: identical lags on every link, cited in mdp.model.notation; every current scenario uses identical lags, and lifting it is a scenario-field + DP extension, not a value change. Independent of chain length -- a pipeline is COMMITTED flow, whereas an extra installation is a discretionary buffer whose units may be held and re-decided each period. EXPERIMENT DESIGN, a separate later choice: the campaign sweeps {1, 2}; 2 is the paper's worked value (section 2). NO IMPLEMENTATION CAP: this constant is itself the width of every pipe_k vector (length: 'leadtime'), so each instance renders exactly the slots it selects and any lead time is representable. The earlier rendering unrolled a fixed LEADTIME_CAP = 4 and could not express L > 4; it was removed at F7."
+          },
+          {
+            "name": "horizon_T",
+            "value": 50,
+            "axis": "horizon",
+            "desc": "episode length in periods. Set at 50 rather than 30 so that, with beta = 0.95 (effective horizon ~20 periods), a genuinely stationary middle stretch exists between the chain filling and the end-of-horizon wind-down -- that is the stretch the Stage-5 base-stock readback recovers x-bar from."
+          },
+          {
+            "name": "demand_mean",
+            "value": 10.0,
+            "axis": "demand",
+            "desc": "Poisson rate of retailer demand. Set at 10 rather than 5 so integrality is fine-grained relative to the decision scale (sd = 3.2); at 5 a single unit is a large relative move and would contaminate the base-stock readback."
+          },
+          {
+            "name": "p_short",
+            "value": 9.0,
+            "axis": "cost",
+            "desc": "shortage penalty per unit of retailer backlog per period; with h_retail = 1 the critical ratio is p/(p+h)"
+          },
+          {
+            "name": "h_install",
+            "value": [
+              2.0,
+              1.0,
+              0.5,
+              0.0
+            ],
+            "axis": "cost",
+            "desc": "CUMULATIVE echelon holding rate per installation: h_install[k] = sum of echelon rates h_j for j >= k+1. Derived from echelon rates h_retail = 1.0 at level 1 and h_echelon = 0.5 at every level above; a unit at the retailer costs h_retail + h_echelon*(n_echelons-1) per period, one at the top costs h_echelon. Zero at every inert level, so padding is never charged. Default shown is n_echelons = 3: echelon rates (1.0, 0.5, 0.5) -> cumulative (2.0, 1.0, 0.5, 0.0)."
+          },
+          {
+            "name": "c_ship",
+            "value": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "axis": "",
+            "desc": "c_ship[k] = per-unit cost of shipping into installation k+1 (the top link renders the ordering/purchase cost from the outside supplier). MODEL DOMAIN: real >= 0 per link -- the paper's model carries linear shipping/ordering costs at every level and the decomposition survives them. DESIGN: every current scenario sets 0, an operator convenience choice at the interview, NOT model structure; nonzero values are expressible per instance without any structural change. Charged on SHIPPED units (post-clip) at the S event."
+          },
+          {
+            "name": "ship_max",
+            "value": 200.0,
+            "axis": "demand",
+            "desc": "upper bound on any single shipment = 20 x demand_mean. Caps the ACTION SCALE, not a physical limit; a bare constant so instances that move demand_mean resize it too."
+          }
+        ],
+        "instances": {
+          "n2_l1_p09": {
+            "n_echelons": 2,
+            "leadtime": 1,
+            "p_short": 9.0,
+            "h_install": [
+              1.5,
+              0.5,
+              0.0,
+              0.0
+            ]
+          },
+          "n2_l2_p09": {
+            "n_echelons": 2,
+            "leadtime": 2,
+            "p_short": 9.0,
+            "h_install": [
+              1.5,
+              0.5,
+              0.0,
+              0.0
+            ]
+          },
+          "n3_l1_p09": {
+            "n_echelons": 3,
+            "leadtime": 1,
+            "p_short": 9.0,
+            "h_install": [
+              2.0,
+              1.0,
+              0.5,
+              0.0
+            ]
+          },
+          "n3_l2_p09": {
+            "n_echelons": 3,
+            "leadtime": 2,
+            "p_short": 9.0,
+            "h_install": [
+              2.0,
+              1.0,
+              0.5,
+              0.0
+            ]
+          },
+          "n4_l1_p09": {
+            "n_echelons": 4,
+            "leadtime": 1,
+            "p_short": 9.0,
+            "h_install": [
+              2.5,
+              1.5,
+              1.0,
+              0.5
+            ]
+          },
+          "n4_l2_p09": {
+            "n_echelons": 4,
+            "leadtime": 2,
+            "p_short": 9.0,
+            "h_install": [
+              2.5,
+              1.5,
+              1.0,
+              0.5
+            ]
+          },
+          "n3_l2_p04": {
+            "n_echelons": 3,
+            "leadtime": 2,
+            "p_short": 4.0,
+            "h_install": [
+              2.0,
+              1.0,
+              0.5,
+              0.0
+            ]
+          },
+          "n3_l2_p19": {
+            "n_echelons": 3,
+            "leadtime": 2,
+            "p_short": 19.0,
+            "h_install": [
+              2.0,
+              1.0,
+              0.5,
+              0.0
+            ]
+          },
+          "verify_tiny": {
+            "n_echelons": 2,
+            "leadtime": 1,
+            "p_short": 4.0,
+            "h_install": [
+              1.5,
+              0.5,
+              0.0,
+              0.0
+            ],
+            "horizon_T": 4,
+            "demand_mean": 2.0,
+            "ship_max": 40.0
+          },
+          "verify_l3": {
+            "n_echelons": 2,
+            "leadtime": 3,
+            "p_short": 9.0,
+            "h_install": [
+              1.5,
+              0.5,
+              0.0,
+              0.0
+            ],
+            "horizon_T": 12,
+            "demand_mean": 4.0,
+            "ship_max": 80.0
+          }
+        }
+      }
+    },
+    "rendering": {
+      "horizon": {
+        "T": "horizon_T",
+        "period_indexing": "0-based"
+      },
+      "entity_structure": {
+        "kind": "single",
+        "entity_id_in_seed": false
+      },
+      "state_variables": [
+        {
+          "name": "period",
+          "role": "time_index",
+          "type": "int",
+          "bounds": [
+            0,
+            "horizon_T"
+          ],
+          "observability": "observable",
+          "desc": "current period t; horizon ends when period == T"
+        },
+        {
+          "name": "stock",
+          "role": "core",
+          "type": "int_vector",
+          "length": "n_echelons",
+          "element_bounds": [
+            "-40 * demand.mean",
+            "40 * demand.mean"
+          ],
+          "observability": "observable",
+          "desc": "stock[k] = physical on-hand inventory at installation k+1 (0-indexed: stock[0] is the retailer, which may go negative when demand is backlogged; upper installations are non-negative). Exactly n_echelons long -- the width NAMES the chain length, so an instance renders the levels it has and there is no inert padding. Echelon stock is the running sum with the in-flight terms offset one level (Assumption 3); see the objective's holding component.",
+          "narrowed": {
+            "to": "integer lattice",
+            "by": "selection: demand = poisson (integer support) + design: integer shipment quantities (the gym's discrete action lattices)"
+          }
+        },
+        {
+          "name": "pipe",
+          "role": "core",
+          "type": "int_matrix",
+          "length": [
+            "n_echelons",
+            "leadtime"
+          ],
+          "element_bounds": [
+            0,
+            "40 * demand.mean"
+          ],
+          "observability": "observable",
+          "narrowed": {
+            "to": "integer lattice",
+            "by": "selection: demand = poisson + design: integer shipment quantities"
+          },
+          "desc": "pipe[k][s] = units in flight into installation k+1, landing after s+1 more arrival events. BOTH axes name a scenario constant -- n_echelons links, each exactly leadtime slots -- so an instance renders precisely the shape it selects and there is no cap on either dimension. The A event shifts every link by slice-and-concat; a dispatch enters at the last slot. Quantified over k, not enumerated: the per-link rule is stated once."
+        }
+      ],
+      "info_fields": [
+        {
+          "name": "demand",
+          "type": "int",
+          "desc": "realized retailer demand this period (D event)",
+          "placement": {
+            "value": "info",
+            "suggested": "info",
+            "source": "human_confirmed",
+            "rationale": "no later transition reads it; demand is i.i.d. across periods so it carries no predictive content, and neither observation mode exposes it"
+          }
+        },
+        {
+          "name": "arrived",
+          "type": "float_vector",
+          "desc": "arrived[k] = units that landed at installation k+1 this period"
+        },
+        {
+          "name": "shipped",
+          "type": "float_vector",
+          "desc": "shipped[k] = units actually moved into installation k+1 this period, after clipping to what the level above held"
+        },
+        {
+          "name": "cost",
+          "type": "decomposition",
+          "components": [
+            "holding",
+            "shortage",
+            "shipping",
+            "total"
+          ]
+        }
+      ],
+      "decisions": [
+        {
+          "name": "ship",
+          "type": {
+            "value": "continuous",
+            "suggested": "continuous",
+            "source": "human_confirmed",
+            "rationale": "a shipment quantity; continuous encoding with integer feasibility, so Poisson demand keeps every stock integral and the DP reference stays exact rather than gridded"
+          },
+          "bounds": {
+            "value": [
+              0,
+              "ship_max"
+            ],
+            "suggested": [
+              0,
+              "ship_max"
+            ],
+            "source": "human_confirmed",
+            "rationale": "ship_max = 200 = 20 x mean demand: an ACTION-SCALE cap, not a physical limit -- it only has to sit safely above any shipment a sensible policy would make (mean demand is 10). Carried as a bare constant so instances that move demand_mean resize it too (verify_tiny overrides to 40). Confirmed at the Phase-A sign-off."
+          },
+          "feasibility": [
+            "non_negative",
+            "integer"
+          ],
+          "narrowed": {
+            "to": "bounded [0, ship_max], integer feasibility",
+            "by": "implementation: ship_max action-scale cap + design: integer quantities so the DP reference is exact on the lattice rather than gridded"
+          },
+          "dim": "n_echelons",
+          "desc": "ship[k] = quantity dispatched on link k this period, one per link, all links moving simultaneously. Width NAMES the chain length (dim: n_echelons), so the action is exactly as wide as the instance has links. Link k draws from installation k+2 and is clipped to what that installation holds; the TOP link (k = n_echelons-1) draws from the unlimited outside supplier and is capped only by ship_max."
+        }
+      ],
+      "uncertainty_slots": [
+        {
+          "name": "demand",
+          "interface": "DemandGenerator",
+          "stream_id": 0,
+          "latent": false,
+          "stages": [
+            {
+              "name": "sample",
+              "realization": "period",
+              "sub_stream": null
+            }
+          ],
+          "default": "poisson",
+          "candidates": {
+            "poisson": {
+              "generator": "PoissonDemand",
+              "family": "poisson",
+              "settings": {
+                "rate": "demand_mean"
+              },
+              "is_discrete": true,
+              "desc": "fixed-rate Poisson retailer demand, i.i.d. and stationary across periods. Both the family and the STATIONARITY are selections/design: the paper's section 2 poses a general density \u03c6(t) and its parenthetical explicitly permits per-period distributions ('The demand distributions may actually differ from period to period') -- an earlier desc misquoted the paper as holding the distribution fixed. No draw spec: under THIS selection the slot carries no world latent."
+            }
+          },
+          "desc": "retailer demand, the only stochastic primitive in the model"
+        }
+      ],
+      "dynamics": {
+        "event_sequence": [
+          "A",
+          "S",
+          "D"
+        ],
+        "observation_point": "pre-order",
+        "transitions": [
+          {
+            "event": "A",
+            "updates": [
+              "arrived = [pipe[k][0] for k in range(n_echelons)]",
+              "stock = [stock[k] + pipe[k][0] for k in range(n_echelons)]",
+              "pipe = [pipe[k][1:] + [0] for k in range(n_echelons)]"
+            ]
+          },
+          {
+            "event": "S",
+            "updates": [
+              "shipped = [ship[k] if k == n_echelons - 1 else min(ship[k], stock[k + 1]) for k in range(n_echelons)]",
+              "stock = [stock[k] - (shipped[k - 1] if k >= 1 else 0) for k in range(n_echelons)]",
+              "pipe = [pipe[k][:leadtime - 1] + [pipe[k][leadtime - 1] + shipped[k]] for k in range(n_echelons)]"
+            ]
+          },
+          {
+            "event": "D",
+            "updates": [
+              "demand ~ demand.sample",
+              "stock[0] -= demand"
+            ]
+          },
+          {
+            "event": "END_OF_PERIOD",
+            "updates": [
+              "period += 1"
+            ]
+          }
+        ]
+      },
+      "objective": {
+        "sense": "minimize",
+        "discount_factor": 0.95,
+        "per_step_components": [
+          {
+            "name": "holding",
+            "expr": "h_install[0] * max(0, stock[0]) + sum([h_install[k] * stock[k] for k in range(1, n_echelons)]) + sum([h_install[k + 1] * sum(pipe[k]) for k in range(n_echelons - 1)])",
+            "desc": "echelon holding on end-of-period ECHELON STOCK, per Assumption 3: costs at a level are a function of the stock at that level plus all stock at a LOWER level or IN TRANSIT TO A LOWER level. So stock in transit TO installation k+1 belongs to echelon k+2, not k+1 -- it is charged the same rate as stock sitting at its source (h_install[k+1]), and only starts paying the destination's higher rate once it lands. Stock in transit to the TOP level is in no echelon's stock at all (it is on order, not yet in the system); h_install is 0 above the chain, which gives exactly that with no special case. Charging position k the cumulative rate H_k = sum of h_j for j >= k+1 is algebraically identical to charging each echelon its own h_k on echelon stock x_k. NB echelon STOCK (what holding is charged on) is not echelon POSITION (what f_n(u) optimizes over) -- the paper keeps in-transit w1 as its own coordinate, C_n(x1, w1, x2), precisely because of this."
+          },
+          {
+            "name": "shortage",
+            "expr": "p_short * max(0, -stock[0])",
+            "desc": "the paper's Eq. (1) shortage term, charged on end-of-period backlog at the retailer"
+          },
+          {
+            "name": "shipping",
+            "expr": "sum([c_ship[k] * shipped[k] for k in range(n_echelons)])",
+            "desc": "linear shipping/ordering cost on executed shipments; identically 0 under every current scenario (c_ship = 0 by design) -- rendered so the model's c_k is expressible, per the model/design boundary (clark_scarf.model.json)"
+          }
+        ]
+      },
+      "invariants": [
+        {
+          "name": "retailer_balance",
+          "expr": "close(stock[0], prev.stock[0] + arrived[0] - demand)",
+          "desc": "retailer stock changes only by what lands from above and what customers take"
+        },
+        {
+          "name": "conservation",
+          "expr": "close(sum(stock) + sum([sum(pipe[k]) for k in range(n_echelons)]), sum(prev.stock) + sum([sum(prev.pipe[k]) for k in range(n_echelons)]) + shipped[n_echelons - 1] - demand)",
+          "desc": "nothing enters or leaves the system except what the top link brings in from the outside supplier and what demand takes out at the retailer. Stated over the whole state now that there is no padding to exclude."
+        },
+        {
+          "name": "upper_levels_non_negative",
+          "expr": "min(stock[1:]) >= 0",
+          "desc": "only the retailer can go negative: no installation ever ships more than it holds"
+        }
+      ],
+      "initial_state": {
+        "stock": "[demand_mean for k in range(n_echelons)]",
+        "pipe": "[[demand_mean] * leadtime for k in range(n_echelons)]"
+      }
+    }
+  },
+  "gym": {
+    "observation_modes": [
+      {
+        "name": "raw",
+        "default": true,
+        "features": [
+          {
+            "ref": "stock"
+          },
+          {
+            "ref": "pipe"
+          }
+        ]
+      },
+      {
+        "name": "echelon",
+        "features": [
+          {
+            "derived": "echelon_stock",
+            "expr": "[sum([stock[j] for j in range(k + 1)]) + sum([sum(pipe[j]) for j in range(k)]) for k in range(n_echelons)]"
+          },
+          {
+            "derived": "echelon_transit_per_slot",
+            "expr": "[sum([sum(pipe[j]) for j in range(k + 1)]) for k in range(n_echelons)]"
+          }
+        ]
+      }
+    ],
+    "action_modes": [
+      {
+        "name": "target_discrete",
+        "default": true,
+        "encodes": "ship",
+        "type": "discrete",
+        "bounds": [
+          0,
+          "ship_max"
+        ],
+        "transform": "",
+        "feasibility_strategy": "clip",
+        "desc": "DEFAULT. The bin index is the echelon ORDER-UP-TO level y_k; the shipment is clip(y_k - u_k, 0, capacity). Per-link grids (MultiDiscrete([41,81,121]) at n3_l2_p09) because echelon k covers k+1 levels and its target scales accordingly. This is the form Clark & Scarf prove optimal and the point is representational: in QUANTITY coordinates the optimal action is q = ybar_k(t) - u_k, a state-dependent function; in TARGET coordinates it is ybar_k(t), mid-horizon a constant. Same policy class, far easier function. Measured 1030.02 vs 1059.04 for ship_discrete (ESCALATION #E9)."
+      },
+      {
+        "name": "ship_discrete",
+        "default": false,
+        "encodes": "ship",
+        "type": "discrete",
+        "bounds": [
+          0,
+          "ship_max"
+        ],
+        "transform": "",
+        "feasibility_strategy": "clip",
+        "desc": "DEFAULT. One categorical head per link (MultiDiscrete); the bin index IS the shipment quantity in whole units, 0 .. 4x mean demand. Discrete because the problem is: demand is Poisson and every stock is integral (the decisions are marked `integer`), so a fractional shipment would put non-integers into an integer state and cost the DP reference its exactness. A categorical head also carries no action-scale hazard -- it reweights rather than crawling a Gaussian mean, so every quantity is reachable from the first update."
+      },
+      {
+        "name": "ship_rel",
+        "default": false,
+        "encodes": "ship",
+        "type": "continuous",
+        "bounds": [
+          0,
+          "ship_max"
+        ],
+        "transform": "",
+        "feasibility_strategy": "clip",
+        "desc": "q = mean_demand * (1 + 3*a) on a symmetric [-1,1] box, so raw action 0 ships exactly mean demand. This campaign's first fix for the action-scale hazard; it worked (~20x better than `ship`) but treats the symptom rather than the cause. Kept as evidence, not as a recommendation."
+      },
+      {
+        "name": "ship",
+        "default": false,
+        "encodes": "ship",
+        "type": "continuous",
+        "bounds": [
+          0,
+          "ship_max"
+        ],
+        "transform": "",
+        "feasibility_strategy": "clip",
+        "desc": "Identity on [0, ship_max] -- the paper-native encoding. Carries the action-scale hazard: SB3's Gaussian starts at raw 0 with std 1, so early actions cover ~[0,3] of a box 20x mean demand wide, and raw 0 means 'ship nothing' -- measured at 22560 against an optimum of 982. Retained as the naive control."
+      }
+    ],
+    "reward_modes": [
+      {
+        "name": "neg_cost",
+        "default": true,
+        "expr": "-total",
+        "desc": "negated per-step cost.total (sense=minimize, reward is maximized)"
+      }
+    ],
+    "termination": {
+      "horizon_end": "terminated",
+      "early_terminated_when": null
+    }
+  },
+  "rl": {
+    "requires_memory": {
+      "value": false,
+      "suggested": false,
+      "source": "human_confirmed",
+      "rationale": "fully observed: demand is i.i.d. with a fixed known rate and there is no world latent, so the current stock vector is a sufficient statistic under either observation mode"
+    },
+    "algo": "ppo",
+    "frame_stack": 1,
+    "obs_normalization": {
+      "enabled": true,
+      "rationale": "stock entries are stationary and of similar magnitude within a mode, but the echelon mode's running sums span a wider range than the raw mode's per-level stocks; spec 8.3 says normalize"
+    }
+  },
+  "eval_metrics": [
+    {
+      "name": "undiscounted_cost",
+      "expr": "total",
+      "reduce": "sum",
+      "source": "objective candidate, declined at Phase A: the undiscounted total was the alternative to beta = 0.95 and is kept as a report-only column",
+      "desc": "total cost with no discounting. Describes, never decides."
+    }
+  ],
+  "assumptions_log": [
+    "Serial chain from Clark & Scarf (1960) sections 2-3: demand originates only at installation 1 (Assumption 1), shipping is linear with no setup cost (Assumption 2), one-period costs are functions of ECHELON stock rather than installation stock (Assumption 3), and every echelon backlogs excess demand (Assumption 4).",
+    "Chain length n_echelons is a swept axis over {2, 3, 4}. One period of transit per link, so a level adding no holding increment is exactly one period of pure delay: chain length subsumes the lead-time axis, and the paper's own two-echelon-with-two-period-lead example is a three-level chain with a free middle.",
+    "Action width is N, one shipment per link, as section 3 counts it ('two decisions are made' for two installations) and as Eq. (14) minimizes (over y and z). The 2N that appears in this paper is the (S_n, s_n) pair per echelon under a setup cost -- a description of the SOLUTION, not the width of the decision.",
+    "The state is carried in RAW installation coordinates and echelon stock is derived as a running sum. The two are related by an invertible linear map, so this is an implementation choice with no bearing on the model; raw was chosen because the availability constraint is then a per-component box (ship_k <= stock at the level above) rather than a coupled differencing condition.",
+    "Costs: purchase and shipping are FREE (c = c_ship = 0), isolating the holding-versus-shortage trade-off; linear purchase cost largely telescopes under backlogging, and inv_single sets c = 0.0 for the same reason. Echelon holding rates are h_retail = 1.0 at level 1 and h_echelon = 0.5 above; these enter as the cumulative per-installation rates h_install.",
+    "Objective discounts at beta = 0.95, the paper's alpha^n weighting (Phase A step 1, human_confirmed). Undiscounted total cost is retained as a report-only eval metric.",
+    "Demand is Poisson with a fixed rate of 10 -- chosen over 5 so integrality is fine-grained relative to the decision scale and does not contaminate the base-stock readback. No world latent: the paper holds the demand distribution fixed across the horizon.",
+    "Every episode starts with one period of cover at each installation (stock[k] = demand_mean), stated in raw coordinates; in echelon coordinates that reads x_k = k * demand_mean. This is not the optimum and hands the agent nothing -- it only starts the chain in flow, so the coordination problem is live from period 0 rather than after an N-period forced stockout.",
+    "The stock vector always carries n_levels_max = 4 slots; levels at index >= n_echelons are inert padding whose shipments are forced to 0 and whose stock is read by no cost or constraint. Padding exists only in the model file: both observation modes and the action mode are sliced to the live n_echelons, so no trained policy ever sees a dead input or emits a dead output.",
+    "Shipments are integer-valued: Poisson demand keeps every stock integral, and that is what keeps the DP reference exact rather than gridded.",
+    "Two observation modes, raw and echelon, are informationally identical (an invertible running sum). The campaign's headline question -- whether RL rediscovers the echelon structure -- is therefore a test of REPRESENTATION, not of information. An MLP can express a cumulative sum (a lower-triangular matrix of ones), so a raw-mode shortfall would be an optimization finding, not an impossibility.",
+    "Seed scheme v2 (spec 6.3): the single demand slot draws intrinsically at [period, 0, 1, episode_seed, seed_salt]. There are no world latents, so no meta-branch draws exist.",
+    "The exact DP reference is the Clark-Scarf decomposition itself, which section 3 states repeats at every echelon and which Theorems 1-2 prove optimal; it stays N one-dimensional problems rather than one N-dimensional problem. The verify_tiny instance is small enough to brute-force the full joint DP, so that optimality claim is CHECKED rather than assumed.",
+    "The DP truncates the Poisson pmf at a high quantile and renormalizes while the simulator does not, so the DP is optimal for a distribution differing from the simulated one by mass below 1e-9. Documented so the DP row is never read as unconditionally exact.",
+    "OBSERVATION MODES (gym layer, mutable): `raw` shows physical stock per installation plus in-flight stock; `echelon` shows the running sums applied COMPONENT-WISE -- cumsum(stock) and cumsum of EACH pipeline slot separately, never one sum over their total. A single running sum over the combined transit would be genuinely LOSSY at any leadtime >= 2 and would turn the headline experiment into a test of information rather than representation. Clark & Scarf's own state for that case, C_n(x1, w1, x2), likewise carries in-transit w1 separately from echelon stock. Both modes are sliced to the live n_echelons levels and prefixed by the normalized period (the horizon is finite, so the optimal critical numbers are time-varying). Guarded by clark_scarf_test.py::test_raw_and_echelon_are_a_pure_change_of_coordinates.",
+    "CORRECTION (post-freeze, re-signed): in-transit stock was initially charged the DESTINATION echelon's rate. Assumption 3 says a level's cost covers stock at that level plus stock at a lower level or in transit to a lower level -- so in transit TO level j is in echelon j+1, not echelon j, and is charged its SOURCE's rate until it lands. Stock in transit to the top level is in no echelon (on order, not yet in the system). The old form double-charged pipeline stock (2.0 vs 1.0 per period at n3_l2_p09) and, since the policy controls how much is in flight, biased the shipping incentive against moving stock downstream -- the exact trade-off the campaign measures. The `echelon` observation mode follows the same definition and keeps a separate cumulative in-transit block, so it stays an invertible re-coordinatization of `raw`.",
+    "ACTION ENCODING (gym layer, mutable): default is `ship_discrete`, a MultiDiscrete categorical head per link over whole-unit quantities 0..4x mean demand. Chosen because integrality is the problem's own (Poisson demand, integral stocks, decisions marked `integer`) and because a categorical head has no action-scale hazard. The continuous `ship` encoding was measured stuck near 'ship nothing' (~17-22k against an optimum of 982) after 300k steps; `ship_rel` (Gaussian recentred on mean demand) reached ~1082 at the same budget. inv_single reached the same conclusion for the same reason -- its default is `order_discrete`, citing its ESCALATION #E4.",
+    "ACTION ENCODING, final (gym layer): default is `target_discrete` -- the agent emits the echelon order-up-to level, not the shipment quantity. Chosen because in quantity coordinates the optimum is state-dependent while in target coordinates it is mid-horizon constant; measured as the largest single win of the campaign (ESCALATION #E9). `ship_discrete`, `ship_rel` and `ship` are retained as non-default modes and as evidence.",
+    "NOTATION (2026-08-17): schema/code names are the one canonical vocabulary. Paper correspondence is recorded, not adopted, in mdp.model.notation (verified against the in-repo reprint): pipe slots = the paper's w_j; leadtime = lambda (never L -- the paper's L(x) is the one-period cost); discount_factor = alpha; h_install/p_short/c_ship = h/p/c_1; our forward t = the paper's n periods-remaining via n = T - t."
+  ],
+  "benchmarks": [
+    {
+      "name": "dp",
+      "role": "exact",
+      "basis": "the Clark & Scarf decomposition (Theorems 1-2): the chain solved as N one-dimensional problems, each with Theorem 2's induced penalty. EXACT as an algorithm; the one numerical caveat is that the Poisson pmf is truncated at a high quantile (dropped mass < 1e-9 per period) while the simulator's sampler is not, so the bar may be optimistic by at most ~1e-4 in metric units over the 50-period horizon (1e-9 x p_short x a generous demand ceiling x T). Optimality is not taken on the theorems' word: clark_scarf_dp_exactness.py brute-forces the full joint state on verify_tiny and the gap is 0.000000 (ESCALATION #E1, which is where a 30%-suboptimal first draft was caught).",
+      "tolerance": 0.001,
+      "source": "spec \u00a79.9 role; declared 2026-08-17 against upstream #23, filed from this campaign"
+    },
+    {
+      "name": "echelon",
+      "role": "feasible",
+      "basis": "echelon base-stock WITHOUT the decomposition -- the echelon idea alone, targets fitted per level. Feasible by construction: it runs under the real information set.",
+      "source": "spec \u00a79.9 role; declared 2026-08-17"
+    },
+    {
+      "name": "local",
+      "role": "feasible",
+      "basis": "local (installation) base-stock: each level reorders to its own target, ignoring the level below. Pre-1960 practice, and the control the echelon idea is priced against.",
+      "source": "spec \u00a79.9 role; declared 2026-08-17"
+    },
+    {
+      "name": "random",
+      "role": "feasible",
+      "basis": "uniform random shipments within the action box -- the floor, present so the ladder has a bottom and a broken eval is visible.",
+      "source": "spec \u00a79.9 role; declared 2026-08-17"
+    }
+  ],
+  "research_questions": {
+    "tier2": [
+      {
+        "stance": "bypass",
+        "structure": "the echelon coordinate transform",
+        "claim": "A policy given only RAW installation stock matches one given the echelon transform. The transform is a known-optimal change of coordinates, so handing it over should be unnecessary rather than merely unhelpful.",
+        "instrument": "paired per-seed cost difference between the two observation modes at 8192 CRN seeds, each branch tuned to its own centre, read against the measured 1.57 training-seed floor",
+        "priority": "primary"
+      },
+      {
+        "stance": "confirm",
+        "structure": "echelon base-stock (the paper's optimal policy form)",
+        "claim": "The raw-trained policy IS an echelon base-stock rule -- it recovers the aggregation and applies Clark & Scarf's own critical numbers.",
+        "instrument": "Stage-5 readback on policy-own trajectories: spread of the implied order-up-to level where the clip is slack, and invariance of the decision to redistributing a fixed echelon position across installations",
+        "priority": "secondary"
+      }
+    ]
+  }
+}
