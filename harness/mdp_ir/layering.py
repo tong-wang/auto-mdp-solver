@@ -59,7 +59,7 @@ import hashlib
 import json
 from typing import Any
 
-from mdp_ir import families
+from mdp_ir import exprs, families
 
 # read-API a slot exposes to symbolic bounds; derived via mdp_ir.families,
 # overridable per candidate via its `read_api` block
@@ -72,11 +72,12 @@ _FAMILY_FNS = {"mean": families.mean, "max": families.max_value,
 _CANDIDATE_KEYS = {"generator", "family", "settings", "is_discrete", "read_api", "desc"}
 _DRAW_KEYS = {"draw", "example", "hidden"}
 
-# expressions are evaluated in a namespace of constants + slot read-APIs only
-_SAFE_BUILTINS: dict[str, Any] = {
-    "abs": abs, "min": min, "max": max, "round": round,
-    "int": int, "float": float, "sum": sum,
-}
+# expressions are evaluated in a namespace of constants + slot read-APIs only.
+# The FUNCTION table is shared with the interpreter (mdp_ir.exprs) so that what
+# `schema._BUILTINS` validates is what this resolver can evaluate — they used to
+# diverge, and a bound using `exp`/`sqrt`/`len`/`range` passed validation and
+# then died at load.
+_SAFE_BUILTINS: dict[str, Any] = exprs.CORE_FUNCS
 
 
 class LayeringError(ValueError):
@@ -115,9 +116,11 @@ def is_catalog(data: dict) -> bool:
 
 def _eval_expr(expr: str, ns: dict, where: str) -> Any:
     try:
-        return eval(  # noqa: S307 — namespace is restricted to constants + slots
-            compile(expr, f"<{where}>", "eval"), {"__builtins__": _SAFE_BUILTINS}, ns
-        )
+        # `ns` goes into GLOBALS, not locals: a comprehension gets its own
+        # scope and resolves free names through globals, so as locals a
+        # genexpr nested in a listcomp cannot see the constants around it
+        # (upstream #32's defect, one evaluator over). See mdp_ir.exprs.
+        return exprs.eval_expr(expr, ns, _SAFE_BUILTINS, where)
     except LayeringError:
         raise
     except Exception as exc:
