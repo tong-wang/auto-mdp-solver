@@ -87,7 +87,39 @@ def _iid_parts(settings: dict) -> tuple[str, dict]:
     of = settings.get("of")
     if not isinstance(of, str) or of == "iid":
         raise FamilyError(f"iid setting 'of' must name a base family, got {of!r}")
-    return of, {k: v for k, v in settings.items() if k not in ("of", "size")}
+    return of, _base_settings(settings, "iid")
+
+
+# Settings that name a STRUCTURE rather than a value: `of` is a base-family
+# name, exactly like `family` itself, and is never resolved as an expression.
+# One table so the schema validator and the runtime read the same contract —
+# they disagreed, and a stage-level `iid` could not load at all because the
+# validator checked `of` as an expression and reported `poisson` as an
+# unresolved identifier (upstream #52).
+_STRUCTURAL_SETTINGS: dict[str, frozenset[str]] = {
+    "iid": frozenset({"of"}),
+    "independent": frozenset({"of"}),
+}
+
+# `size` is not structural — it is an ordinary expression over constants
+# (`"T_dl + 1"`) and must keep being validated as one. It is split out of the
+# BASE settings all the same, since it parameterizes the wrapper, not the
+# component draw.
+_WRAPPER_SETTINGS = frozenset({"size"})
+
+
+def structural_settings(family: str) -> frozenset[str]:
+    """Setting keys of ``family`` that name a structure, not a value.
+
+    Callers that validate settings as expressions must skip these.
+    """
+    return _STRUCTURAL_SETTINGS.get(family, frozenset())
+
+
+def _base_settings(settings: dict, family: str) -> dict:
+    """The base family's own settings: wrapper and structural keys removed."""
+    drop = structural_settings(family) | _WRAPPER_SETTINGS
+    return {k: v for k, v in settings.items() if k not in drop}
 
 
 def is_vector(value: Any) -> bool:
@@ -110,7 +142,7 @@ def independent_parts(settings: dict) -> tuple[str, dict]:
         raise FamilyError(
             f"independent setting 'of' must name a base family, got {of!r}"
         )
-    return of, {k: v for k, v in settings.items() if k not in ("of", "size")}
+    return of, _base_settings(settings, "independent")
 
 
 def check_component_lengths(resolved: dict, size: int, family: str) -> None:

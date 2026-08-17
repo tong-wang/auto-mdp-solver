@@ -128,3 +128,93 @@ def test_is_discrete_is_undelegated_like_iid():
     name, so neither wrapper can consult its base. Every shipped candidate
     declares `is_discrete` explicitly, which is the working path."""
     assert families.is_discrete("independent") is families.is_discrete("iid") is None
+
+
+# --- stage level, end to end (upstream #52) ---------------------------------
+#
+# The v0.9.9 tests above drive `sample_family` and `families` directly, so they
+# never loaded an IR — and the stage-level path was broken for BOTH wrappers
+# while the docs said it was legal. `examples/mab`'s `iid` is a setting-level
+# draw spec, which desugars into a sampler at load and never reaches the
+# validator's settings loop, so nothing else covered it either.
+
+
+def _stage_ir(ir_doc, family, settings):
+    """The synthetic IR with its one source rendered as a wrapper family."""
+    ir_doc["mdp"]["uncertainty_sources"][0]["distribution"] = {
+        "family": family, "settings": settings,
+    }
+    return ir_doc
+
+
+@pytest.mark.parametrize("family", ["iid", "independent"])
+def test_a_wrapper_family_loads_as_a_stage_family(ir_doc, tmp_path, family):
+    """`of` names a base family, not a value: validating it as an expression
+    reported `poisson` as an unresolved identifier and no such IR could load."""
+    import json
+
+    from mdp_ir.schema import load_ir
+
+    doc = _stage_ir(ir_doc, family, {"of": "poisson", "size": "2", "rate": "rate"})
+    p = tmp_path / "stage.json"
+    p.write_text(json.dumps(doc))
+    ir = load_ir(p)
+    assert ir.mdp.uncertainty_sources[0].distribution.family == family
+
+
+@pytest.mark.parametrize("bad_key,settings", [
+    ("size", {"of": "poisson", "size": "nope + 1", "rate": "rate"}),
+    ("rate", {"of": "poisson", "size": "2", "rate": "no_such_constant"}),
+])
+def test_the_non_structural_settings_are_still_validated(
+    ir_doc, tmp_path, bad_key, settings
+):
+    """Exempting `of` must not exempt the rest. `size` in particular is an
+    ordinary expression over constants, not a structural key."""
+    import json
+
+    import pytest as _pytest
+
+    from mdp_ir.schema import load_ir
+
+    p = tmp_path / "stage.json"
+    p.write_text(json.dumps(_stage_ir(ir_doc, "independent", settings)))
+    with _pytest.raises(ValueError, match=rf"settings\['{bad_key}'\]"):
+        load_ir(p)
+
+
+def test_structural_keys_come_from_one_table():
+    """The validator and the runtime split on the same contract — they
+    disagreed, which is the whole of #52."""
+    assert families.structural_settings("iid") == {"of"}
+    assert families.structural_settings("independent") == {"of"}
+    assert families.structural_settings("poisson") == frozenset()
+    # `size` is deliberately NOT structural: it is an expression
+    assert "size" not in families.structural_settings("independent")
+
+
+def test_a_stage_family_draws_one_component_per_element(ir_doc, tmp_path):
+    """Loads AND draws: the whole claim `MDP_IR_SAMPLE.md` makes for the
+    stage-level path, which nothing exercised end to end before #52."""
+    import json
+
+    from mdp_ir.interpreter import IrInterpreter
+    from mdp_ir.schema import load_ir
+
+    doc = _stage_ir(ir_doc, "independent",
+                    {"of": "poisson", "size": "3", "rate": "rates"})
+    doc["mdp"]["scenario"]["constants"].append(
+        {"name": "rates", "value": [2.0, 1.0, 3.0], "desc": "per-component rates"}
+    )
+    # the draw target is a vector now, so the body consumes it as one
+    for t in doc["mdp"]["dynamics"]["transitions"]:
+        t["updates"] = [u.replace("level -= outflow", "level -= sum(outflow)")
+                        for u in t["updates"]]
+    p = tmp_path / "stage.json"
+    p.write_text(json.dumps(doc))
+
+    rows = IrInterpreter(load_ir(p), seed_salt=1).run(0).rows
+    drawn = [r["outflow"] for r in rows if isinstance(r.get("outflow"), list)]
+    assert drawn, "the stage never produced a vector draw"
+    assert all(len(v) == 3 for v in drawn)          # one component per rate
+    assert all(all(float(x).is_integer() for x in v) for v in drawn)   # poisson

@@ -1474,8 +1474,15 @@ class MdpBlock(_Base):
                 _check_expr(u, dyn_known, f"dynamics[{t.event}]")
 
         for src in self.uncertainty_sources:
+            # `of` names a base family, not a value, so it is not an expression
+            # — the wrapper families declare which of their keys are structural
+            # and the runtime splits on the same table (#52). `size` is NOT
+            # among them: it is an ordinary expression over constants.
+            from mdp_ir.families import structural_settings
+
+            structural = structural_settings(src.distribution.family)
             for k, v in src.distribution.settings.items():
-                if isinstance(v, str):
+                if isinstance(v, str) and k not in structural:
                     _check_expr(v, known, f"uncertainty {src.name!r} settings[{k!r}]")
             for st in src.stages:
                 if st.trigger:
