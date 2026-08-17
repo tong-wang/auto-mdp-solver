@@ -1061,19 +1061,35 @@ it be configured.
 2026-08-17  ADDED       the ledger -> tree half of guide rule 2's bidirectional citation.
                         The 2026-08-16 retype added the anchors and the readings table
                         (tree -> ledger) but no entry carried a back-link, so the direction
-                        the guide calls unfollowable was still missing. 24 entries now
+                        the guide calls unfollowable was still missing. 26 entries now
                         carry `↑ [design tree](#MAP) — explains {node}`, DERIVED by
-                        inverting the diagram's own `#E` citations rather than re-judged —
+                        inverting the tree's own `#E` citations rather than re-judged —
                         the tree already said which entries each node rests on. The
-                        remaining 13 get none, correctly and for three different reasons:
-                        #E5/#E6/#E9/#E12/#E13/#E16/#E17/#E27 are off-tree (protocol audits,
+                        remaining 11 get none, correctly and for three different reasons:
+                        #E5/#E6/#E9/#E12/#E16/#E17 are off-tree (protocol audits,
                         diagnoses, corrections, plan bookkeeping — no tree node); #E1-#E4
                         are superseded by #E7, which is what the L0/L1 nodes cite; and #E8
                         is the norm_obs refutation, whose surviving reading the tree carries
                         on the `obs=stats` node via #E10 rather than as a node of its own.
-                        Their
-                        `address:` lines still use the pre-retype `T1/bayes/L1` path
+                        Their `address:` lines still use the pre-retype `T1/bayes/L1` path
                         notation; those are left as written, being append-only record.
+                        **Invert the whole tree, not the diagram alone.** A first pass
+                        inverted the mermaid node labels only and came out at 24, missing
+                        #E13 (`level=L1` bayes) and #E27 (`payout=bernoulli` — its ONLY
+                        citation — plus `readback=quantile_index`): both are cited by the
+                        READINGS TABLE, which is the mechanism guide rule 2 actually names
+                        for tree -> ledger, and neither appears in a node label. The two
+                        halves of the tree do not cite the same set, and the diagram is the
+                        smaller one — inverting it silently leaves the entries only the
+                        table reaches exactly as unfollowable as before. The same
+                        divergence sits on `payout=gaussian` (node cites #E26/#E23, table
+                        and the ROOT edge cite #E34), so the back-link set is the UNION of
+                        node, edge and table citations; #E34 carries it too. Two mechanical
+                        rules, both paid for here: name the node by its **table key**
+                        (`scenario=cells+grid`, not the label's display text
+                        `scenario=cells+grid (34 instances)`), and insert after the
+                        COMPLETE `address:` block — 11 back-links first landed inside a
+                        wrapped address line and split the sentence in half.
 ```
 
 ---
@@ -1830,6 +1846,7 @@ unchanged as the closing set.
 <a id="E13"></a>
 ### #E13  2026-07-29 — crown amendment: frame-averaged inference on the shipped artifact
 address: T1/bayes/L1 / A6-rung-a0 (crown amendment, #E12 plan item 3)
+↑ [design tree](#MAP) — explains `level=L1` (bayes)
 hypothesis: the +38.9 measured in #E11's probe survives the formal gate at the
 standard protocol and is deployable as an inference option.
 runs: `mab_a5_probe.py --part frameavg` (spec-§9 TSV written beside the
@@ -2384,8 +2401,8 @@ A8 awaits the A3 harvest)
 <a id="E23"></a>
 ### #E23  2026-08-02 — A8 VERDICT: ent→0 alone is the new best config; exploration measurably moved into the index; the temperature head fails a fourth time — but the schedule it was built for exists, in the shape channel
 address:  A8 arms a/b/c — all seven runs `budget_complete`, all committed at
-↑ [design tree](#MAP) — explains `payout=gaussian`, `method=ppo`, `hp=A8-a`, `head=temperature`
 8192 stochastic, plus one argmax eval and β readbacks on four artifacts.
+↑ [design tree](#MAP) — explains `payout=gaussian`, `method=ppo`, `hp=A8-a`, `head=temperature`
 reads:    exactly the pre-registrations in #E22/A8; per-run seed sd 16.70 and
 the 3v3 resolution floor (|Δ| ≳ 27) from #E21 govern throughout.
 observed — committed, seeds 1/2/3:
@@ -2641,6 +2658,7 @@ status: **✓** (A9 consumed; new best policy on T1; #E25(i) corrected and
 <a id="E27"></a>
 ### #E27  2026-08-02 — A10 VERDICT: NO parameter-free rule matches the tuned constant — the operator's objection stands, and the 21.27-point gap is the measured value of knowing the prior and horizon
 address:  A10 — parameter-free index forms @ the fitted-rule harness (eval-only)
+↑ [design tree](#MAP) — explains `payout=bernoulli`, `readback=quantile_index`
 motivation (operator, 2026-08-02): #E26's winner is a policy *instance* —
 c must be retuned per (K, T, prior, σ) — while Thompson and UCB1 are
 *rules*. If a zero-parameter form matched it, the campaign would have shown
@@ -2716,9 +2734,9 @@ instance knowledge quantified at 21.27)
 <a id="E28"></a>
 ### #E28  2026-08-03 — A3 HARVEST: the study's ranking does not survive the protocol — it ranked the wrong checkpoint on an easier block, and #E23's pre-registration holds
 address:  A3 — `mdp_tuning` L2(hp) @ T1/bayes/L1/index. Formal harvest, as
-↑ [design tree](#MAP) — explains `hp=A8-a`
 pre-registered in #E23 ("A3 times out 2026-08-03 ~03:16 — formal harvest =
 record the final study state and the `l2(hp)` levels").
+↑ [design tree](#MAP) — explains `hp=A8-a`
 final study state: study `a3_index_gauss` stopped on its **235,000 s timeout
 as designed** (launched 07-31 09:59, deadline 08-03 03:15); both workers
 exited through the normal end-of-study summary, no crash and no
@@ -2814,8 +2832,8 @@ pre-registration upheld; no re-centring)
 <a id="E29"></a>
 ### #E29  2026-08-05 — A11 VERDICT: the stats prune reverses at the good centre — 91% of the encoding gap was the centre, and the established residual (~45) is the price of building sd from counts
 address:  A11 rungs a+b — reopen T1/stats at the A8 centre, share/avg
-↑ [design tree](#MAP) — explains `obs=stats`, `hp=A8_centre`
 feature map (operator design 2026-08-04, recorded in item 11 before launch)
+↑ [design tree](#MAP) — explains `obs=stats`, `hp=A8_centre`
 reads:    item 11's pre-decided reads, applied unedited; #E21 noise model
 (per-run training-seed sd 16.70; 3v3 resolves |Δ| ≳ 27) governs throughout.
 runs: rung a = `-o stats --policy index` @ A8-a HP verbatim, seeds 1/2/3 ×
@@ -2880,8 +2898,8 @@ status: **✓** (A11 consumed: rungs a+b read; c licensed, unqueued)
 <a id="E30"></a>
 ### #E30  2026-08-05 — STATS READBACK (spec §14): the stats twin is a learned THOMPSON, not an index — the encoding decides where exploration lives
 address:  A11-a artifacts (deep dive a-s2; gap/surface direction-checked on
-↑ [design tree](#MAP) — explains `readback=learned_thompson`
 s1/s3) — the follow-up #E29 licensed in place of rung c
+↑ [design tree](#MAP) — explains `readback=learned_thompson`
 reads:    #E29 (the 45.02 residual); #E24 Part I (the bayes readback this
 mirrors); #E17 (the explore-rate statistic); #E22/#E23 (subsidy frame).
 runs: `mab_stats_probe.py` (new; probes the scorer in belief coordinates by
@@ -2948,9 +2966,9 @@ superseded)
 <a id="E31"></a>
 ### #E31  2026-08-06 — COVERAGE round: the never-touched-best-arm tail IS the crown's deficit, and it is an optimizer failure, not a rational trade
 address:  the operator's observation from the #E24/#E30 interpretation GIFs —
-↑ [design tree](#MAP) — explains `anchor=forward_kl`
 trained policies leave some arms untouched across all 1000 rounds, and the bad
 episodes are exactly those where an untouched arm was the true best.
+↑ [design tree](#MAP) — explains `anchor=forward_kl`
 reads:    #E24 (the crown = deterministic quantile index, c≈1.5); #E26 (the
 tuned 2.5 formula); #E29/#E30 (the stats twin and its ~45 residual); #E21
 (the noise rule these contrasts are read under).
@@ -3084,9 +3102,9 @@ mean question is settled as neutral, not open)
 <a id="E32"></a>
 ### #E32  2026-08-06 — ROBUSTNESS grid: the two-constant rule beats Thompson in all 21 cells, but its LEVEL is a log law in pulls-per-arm
 address:  is #E26's `argmax(pm + 2.5·(ttg/T)^0.15·psd)` a rule, or a fit to
-↑ [design tree](#MAP) — explains `scenario=cells+grid (34 instances)`, `robustness=grid_21cells`
 the one cell it was tuned on (K=10, T=1000, σ=1)? Raised after the result was
 reported upward.
+↑ [design tree](#MAP) — explains `scenario=cells+grid`, `robustness=grid_21cells`
 reads:    #E26 (the formula, 1486.14, +22.95 over thompson); #E27 (no
 parameter-free rule within 21.27 — the comparison set reused here); #E28
 (reward means are not block-portable, regret nearly is); #E31 (the starvation
@@ -3190,9 +3208,9 @@ class: the net learned a *constant*, which #E34 had already proved must lose.
 <a id="E33"></a>
 ### #E33  2026-08-07 — SELECTION VALIDITY: the 256-seed callback picks the oracle checkpoint in 5 of 6 runs; selection is worth ~43 points and its noise costs ~1.4
 address:  the operator's objection that best-checkpoint selection and plateau
-↑ [design tree](#MAP) — explains `audit=selection_validity`
 early-stopping are "not working well in practice", and #E31's Verdict 2 that
 the crown artifact is a decaying run's 3M snapshot — i.e. that the *selection
+↑ [design tree](#MAP) — explains `audit=selection_validity`
 protocol* rather than the config explained a headline number.
 reads:    #E31 (P4's checkpoint curve, and Verdict 2 which opened this); #E28
 (checkpoint choice reorders leaderboards; block-portability of metrics); #E21
@@ -3261,10 +3279,10 @@ status: **✓** (objection resolved; selection retained, early-stopping retired)
 <a id="E34"></a>
 ### #E34  2026-08-07 — the rule's OPERATING ENVELOPE: a fixed-quantile index is inconsistent, it crosses thompson at T ~ 14,000, and every repair converges to thompson
 address:  the operator's follow-up to #E32 — "expand the experiment and find
-↑ [design tree](#MAP) — explains `envelope=T_star`
 the boundary where the rule may fail". #E32 tested only inside the design
 envelope (n <= 100), so "beats thompson in all 21 cells" was a statement about
 the tested range, not about the method.
+↑ [design tree](#MAP) — explains `payout=gaussian`, `envelope=T_star`
 reads:    #E26 (the 2-constant formula); #E27 (no parameter-free rule within
 21.27); #E31 (starvation IS the deficit; P3's floor/log insurance priced on
 the fitted rule); #E32 (21-cell robustness, c* = 1.204 + 0.286 ln n).
@@ -3362,10 +3380,10 @@ operator, on Verdict 3.
 <a id="E35"></a>
 ### #E35  2026-08-10 (closed 2026-08-11) — LAMBDA LADDER: the credit horizon must scale with T, and below ~1% episode coverage it is a THRESHOLD, not a rate — training stops working. Above it, PPO sits at a flat 2-3x thompson and does NOT diverge.
 address:  the operator's attribution of #E32's corner-run collapse to HP
-↑ [design tree](#MAP) — explains `lambda=coverage_scaled`
 transfer, "especially gae_lambda", and the follow-on question of how far behind
 thompson PPO falls in thompson's own regime (long horizon). Losing was
 acceptable; the quantity of interest was by how much.
+↑ [design tree](#MAP) — explains `lambda=coverage_scaled`
 reads:    #E32 (the corner runs: PPO at the re-tuned rule's frontier at n=5,
 +26/+97 worse than thompson at n=100 — inherited HPs, so uninterpretable);
 #E33 (selection is robust; plateau stopping is not); #E34 (the analytic rule's
@@ -3514,12 +3532,12 @@ on.
 ### #E36  2026-08-07 (closed 2026-08-11) — GENERALIST over a horizon grid: one policy CAN serve a 20x range of T, but it pays for it at the long end — and one scalar lambda cannot cover the grid it is trained on
 
 address:  the operator's request for a generalist — "varying T ... uniform on
-↑ [design tree](#MAP) — explains `method=ppo_generalist`
 an interval instead of taking only six values ... feed raw ttg and T
 separately". Every trained policy in this campaign so far is a SPECIALIST at
 one cell (spec §5.4 instances); the #E26 rule, by contrast, is one formula that
 works across cells with only its level `c*` moving (#E32). So: can a net do
 what the formula does — learn the T-dependence rather than have it baked in?
+↑ [design tree](#MAP) — explains `method=ppo_generalist`
 reads:    #E26 (the rule's `(ttg/T)^0.15` form — the thing to test); #E32 (the
 21-cell census the rule survives); #E33 (selection is robust); #E34 (the
 envelope, and that every repair converges to thompson); #E35 (coverage).
@@ -3616,11 +3634,11 @@ stopped the policy search, and this does not reopen it.
 ### #E37  2026-08-11 — READBACK of the #E36 generalist: it learned a FIXED QUANTILE. c ~ 0.85, constant in BOTH ttg/T and T, ~1/3 of optimal — precisely the class #E34 proved must lose at long horizon
 
 address:  #E36's pre-registered open readback — *does phi depend on `ttg` and
-↑ [design tree](#MAP) — explains `readback=fixed_quantile`
 `T` only through their ratio?* The generalist is the only instrument that can
 answer it: one net, a 20x range of horizons, and `_IndexHExtractor` hands it
 `ttg` and `T` raw and never their ratio, precisely so the ratio is a
 measurement rather than an assumption.
+↑ [design tree](#MAP) — explains `readback=fixed_quantile`
 reads:    #E26 (`c = 2.5*(ttg/T)^0.15`, the ratio form, fitted at T=1000);
 #E24 (the specialist readback: `c = 1.51*(ttg/T)^0.079`); #E32 (`c* = 1.204 +
 0.286*ln n`, the level that the ratio form cannot express); #E34 (a
