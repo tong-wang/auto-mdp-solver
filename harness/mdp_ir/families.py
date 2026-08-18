@@ -1,10 +1,11 @@
 """Distribution-family registry: harness-owned knowledge about families.
 
 The catalog model (IR_LAYERING_PLAN.md §10) removes the hand-authored
-family read-API blocks from the IR: ``mean`` / ``max`` / ``is_discrete`` of a
-slot's selected candidate are *derived* here from the distribution family and
-its settings, composing through the latent hierarchy — a setting that is
-itself a draw spec contributes its draw-family's mean/envelope. Example::
+family read-API blocks from the IR: ``mean`` / ``max`` / ``sd`` /
+``is_discrete`` of a slot's selected candidate are *derived* here from the
+distribution family and its settings, composing through the latent
+hierarchy — a setting that is itself a draw spec contributes its
+draw-family's mean/envelope. Example::
 
     poisson(rate ~ gamma(shape=9, scale=1/0.3))
     mean = E[rate] = 30
@@ -15,14 +16,17 @@ which reproduces exactly the formula domains used to hand-write.
 Sampling itself stays in ``interpreter._sample_family`` (plus the generic
 numpy dispatch); this module is the *moments/envelope* side. Envelopes use a
 4-sigma convention for unbounded families — they are space-sizing bounds,
-not hard supports, matching what domain gym wrappers have always done.
+not hard supports, matching what domain gym wrappers have always done. That
+one multiple cannot be right at every site (an observation box is checked
+every period, an action cap once an episode), so ``sd`` exposes the spread
+the convention is built from and a bound site states its own (upstream #54).
 
 The ``resolve(raw_value, attr)`` callback is supplied by the caller
 (``layering``): it turns a raw setting value — literal, expr string over
 scenario constants, or nested draw spec — into a number/list for the
-requested attr (``"mean"`` or ``"max"``). A setting this module cannot
-resolve (e.g. an expr over *state*, like a price-dependent rate) surfaces as
-a :class:`FamilyError`; the caller reports it only if the structure actually
+requested attr (``"mean"``, ``"max"``, ``"min"`` or ``"sd"``). A setting
+this module cannot resolve (e.g. an expr over *state*, like a price-dependent
+rate) surfaces as a :class:`FamilyError`; the caller reports it only if the structure actually
 references the attribute (lazy derivation), with the ``read_api`` candidate
 override as the escape hatch.
 """
@@ -31,7 +35,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-# resolve(raw_setting_value, attr) -> number | list, attr in {"mean", "max"}
+# resolve(raw_setting_value, attr) -> number | list, attr in READ_API
 Resolver = Callable[[Any, str], Any]
 
 _SIGMAS = 4.0  # envelope convention for unbounded families
@@ -248,6 +252,121 @@ def mean(family: str, settings: dict, resolve: Resolver) -> float:
     if family == "normalized_uniform_weights":
         return 1.0 / g("size")
     raise FamilyError(f"no mean derivation for family {family!r}")
+
+
+def _no_latent(settings: dict, family: str, key: str) -> None:
+    """Refuse a world latent where the derivation would silently understate.
+
+    ``mean`` and ``max`` compose through a latent — E[X] = E[E[X|θ]], and the
+    envelope plugs the latent's own envelope in. Spread does not compose that
+    way: the marginal variance is E[Var(X|θ)] + Var(E[X|θ]) (law of total
+    variance), and the second term needs the latent's variance *and* how the
+    mean moves with it — not derivable family-generically. Returning the
+    conditional sd instead would hand back a number that is too small exactly
+    where the uncertainty is largest, so this refuses and says what to reach
+    for. Same stance as ``mean`` on ``independent``: guessing is worse.
+    """
+    raw = settings.get(key)
+    if isinstance(raw, dict) and "draw" in raw:
+        raise FamilyError(
+            f"{family}.{key} is a world latent, so there is no conditional "
+            f"`sd` worth reporting: the marginal spread carries the latent's "
+            f"own variance too. Read `max` (which composes the envelope), or "
+            f"declare the spread you mean as a scenario constant"
+        )
+
+
+def sd(family: str, settings: dict, resolve: Resolver) -> float:
+    """SD[X] of one draw — the spread the envelope conventions are built from.
+
+    ``max`` answers "how wide a box" at one fixed multiple (4 sigma, the
+    convention above); this answers the question underneath it, so a bound
+    site can state its own multiple and its own aggregation. Two things a
+    single ``max`` cannot express, both of which a bound needs (upstream #54):
+
+    * **the multiple belongs to the site.** An observation envelope is checked
+      every period and a loose one costs nothing; an action cap is consulted
+      once an episode and a loose one is paid in exploration. Same draw, two
+      exposures, so ``mean + k*sd`` with the site's own ``k``.
+    * **an aggregate is not a multiple of a per-period bound.** For a sum over
+      ``n`` periods the mean scales by ``n`` and the spread by ``sqrt(n)``, so
+      ``n * max`` inflates the tail term by ``sqrt(n)`` — write
+      ``n*mean + k*sqrt(n)*sd`` instead.
+
+    Exact for the family's settings; latents are refused (see ``_no_latent``).
+    """
+    def g(key: str) -> float:
+        _no_latent(settings, family, key)
+        return _get(settings, family, key, resolve, "mean")
+
+    root = __import__("math").sqrt
+    if family == "iid":
+        return sd(*_iid_parts(settings), resolve)
+    if family == "independent":
+        # same refusal as `mean`, one moment over: the sd of an inid vector is
+        # a vector, and the scalar a bound wants is the sd of the AGGREGATE,
+        # which is sqrt(sum of variances) — not the max or the average of the
+        # component sds. Nothing here can tell which aggregate is meant.
+        raise FamilyError(
+            "independent has no scalar sd — its components are not "
+            "identically distributed. Write the aggregate you mean over the "
+            "settings vector (e.g. sqrt(sum(rate)) for a sum of independent "
+            "Poissons), or read a component"
+        )
+    if family == "deterministic":
+        return 0.0
+    if family == "categorical":
+        for key in ("values", "probabilities"):
+            _no_latent(settings, family, key)
+        vals = resolve(settings.get("values"), "mean")
+        probs = resolve(settings.get("probabilities"), "mean")
+        if not (isinstance(vals, list) and isinstance(probs, list)):
+            raise FamilyError(
+                "categorical sd needs explicit values and probabilities"
+            )
+        if len(vals) != len(probs):
+            raise FamilyError("categorical values/probabilities length mismatch")
+        m = sum(float(v) * float(pr) for v, pr in zip(vals, probs))
+        var = sum(float(pr) * (float(v) - m) ** 2 for v, pr in zip(vals, probs))
+        return float(root(var))
+    if family == "poisson":
+        return float(root(g("rate")))
+    if family == "normal":
+        return g("std")
+    if family == "lognormal":
+        m, s_ = g("mean"), g("sigma")
+        exp = __import__("math").exp
+        return float(root(exp(s_ * s_) - 1.0) * exp(m + s_ * s_ / 2.0))
+    if family == "uniform":
+        return (g("high") - g("low")) / float(root(12.0))
+    if family == "gamma":
+        return float(root(g("shape"))) * g("scale")
+    if family == "exponential":
+        return g("scale")
+    if family == "beta":
+        a, b = g("a"), g("b")
+        return float(root(a * b / ((a + b) ** 2 * (a + b + 1.0))))
+    if family == "bernoulli":
+        p = g("p")
+        return float(root(p * (1.0 - p)))
+    if family == "binomial":
+        n, p = g("n"), g("p")
+        return float(root(n * p * (1.0 - p)))
+    if family == "geometric":
+        p = g("p")
+        return float(root(1.0 - p) / p)
+    if family == "negative_binomial":
+        n, p = g("n"), g("p")
+        return float(root(n * (1.0 - p)) / p)
+    if family == "choice_without_replacement":
+        # one draw is uniform over the integer support [low, high]
+        n = g("high") - g("low") + 1.0
+        return float(root((n * n - 1.0) / 12.0))
+    if family == "normalized_uniform_weights":
+        # one coordinate of a flat Dirichlet is Beta(1, size-1)
+        n = g("size")
+        return float(root((n - 1.0) / (n * n * (n + 1.0))))
+    raise FamilyError(f"no sd derivation for family {family!r}")
 
 
 def min_value(family: str, settings: dict, resolve: Resolver) -> float:

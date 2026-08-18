@@ -1314,6 +1314,68 @@ def check_no_enumeration(h: DomainHandle) -> CheckResult:
                        f"families; no re-baked vectors")
 
 
+# vocabulary of a bound justified by MEASUREMENT rather than by the dynamics.
+# Deliberately narrow: it flags the *observation of solved instances*, not the
+# word "optimal" — "an order beyond the horizon's demand can never be optimal"
+# is a statement about the model and must not trip this.
+_MEASURED = (
+    "observed", "we ran", "measured", "empirical", "in practice we",
+    "training run", "trained", "tuned", "baseline", "benchmark",
+    "dp table", "dp policy", "headroom over", "never bind", "must not bind",
+)
+
+
+def check_bound_rationale(h: DomainHandle) -> CheckResult:
+    """An action bound is a claim about the dynamics, never a measurement of
+    the instances already solved (spec §7).
+
+    The tempting justification is the one the author can see: run the solver,
+    take the largest action an optimal policy places, add headroom. It reads as
+    diligence and produces a defensible-looking number. It is not a bound — it
+    is a summary of a design set, and its failure mode is silent. A cap that
+    binds does not raise; it truncates the action set and reports a worse
+    policy, so the first instance with a longer horizon or a heavier rate
+    inherits a cap justified against a study that no longer exists. §5.2's
+    coverage rule cannot catch it either: that fires only for a cap NAMED over
+    a declared design value, which an action scale generally is not.
+
+    The question the rationale has to survive is one line: *would this
+    justification still hold for an instance nobody has run?* Bounds
+    themselves are checked elsewhere — this reads only the prose that says
+    why. WARN, because the vocabulary is evidence and not proof; a rationale
+    that cites a benchmark to *illustrate* a derivation is a false positive
+    worth one look.
+    """
+    schemas = sorted(h.directory.glob("*_schema.json"))
+    if len(schemas) != 1:
+        return CheckResult("schema.bound_rationale", "SKIP", "no single *_schema.json")
+    try:
+        from mdp_ir.schema import load_ir
+        ir = load_ir(schemas[0])
+    except Exception as e:
+        return CheckResult("schema.bound_rationale", "SKIP",
+                           f"schema not loadable ({type(e).__name__}: {e})")
+
+    hits, checked = [], 0
+    for d in ir.mdp.decisions:
+        why = (d.bounds.rationale or "").lower()
+        checked += 1
+        words = [w for w in _MEASURED if w in why]
+        if words:
+            hits.append(f"decision {d.name!r} bounds cite {words}")
+    if hits:
+        return CheckResult(
+            "schema.bound_rationale", "WARN",
+            "; ".join(hits) + " — an action bound justified by what solved runs "
+            "did is a measurement of the instances already in the study, and it "
+            "binds silently on the first one that outgrows it; derive it from "
+            "the model and the horizon instead (would the justification hold "
+            "for an instance nobody has run?)")
+    return CheckResult("schema.bound_rationale", "PASS",
+                       f"{checked} decision bound rationale(s) argue from the "
+                       f"model, not from solved runs")
+
+
 REGISTRY = [
     check_file_layout,
     check_layering,
@@ -1331,6 +1393,7 @@ REGISTRY = [
     check_run_provenance,
     check_model_boundary,
     check_no_enumeration,
+    check_bound_rationale,
     check_init_state,
     check_gym_contract,
     check_determinism,

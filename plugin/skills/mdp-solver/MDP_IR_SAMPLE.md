@@ -160,6 +160,13 @@ verifying rather than dictating.
           // override exactly as a bare name does. A union-over-instances
           // literal is correct for no instance and drags the structural
           // fingerprint every time a bigger cell is registered.
+          // WHICH bound this is decides how tight to make it (spec §4.1): a
+          // state envelope is checked every period and a loose one is free, so
+          // be generous — the model's own domain is the stable choice; a
+          // decision's bounds are the ACTION scale, where slack is paid in
+          // exploration. `slot.sd` states the multiple ("mean + 6 * demand.sd")
+          // instead of inheriting max()'s 4; a bound on a SUM over n periods is
+          // "n*mean + k*sqrt(n)*sd", never n * max.
           "bounds": ["-40 * demand.mean", "40 * demand.mean"],
           "observability": "observable",
           "desc": "net on-hand inventory after all period events; read by next transition"
@@ -877,14 +884,18 @@ legacy resolved form and still loads unchanged.
   enumerated anywhere, and `poisson × lost_sales` is the one-line instance
   `{"demand": "poisson", "allow_backlog": false}`.
 - **Derived read-API**: symbolic bounds (`"20 * demand.mean"`) resolve
-  against `mean`/`max`/`min`/`is_discrete` computed by `mdp_ir.families`
+  against `mean`/`max`/`min`/`sd`/`is_discrete` computed by `mdp_ir.families`
   from the selected candidate's family + settings, composing through the
   latent hierarchy (a Gamma-latent Poisson gets `max = envelope(poisson,
   envelope(gamma))`). Derivation is lazy per attribute — a slot nothing
   references may use state-dependent settings (dynamic_pricing's
   price-dependent rate). Escape hatch: an explicit `read_api` block on the
-  candidate. A stat is folded into the entry at load — that namespace exists
-  only while the selection is being resolved — while everything the entry
+  candidate. `sd` is the spread `max`'s 4-sigma convention is built from, so a
+  site can state its own multiple or bound a sum (`"n*mean + 4*sqrt(n)*sd"`,
+  never `n * max` — the spread grows as `sqrt(n)`, spec §4.1); it refuses under
+  a world latent, where the marginal spread carries the latent's variance too
+  and `max` is the number that composes. A stat is folded into the entry at
+  load — that namespace exists only while the selection is being resolved — while everything the entry
   reads from `scenario.constants` stays symbolic, so an envelope mixing the
   two (`"N * demand.max"`) tracks the selection *and* the instance.
 - **What is frozen**: `layering.structural_fingerprint()` — the structural

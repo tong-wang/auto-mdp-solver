@@ -67,11 +67,11 @@ from mdp_ir import exprs, families
 
 # read-API a slot exposes to symbolic bounds; derived via mdp_ir.families,
 # overridable per candidate via its `read_api` block
-READ_API = ("max", "mean", "min", "is_discrete")
+READ_API = ("max", "mean", "min", "sd", "is_discrete")
 
 # moment/envelope derivations per read-API attribute
 _FAMILY_FNS = {"mean": families.mean, "max": families.max_value,
-               "min": families.min_value}
+               "min": families.min_value, "sd": families.sd}
 
 # a slot read-API reference inside an expression, e.g. `demand.mean`
 _STAT_REF = re.compile(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)")
@@ -212,18 +212,30 @@ def _mixture_namespace(slot: dict, comp_infos: list, where: str):
                     f"{where}: slot {slot_name!r} has no read-API attribute "
                     f"{item!r}; available: {list(READ_API)}"
                 )
-            weights, vals = [], []
+            weights, vals, means = [], [], []
             for w, comp_sel, cvals in comp_infos:
                 cand = slot["candidates"][comp_sel[slot_name]]
                 sub = _slot_namespace(slot, cand, cvals, where)
                 weights.append(float(w))
                 vals.append(getattr(sub, item))
+                if item == "sd":
+                    means.append(float(sub.mean))
             if item == "mean":
                 return sum(w * v for w, v in zip(weights, vals)) / sum(weights)
             if item == "max":
                 return max(vals)
             if item == "min":
                 return min(vals)
+            if item == "sd":
+                # a mixture is wider than its components: the between-component
+                # spread counts too, so this is the law of total variance and
+                # NOT a weighted mean of the sds
+                total = sum(weights)
+                mu = sum(w * m for w, m in zip(weights, means)) / total
+                var = sum(
+                    w * (v * v + m * m) for w, v, m in zip(weights, vals, means)
+                ) / total - mu * mu
+                return float(max(var, 0.0) ** 0.5)
             if len(set(vals)) > 1:      # is_discrete
                 raise LayeringError(
                     f"{where}: mixture components disagree on "
