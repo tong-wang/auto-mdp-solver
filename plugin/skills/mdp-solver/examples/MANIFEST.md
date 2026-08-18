@@ -47,6 +47,16 @@ Current caveats:
   *code* still predates v0.7.0 per the caveat above; only the record was
   redrawn.
 
+- `mab`'s **restatement was corrected on 2026-08-18** for the defect upstream
+  #55 was filed about. Both trajectory blocks carried three rows and an
+  ellipsis, and the Bernoulli one was attributed to the bare `mab_schema.json`
+  invocation — but the `payout` slot's catalog `default` is `gaussian`, so that
+  command has rendered the Gaussian branch since promotion. The numbers were
+  right; the command printed beside them was not, which no gate could see (the
+  `mdp` fingerprint never moved). Both blocks now sit under `step7b` fences
+  with verbatim output, so `docs.restatement_current` re-runs them. Campaign-
+  record curation, not research: no number, verdict or ranking moved.
+
 Every example carries three gates, all run from the repo root with
 `E=plugin/skills/mdp-solver/examples`:
 

@@ -171,16 +171,40 @@ evaluated on the same scenario with a shared eval-seed block; baselines
 
 ## Annotated sample trajectories (interpreter output, episode_seed=3, fixed decision arm=3)
 
-Bernoulli branch — this episode nature drew arm 3's success probability
-$p_3 = 0.97$, which happens to also be the best arm (`opt_mean` 0.97);
-every pull pays 0/1 and increments `pulls[3]` / adds to `payouts[3]`:
+Bernoulli branch (`--instance bernoulli`) — this episode nature drew arm 3's
+success probability $p_3 = 0.97$, which happens to also be the best arm
+(`opt_mean` 0.97); every pull pays 0/1 and increments `pulls[3]` / adds to
+`payouts[3]`:
+
+```step7b
+python -m mdp_ir.interpreter mab/mab_schema.json --instance bernoulli --decision arm=3 --episode-seed 3
+```
 
 ```
+mab v0.4  episode_seed=3 instance=bernoulli
  t   arm  reward  mean_pulled  opt_mean                   pulls                 payouts  pull  total
  0  3.00    0.00         0.97      0.97   [0,0,0,1,0,0,0,0,0,0]   [0,0,0,0,0,0,0,0,0,0]  0.00   0.00
  1  3.00    1.00         0.97      0.97   [0,0,0,2,0,0,0,0,0,0]   [0,0,0,1,0,0,0,0,0,0]  1.00   1.00
  2  3.00    1.00         0.97      0.97   [0,0,0,3,0,0,0,0,0,0]   [0,0,0,2,0,0,0,0,0,0]  1.00   1.00
-...
+ 3  3.00    1.00         0.97      0.97   [0,0,0,4,0,0,0,0,0,0]   [0,0,0,3,0,0,0,0,0,0]  1.00   1.00
+ 4  3.00    1.00         0.97      0.97   [0,0,0,5,0,0,0,0,0,0]   [0,0,0,4,0,0,0,0,0,0]  1.00   1.00
+ 5  3.00    1.00         0.97      0.97   [0,0,0,6,0,0,0,0,0,0]   [0,0,0,5,0,0,0,0,0,0]  1.00   1.00
+ 6  3.00    1.00         0.97      0.97   [0,0,0,7,0,0,0,0,0,0]   [0,0,0,6,0,0,0,0,0,0]  1.00   1.00
+ 7  3.00    1.00         0.97      0.97   [0,0,0,8,0,0,0,0,0,0]   [0,0,0,7,0,0,0,0,0,0]  1.00   1.00
+ 8  3.00    1.00         0.97      0.97   [0,0,0,9,0,0,0,0,0,0]   [0,0,0,8,0,0,0,0,0,0]  1.00   1.00
+ 9  3.00    1.00         0.97      0.97  [0,0,0,10,0,0,0,0,0,0]   [0,0,0,9,0,0,0,0,0,0]  1.00   1.00
+10  3.00    1.00         0.97      0.97  [0,0,0,11,0,0,0,0,0,0]  [0,0,0,10,0,0,0,0,0,0]  1.00   1.00
+11  3.00    1.00         0.97      0.97  [0,0,0,12,0,0,0,0,0,0]  [0,0,0,11,0,0,0,0,0,0]  1.00   1.00
+12  3.00    1.00         0.97      0.97  [0,0,0,13,0,0,0,0,0,0]  [0,0,0,12,0,0,0,0,0,0]  1.00   1.00
+13  3.00    1.00         0.97      0.97  [0,0,0,14,0,0,0,0,0,0]  [0,0,0,13,0,0,0,0,0,0]  1.00   1.00
+14  3.00    1.00         0.97      0.97  [0,0,0,15,0,0,0,0,0,0]  [0,0,0,14,0,0,0,0,0,0]  1.00   1.00
+15  3.00    1.00         0.97      0.97  [0,0,0,16,0,0,0,0,0,0]  [0,0,0,15,0,0,0,0,0,0]  1.00   1.00
+16  3.00    1.00         0.97      0.97  [0,0,0,17,0,0,0,0,0,0]  [0,0,0,16,0,0,0,0,0,0]  1.00   1.00
+17  3.00    1.00         0.97      0.97  [0,0,0,18,0,0,0,0,0,0]  [0,0,0,17,0,0,0,0,0,0]  1.00   1.00
+18  3.00    1.00         0.97      0.97  [0,0,0,19,0,0,0,0,0,0]  [0,0,0,18,0,0,0,0,0,0]  1.00   1.00
+19  3.00    0.00         0.97      0.97  [0,0,0,20,0,0,0,0,0,0]  [0,0,0,18,0,0,0,0,0,0]  0.00   0.00
+... (980 more periods)
+episode total = 964.00   reward total = 964.00   periods = 1000
 ```
 
 Gaussian branch (`--instance gaussian`) — same seed, same stream identity (the
@@ -189,16 +213,47 @@ recipe, not the stream): nature drew $\mu_3 = -1.21$ while the best arm has mean
 0.98 (so always pulling arm 3 accrues regret ≈ 2.19/round); payouts are
 $N(-1.21, 1)$ draws:
 
+```step7b
+python -m mdp_ir.interpreter mab/mab_schema.json --instance gaussian --decision arm=3 --episode-seed 3
 ```
+
+```
+mab v0.4  episode_seed=3 instance=gaussian
  t   arm  reward  mean_pulled  opt_mean                   pulls                     payouts   pull  total
  0  3.00    0.21        -1.21      0.98   [0,0,0,1,0,0,0,0,0,0]    [0,0,0,0.21,0,0,0,0,0,0]   0.21   0.21
  1  3.00   -0.46        -1.21      0.98   [0,0,0,2,0,0,0,0,0,0]   [0,0,0,-0.25,0,0,0,0,0,0]  -0.46  -0.46
  2  3.00    0.66        -1.21      0.98   [0,0,0,3,0,0,0,0,0,0]    [0,0,0,0.41,0,0,0,0,0,0]   0.66   0.66
-...
+ 3  3.00   -1.52        -1.21      0.98   [0,0,0,4,0,0,0,0,0,0]   [0,0,0,-1.11,0,0,0,0,0,0]  -1.52  -1.52
+ 4  3.00   -1.02        -1.21      0.98   [0,0,0,5,0,0,0,0,0,0]   [0,0,0,-2.13,0,0,0,0,0,0]  -1.02  -1.02
+ 5  3.00   -2.59        -1.21      0.98   [0,0,0,6,0,0,0,0,0,0]   [0,0,0,-4.72,0,0,0,0,0,0]  -2.59  -2.59
+ 6  3.00   -0.32        -1.21      0.98   [0,0,0,7,0,0,0,0,0,0]   [0,0,0,-5.04,0,0,0,0,0,0]  -0.32  -0.32
+ 7  3.00   -1.48        -1.21      0.98   [0,0,0,8,0,0,0,0,0,0]   [0,0,0,-6.52,0,0,0,0,0,0]  -1.48  -1.48
+ 8  3.00   -1.25        -1.21      0.98   [0,0,0,9,0,0,0,0,0,0]   [0,0,0,-7.77,0,0,0,0,0,0]  -1.25  -1.25
+ 9  3.00   -0.73        -1.21      0.98  [0,0,0,10,0,0,0,0,0,0]   [0,0,0,-8.50,0,0,0,0,0,0]  -0.73  -0.73
+10  3.00   -1.11        -1.21      0.98  [0,0,0,11,0,0,0,0,0,0]   [0,0,0,-9.61,0,0,0,0,0,0]  -1.11  -1.11
+11  3.00   -2.76        -1.21      0.98  [0,0,0,12,0,0,0,0,0,0]  [0,0,0,-12.37,0,0,0,0,0,0]  -2.76  -2.76
+12  3.00   -2.84        -1.21      0.98  [0,0,0,13,0,0,0,0,0,0]  [0,0,0,-15.20,0,0,0,0,0,0]  -2.84  -2.84
+13  3.00   -1.15        -1.21      0.98  [0,0,0,14,0,0,0,0,0,0]  [0,0,0,-16.36,0,0,0,0,0,0]  -1.15  -1.15
+14  3.00   -2.60        -1.21      0.98  [0,0,0,15,0,0,0,0,0,0]  [0,0,0,-18.96,0,0,0,0,0,0]  -2.60  -2.60
+15  3.00   -2.11        -1.21      0.98  [0,0,0,16,0,0,0,0,0,0]  [0,0,0,-21.06,0,0,0,0,0,0]  -2.11  -2.11
+16  3.00   -2.33        -1.21      0.98  [0,0,0,17,0,0,0,0,0,0]  [0,0,0,-23.40,0,0,0,0,0,0]  -2.33  -2.33
+17  3.00   -1.72        -1.21      0.98  [0,0,0,18,0,0,0,0,0,0]  [0,0,0,-25.11,0,0,0,0,0,0]  -1.72  -1.72
+18  3.00   -2.15        -1.21      0.98  [0,0,0,19,0,0,0,0,0,0]  [0,0,0,-27.27,0,0,0,0,0,0]  -2.15  -2.15
+19  3.00   -2.53        -1.21      0.98  [0,0,0,20,0,0,0,0,0,0]  [0,0,0,-29.79,0,0,0,0,0,0]  -2.53  -2.53
+... (980 more periods)
+episode total = -1219.62   reward total = -1219.62   periods = 1000
 ```
 
-Commands to reproduce:
-```
-python -m mdp_ir.interpreter mab/mab_schema.json --decision arm=3 --episode-seed 3
-python -m mdp_ir.interpreter mab/mab_schema.json --instance gaussian --decision arm=3 --episode-seed 3
-```
+Each block is preceded by the `step7b` fence that produced it, run from
+`examples/`, the parent of `mab/`, and pasted verbatim — which is what lets
+`docs.restatement_current` re-run the command and diff it.
+
+> **Corrected 2026-08-18.** Both blocks previously carried three rows and an
+> ellipsis, and the Bernoulli one was attributed to the bare
+> `mab_schema.json` invocation. The `payout` slot's catalog `default` is
+> `gaussian`, so that command has rendered the *Gaussian* branch since this
+> domain was promoted — the labelled block and the command below it had
+> disagreed the whole time. The numbers were right; the invocation named to
+> reproduce them was not, which is exactly the drift a fingerprint check
+> cannot see (the `mdp` token never moved) and the reason step 7b now declares
+> the command next to its output.

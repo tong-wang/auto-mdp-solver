@@ -78,7 +78,7 @@ The repo-root `CLAUDE.md` carries the cross-domain rules.
 | `INTERPRET.md` | policy readback (spec §14) — what the trained nets actually do |
 | `PLAYBOOK.md` | the guide-§10 case-close digest (exists once the campaign closes) |
 | `{domain}_schema.json` | **the IR — authoritative** for the problem definition |
-| `{domain}.restatement.md` | the frozen Phase-A restatement |
+| `{domain}.restatement.md` | the Phase-A restatement — **re-rendered whenever the model moves** (step 7b); the `mdp` block freezes, this document does not |
 | `UPSTREAM_PROPOSAL_*.md` | drafts against the solver spec, not local decisions |
 
 {A doc the spec requires but the campaign hasn't written is marked "owed",

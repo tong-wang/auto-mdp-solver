@@ -60,6 +60,18 @@ Behavioral (constructs the gym and runs the simulator):
   need more state (e.g. a board-game spawn conditioned on the current board) are
   classified **state-conditioned** and skipped, not failed.
 
+Documents (reads the artifacts beside the code, not the code):
+- `docs.restatement_current` — the restatement's sample trajectory still
+  renders. A ```` ```step7b ```` fence declares the command that produced it;
+  the next fenced block is its output, pasted verbatim; the check re-runs the
+  command from the domain folder's parent and diffs the result. No other gate
+  can reach this artifact — when the model changes, the interpreter and the
+  generated domain move *together*, so the differential stays MATCH while the
+  document drifts from both. WARN, and SKIP where nothing is declared, so
+  adoption is one fenced block and nothing breaks on upgrade. Only
+  `python -m mdp_ir.interpreter` invocations are re-run; anything else in the
+  fence is reported, never executed.
+
 ## Design notes
 
 - **Behavior is driven through the gym** so single-step (`advance`) and two-step

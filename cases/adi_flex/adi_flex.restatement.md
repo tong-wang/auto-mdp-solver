@@ -5,7 +5,9 @@ Source: **Wang & Toktay (2008), "Inventory Management with Advance Demand
 Information and Flexible Delivery", *Management Science* 54(4), 716–732** —
 specifically §4, the heterogeneous-customer model.
 
-IR fingerprint: `474428282174` (`seed_scheme: v2`)
+IR `mdp` fingerprint: `602b284da491` (`seed_scheme: v2`) — the token the
+step-9 gate froze, re-recorded 2026-08-18 after it was found one move behind
+the schema beside it.
 
 ---
 
@@ -152,8 +154,8 @@ them has a bug.
 Produced by the restricted interpreter executing the IR's `dynamics`
 expressions directly — **no generated code exists yet**:
 
-```
-python -m mdp_ir.interpreter cases/adi_flex/adi_flex_schema.json \
+```step7b
+python -m mdp_ir.interpreter adi_flex/adi_flex_schema.json \
     --instance exp3 --decision order_quantity=5 --decision hold_back=3 \
     --episode-seed 235 --seed-salt 1
 ```
@@ -161,23 +163,27 @@ python -m mdp_ir.interpreter cases/adi_flex/adi_flex_schema.json \
 A deliberately weak policy: order 5 per period against a mean demand of 6, and
 always hold back 3. Under-ordering is what forces the system through all five
 fulfilment regimes of Eqs. (18)–(19). (`inventory`, `due_now`, `due_next` are
-end-of-period; costs are assessed on the final inventory.)
+end-of-period; costs are assessed on the final inventory. The block is the
+CLI's output pasted verbatim — the columns are the IR's own names, not
+shortened ones, so `docs.restatement_current` can diff it against a live
+re-run of the command above.)
 
 ```
- t  order  hold  d_now  d_next  d_later  region  inventory  due_now  due_next  holding  shortage   total
- 0      5     3      1       0        0       5       4.00        0         0     4.00      0.00  104.00
- 1      5     3      3       2        1       5       3.00        0         0     3.00      0.00  103.00
- 2      5     3      4       0        6       4       3.00        0      5.00     3.00      0.00  103.00
- 3      5     3      3       0        4       3       0.00        0      4.00     0.00      0.00  100.00
- 4      5     3      0       0        3       3       1.00        0      3.00     1.00      0.00  101.00
- 5      5     3      3       3        2       2          0     3.00      2.00     0.00      0.00  100.00
- 6      5     3      3       1        4       1      -1.00     3.00      4.00     0.00      9.00  109.00
- 7      5     3      2       1        0       1      -1.00     5.00         0     0.00      9.00  109.00
- 8      5     3      4       2        3       1      -5.00     2.00      3.00     0.00     45.00  145.00
- 9      5     3      6       2        1       1      -8.00     5.00      1.00     0.00     72.00  172.00
-10      5     3      1       1        1       1      -9.00     2.00      1.00     0.00     81.00  181.00
-11      5     3      4       0        0       1     -10.00     1.00         0     0.00     90.00  190.00
-episode total = 1517.00   periods = 12
+adi_flex v0.4  episode_seed=235 instance=exp3
+ t  order_quantity  hold_back  demand_now  demand_next  demand_later  region  action_period  inventory  due_now  due_next  order_fixed  holding  shortage   total   reward
+ 0            5.00       3.00           1            0             0       5              0       4.00        0         0       100.00     4.00      0.00  104.00  -104.00
+ 1            5.00       3.00           3            2             1       5              1       3.00        0         0       100.00     3.00      0.00  103.00  -103.00
+ 2            5.00       3.00           4            0             6       4              2       3.00        0      5.00       100.00     3.00      0.00  103.00  -103.00
+ 3            5.00       3.00           3            0             4       3              3       0.00        0         4       100.00     0.00      0.00  100.00  -100.00
+ 4            5.00       3.00           0            0             3       3              4       1.00        0         3       100.00     1.00      0.00  101.00  -101.00
+ 5            5.00       3.00           3            3             2       2              5          0     3.00         2       100.00     0.00      0.00  100.00  -100.00
+ 6            5.00       3.00           3            1             4       1              6      -1.00        3         4       100.00     0.00      9.00  109.00  -109.00
+ 7            5.00       3.00           2            1             0       1              7      -1.00        5         0       100.00     0.00      9.00  109.00  -109.00
+ 8            5.00       3.00           4            2             3       1              8      -5.00        2         3       100.00     0.00     45.00  145.00  -145.00
+ 9            5.00       3.00           6            2             1       1              9      -8.00        5         1       100.00     0.00     72.00  172.00  -172.00
+10            5.00       3.00           1            1             1       1             10      -9.00        2         1       100.00     0.00     81.00  181.00  -181.00
+11            5.00       3.00           4            0             0       1             11     -10.00        1         0       100.00     0.00     90.00  190.00  -190.00
+episode total = 1517.00   reward total = -1517.00   periods = 12
 ```
 
 **t = 0 — region 5, everything served.** Start `(0,0,0)`; 5 units available,

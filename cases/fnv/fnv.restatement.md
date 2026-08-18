@@ -271,6 +271,10 @@ demand stays 0 until the horizon, then realizes as `mu + I = 1 + 0.06 = 1.06`.
 Inventory reached only 0.90, so sales are capped at 0.90 — the
 `sales_capped_by_stock` invariant biting — and revenue is `2.0 × 0.90 = 1.80`:
 
+```step7b
+python -m mdp_ir.interpreter fnv/fnv_schema.json --decision order=0.3 --episode-seed 3
+```
+
 ```
 fnv v0.4  episode_seed=3
 t  order  cost  demand  sales  inventory  information  total_cost  ordering  revenue  total  reward
@@ -287,6 +291,10 @@ exponentiates it: `D = exp(mu + I) = exp(1 + 0.12) = 3.05`. Demand far exceeds
 the 0.90 on hand, so sales are again stock-capped and the profit is the same
 0.81; the branches differ in *how badly* the fixed policy under-orders:
 
+```step7b
+python -m mdp_ir.interpreter fnv/fnv_schema.json --instance mmmfe --decision order=0.3 --episode-seed 3
+```
+
 ```
 fnv v0.4  episode_seed=3 instance=mmmfe
 t  order  cost  demand  sales  inventory  information  total_cost  ordering  revenue  total  reward
@@ -296,12 +304,9 @@ t  order  cost  demand  sales  inventory  information  total_cost  ordering  rev
 episode total = 0.81   reward total = 0.81   periods = 3
 ```
 
-Commands to reproduce (from `cases/`, the parent of `fnv/`):
-
-```
-python -m mdp_ir.interpreter fnv/fnv_schema.json --decision order=0.3 --episode-seed 3
-python -m mdp_ir.interpreter fnv/fnv_schema.json --instance mmmfe --decision order=0.3 --episode-seed 3
-```
+Each block above is preceded by the `step7b` fence that produced it, run from
+`cases/`, the parent of `fnv/`, and the output is pasted verbatim — which is
+what lets `docs.restatement_current` re-run the command and diff it.
 
 ## Open items
 

@@ -328,15 +328,45 @@ continuous decision?" gates the bounds/masking question.)
       scenario modes, train/eval strategy), the decision/objective/horizon,
       and every assumption filled in without being told (each tagged with its
       resolved `source`).
-   b. Render a sample trajectory with
-      `python -m mdp_ir.interpreter {name}/{name}_schema.json
-      --decision <name>=<value> --episode-seed 3` and append one annotated
-      trajectory to that file. For a decision whose `dim` is above 1, one value
-      broadcasts to the resolved width (`--decision ship=10`) and a
-      comma-separated list sets components (`ship=10,0,5`); add `--instance` to
-      render the width that instance selects. **Re-render this whenever the
-      model changes** — it is the artifact a human reads to check the world, so
-      a stale one is worse than none.
+   b. Render a sample trajectory and append it, annotated, to that file —
+      **declaring the command that produced it** in a `step7b`-tagged fence
+      immediately above the block holding its output:
+
+      ````markdown
+      ```step7b
+      python -m mdp_ir.interpreter {name}/{name}_schema.json \
+        --decision <name>=<value> --episode-seed 3
+      ```
+
+      ```
+      <the CLI's output, pasted verbatim>
+      ```
+      ````
+
+      Two rules make that block checkable and both are free. Write the path
+      relative to the domain folder's **parent** (`{name}/{name}_schema.json`)
+      so the command travels with the folder. And paste the CLI's output
+      **verbatim** — never trimmed rows, never shortened column names: the
+      block is a literal diff target, and a hand-tidied one is a block nobody
+      can re-run. Prose may sit between the two fences; a command pairs with
+      the next fenced block after it, and a file may declare several. For a
+      decision whose `dim` is above 1, one value broadcasts to the resolved
+      width (`--decision ship=10`) and a comma-separated list sets components
+      (`ship=10,0,5`); add `--instance` to render the width that instance
+      selects.
+
+      **Re-render this whenever the model changes** — it is the artifact a
+      human reads to check the world, so a stale one is worse than none, and
+      no other gate can reach it: the differential proves the interpreter and
+      the generated domain *agree*, so when the model moves both sides move
+      together, the document drifts from both, and the differential still says
+      MATCH. Declaring the command is what turns "re-render it" from an
+      instruction into `docs.restatement_current`, the Stage-1 conformance
+      check that re-runs it and diffs the result. Recording the `mdp`
+      fingerprint in the file header is worth doing but is not that check: a
+      token catches neglect, not the likelier **partial diligence** where the
+      one-line field is dutifully updated and the expensive regeneration is
+      skipped.
    c. Transcribe the user's **invariants** into `mdp.invariants` — the things
       they said must always be true ("stock only changes by what arrives and
       what sells", "every arrival either buys or is lost"). Write them as
@@ -363,9 +393,13 @@ continuous decision?" gates the bounds/masking question.)
    re-validate, and re-present — the sign-off is always on the current
    displayed result.
 9. **GATE (hard):** validator OK, `unconfirmed()` empty, the restatement file
-   exists, and the user has given the final sign-off on the *displayed*
-   result. Record `mdp_fingerprint()` in the conversation. The `mdp` block is
-   now frozen; only `gym`/`rl` may change in Phase B.
+   exists **and its declared `step7b` block re-renders** (run the command,
+   diff it against the block — this is the last moment the trajectory and the
+   about-to-freeze model are guaranteed to agree; from Stage 1 on
+   `docs.restatement_current` re-runs it for you), and the user has given the
+   final sign-off on the *displayed* result. Record `mdp_fingerprint()` in the
+   conversation. The `mdp` block is now frozen; only `gym`/`rl` may change in
+   Phase B.
 
 ## Phase B — build (gated stages)
 

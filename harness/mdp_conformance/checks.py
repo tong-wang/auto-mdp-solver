@@ -1376,6 +1376,153 @@ def check_bound_rationale(h: DomainHandle) -> CheckResult:
                        f"model, not from solved runs")
 
 
+
+# ---------------------------------------------------------------------------
+# The round-trip artifact (spec Phase-A step 7b)
+# ---------------------------------------------------------------------------
+
+_STEP7B_FENCE = "step7b"
+_INTERPRETER_MODULE = "mdp_ir.interpreter"
+
+
+def _fenced_blocks(text: str) -> list[tuple[str, str, int]]:
+    """Split markdown into ``(info_string, body, opening_line_number)`` triples.
+
+    Deliberately a line scanner and not a markdown parser: the only structure
+    this check needs is "which fence came after which", and a dependency-free
+    scan is what lets the harness read a document it does not own.
+    """
+    blocks, fence, info, body, start = [], None, "", [], 0
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        stripped = line.lstrip()
+        if fence is None:
+            if stripped.startswith("```"):
+                ticks = len(stripped) - len(stripped.lstrip("`"))
+                fence, info, body, start = "`" * ticks, stripped[ticks:].strip(), [], lineno
+            continue
+        if stripped.startswith(fence) and not stripped[len(fence):].strip():
+            blocks.append((info, "\n".join(body), start))
+            fence = None
+            continue
+        body.append(line)
+    return blocks
+
+
+def _join_continuations(command: str) -> str:
+    return re.sub(r"\\\s*\n\s*", " ", command.strip())
+
+
+def check_restatement_current(h: DomainHandle) -> CheckResult:
+    """The restatement's sample trajectory still renders from the IR beside it.
+
+    The restatement is the one artifact whose *purpose* is to be believed by a
+    human, and it is the one nothing else can reach. The differential proves
+    the interpreter and the generated domain agree — when the model changes
+    both sides move together and the document drifts from both while the
+    differential stays MATCH. Conformance reads Python, the laws runner reads
+    execution semantics, the fingerprints hash the IR; none of them opens a
+    ``.md``. So the failure mode is silent by construction, and it has been
+    observed three times: a stale artifact showing pre-fix numbers for a whole
+    campaign, one stale across eleven findings, and a shipped case whose
+    documented command renders a different branch than the block it labels.
+
+    A recorded fingerprint is the cheap check and it is not enough — it catches
+    neglect but not *partial diligence*, the likelier failure where an author
+    updates the one-line token and skips the expensive regeneration. So this
+    re-runs the render and diffs it, which requires two things of the document:
+    the invocation must be recoverable (a ``step7b``-tagged fence) and the
+    output must be pasted verbatim rather than trimmed or hand-renamed. Both
+    are cheap to satisfy and neither is checkable any other way.
+
+    Paths in the declared command are written relative to the domain folder's
+    *parent* (``{domain}/{domain}_schema.json``), which is what keeps the
+    command portable with the folder. WARN, not FAIL, on the §7
+    ``bound_rationale`` precedent: a re-render can differ for a reason the
+    author has already accepted, and one look settles it.
+    """
+    name = "docs.restatement_current"
+    docs = sorted(h.directory.glob("*.restatement.md"))
+    if not docs:
+        return CheckResult(name, "SKIP", "no *.restatement.md in the domain folder")
+
+    import shlex
+    import subprocess
+    import sys
+
+    problems, rendered = [], 0
+    for doc in docs:
+        blocks = _fenced_blocks(doc.read_text())
+        declared = [(i, b) for i, b in enumerate(blocks) if b[0] == _STEP7B_FENCE]
+        if not declared:
+            return CheckResult(
+                name, "SKIP",
+                f"{doc.name} declares no ```{_STEP7B_FENCE} render command "
+                f"(step 7b) — nothing to re-run")
+        for index, (_, command, lineno) in declared:
+            label = f"{doc.name}:{lineno}"
+            if index + 1 >= len(blocks):
+                problems.append(f"{label}: no output block follows the "
+                                f"```{_STEP7B_FENCE} command")
+                continue
+            expected = blocks[index + 1][1]
+            try:
+                argv = shlex.split(_join_continuations(command))
+            except ValueError as e:
+                problems.append(f"{label}: command is not parseable ({e})")
+                continue
+            if len(argv) < 3 or argv[1] != "-m" or argv[2] != _INTERPRETER_MODULE:
+                problems.append(f"{label}: not a `python -m {_INTERPRETER_MODULE}` "
+                                f"invocation — only that is re-run")
+                continue
+            cwd = h.directory.parent
+            schema = next((a for a in argv[3:] if a.endswith("_schema.json")), None)
+            if schema is None:
+                problems.append(f"{label}: command names no *_schema.json")
+                continue
+            target = (cwd / schema).resolve()
+            if not target.exists() or target.parent != h.directory.resolve():
+                problems.append(
+                    f"{label}: {schema!r} does not resolve to an IR inside "
+                    f"{h.directory.name}/ from its parent directory — write the "
+                    f"path as {h.directory.name}/<ir>.json so the command "
+                    f"travels with the folder")
+                continue
+            try:
+                proc = subprocess.run([sys.executable, *argv[1:]], cwd=cwd,
+                                      capture_output=True, text=True, timeout=300)
+            except subprocess.TimeoutExpired:
+                problems.append(f"{label}: render timed out")
+                continue
+            if proc.returncode != 0:
+                tail = (proc.stderr or "").strip().splitlines()
+                problems.append(f"{label}: render failed ({tail[-1] if tail else 'no stderr'})")
+                continue
+            live = [ln.rstrip() for ln in proc.stdout.splitlines()]
+            documented = [ln.rstrip() for ln in expected.splitlines()]
+            rendered += 1
+            if live == documented:
+                continue
+            for row, (a, b) in enumerate(zip(documented, live), start=1):
+                if a != b:
+                    problems.append(
+                        f"{label}: declared render differs at output line {row} "
+                        f"— doc {a[:60]!r} vs live {b[:60]!r}")
+                    break
+            else:
+                problems.append(
+                    f"{label}: declared render has {len(documented)} line(s), "
+                    f"live has {len(live)}")
+
+    if problems:
+        return CheckResult(
+            name, "WARN",
+            "; ".join(problems) + " — the artifact a human reads to check the "
+            "world no longer matches the IR beside it; re-render it and re-read "
+            "the prose around it, since the annotations drift with the numbers")
+    return CheckResult(name, "PASS",
+                       f"{rendered} declared step-7b render(s) reproduce verbatim")
+
+
 REGISTRY = [
     check_file_layout,
     check_layering,
@@ -1394,6 +1541,7 @@ REGISTRY = [
     check_model_boundary,
     check_no_enumeration,
     check_bound_rationale,
+    check_restatement_current,
     check_init_state,
     check_gym_contract,
     check_determinism,

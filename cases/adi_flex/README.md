@@ -28,7 +28,7 @@ inventory level `x_i`, or even the whole system state."
 
 | file | role |
 |---|---|
-| `adi_flex_schema.json` | frozen MDP-IR (`seed_scheme: v2`; fingerprint `474428282174`) |
+| `adi_flex_schema.json` | frozen MDP-IR (`seed_scheme: v2`; `mdp` fingerprint `602b284da491`) |
 | `adi_flex.restatement.md` | Phase-A round-trip artifact: plain-English model + annotated trajectory |
 | `adi_flex_uncertainty.py` | the three Poisson demand streams (one per due date) |
 | `adi_flex_scenarios.py` | `AdiFlexScenario` + the eight-instance ladder |

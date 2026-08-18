@@ -226,7 +226,7 @@ Every link asked to ship 10 each period (a fixed, deliberately unoptimized polic
 The vectors are `n_echelons` wide and `pipe` is a matrix (F9), so this is also
 the shape check: three links, two slots each, nothing padded.
 
-```
+```step7b
 python -m mdp_ir.interpreter clark_scarf/clark_scarf_schema.json \
   --instance n3_l2_p09 --decision ship=10 --episode-seed 3 --max-periods 8
 ```

@@ -479,19 +479,51 @@ the agent renders two human-readable views and asks the user to confirm.
 
 ### 2b. Sample trajectory
 
-Real output of `python -m mdp_ir.interpreter inv_single/inv_single_schema.json
---decision order=40` — the IR's `dynamics` exprs **executed directly by the
-restricted interpreter** (`mdp_ir/interpreter.py`) under a fixed
-`episode_seed`; no generated code exists yet at this point:
+The IR's `dynamics` exprs **executed directly by the restricted interpreter**
+(`mdp_ir/interpreter.py`) under a fixed `episode_seed`; no generated code exists
+yet at this point. Phase-A step 7b requires the command to sit in its own
+`step7b`-tagged fence directly above the output, with the path written relative
+to the domain folder's parent, so `docs.restatement_current` can re-run it:
+
+```step7b
+python -m mdp_ir.interpreter inv_single/inv_single_schema.json --instance discrete --decision order=40
+```
+
+`--instance discrete` is what selects the stochastic-lead-time candidate the IR
+above declares, so the block matches the model it annotates. Below it is that
+command's output **pasted verbatim** — trimming rows or shortening column names
+is what turns a diff target back into a document nobody can re-run. (Rendered
+2026-08-18. What stood here was a trimmed table with no instance named, from a
+selection the bare command has not made for a long time: the deterministic
+zero-lead-time default renders `leadtime 0` and a width-1 `pipeline`. Nothing in
+the document could say so — which is the drift `docs.restatement_current` now
+catches, and this doc is where the convention it checks is taught.)
 
 ```
-t  order  demand  received  leadtime  inventory               pipeline  holding  shortage  order_fixed  order_variable   total   reward
-0  40.00      43         0         3        -43      [0,0,40.00,0,0,0]     0.00     86.00        25.00           40.00  151.00  -151.00
-1  40.00      22         0         5        -65  [0,40.00,0,0,40.00,0]     0.00    130.00        25.00           40.00  195.00  -195.00
-2  40.00      32         0         4        -97  [40.00,0,0,80.00,0,0]     0.00    194.00        25.00           40.00  259.00  -259.00
-3  40.00      22     40.00         3     -79.00     [0,0,120.00,0,0,0]     0.00    158.00        25.00           40.00  223.00  -223.00
-...
-episode total = 5698.00   reward total = -5698.00   periods = 30
+inv_single v0.4  episode_seed=0 instance=discrete
+ t  order  demand  received  leadtime  lost_sales  action_period  inventory                       pipeline  holding  shortage  order_fixed  order_variable   total   reward
+ 0  40.00      12         0         4           0              0        -12              [0,0,0,40.00,0,0]     0.00    108.00         0.00            0.00  108.00  -108.00
+ 1  40.00      10         0         4           0              1        -22          [0,0,40.00,40.00,0,0]     0.00    198.00         0.00            0.00  198.00  -198.00
+ 2  40.00      12         0         2           0              2        -34          [0,80.00,40.00,0,0,0]     0.00    306.00         0.00            0.00  306.00  -306.00
+ 3  40.00      10         0         4           0              3        -44      [80.00,40.00,0,40.00,0,0]     0.00    396.00         0.00            0.00  396.00  -396.00
+ 4  40.00      12     80.00         5           0              4      24.00      [40.00,0,40.00,0,40.00,0]    24.00      0.00         0.00            0.00   24.00   -24.00
+ 5  40.00      10     40.00         4           0              5      54.00          [0,40.00,0,80.00,0,0]    54.00      0.00         0.00            0.00   54.00   -54.00
+ 6  40.00      10         0         4           0              6      44.00      [40.00,0,80.00,40.00,0,0]    44.00      0.00         0.00            0.00   44.00   -44.00
+ 7  40.00      12     40.00         4           0              7      72.00      [0,80.00,40.00,40.00,0,0]    72.00      0.00         0.00            0.00   72.00   -72.00
+ 8  40.00      10         0         4           0              8      62.00  [80.00,40.00,40.00,40.00,0,0]    62.00      0.00         0.00            0.00   62.00   -62.00
+ 9  40.00      10     80.00         4           0              9     132.00  [40.00,40.00,40.00,40.00,0,0]   132.00      0.00         0.00            0.00  132.00  -132.00
+10  40.00      10     40.00         3           0             10     162.00      [40.00,40.00,80.00,0,0,0]   162.00      0.00         0.00            0.00  162.00  -162.00
+11  40.00      10     40.00         3           0             11     192.00      [40.00,80.00,40.00,0,0,0]   192.00      0.00         0.00            0.00  192.00  -192.00
+12  40.00      10     40.00         4           0             12     222.00      [80.00,40.00,0,40.00,0,0]   222.00      0.00         0.00            0.00  222.00  -222.00
+13  40.00      12     80.00         3           0             13     290.00          [40.00,0,80.00,0,0,0]   290.00      0.00         0.00            0.00  290.00  -290.00
+14  40.00      12     40.00         3           0             14     318.00          [0,80.00,40.00,0,0,0]   318.00      0.00         0.00            0.00  318.00  -318.00
+15  40.00      10         0         3           0             15     308.00      [80.00,40.00,40.00,0,0,0]   308.00      0.00         0.00            0.00  308.00  -308.00
+16  40.00      10     80.00         5           0             16     378.00      [40.00,40.00,0,0,40.00,0]   378.00      0.00         0.00            0.00  378.00  -378.00
+17  40.00      10     40.00         3           0             17     408.00      [40.00,0,40.00,40.00,0,0]   408.00      0.00         0.00            0.00  408.00  -408.00
+18  40.00      11     40.00         2           0             18     437.00          [0,80.00,40.00,0,0,0]   437.00      0.00         0.00            0.00  437.00  -437.00
+19  40.00      10         0         5           0             19     427.00      [80.00,40.00,0,0,40.00,0]   427.00      0.00         0.00            0.00  427.00  -427.00
+... (10 more periods)
+episode total = 10694.00   reward total = -10694.00   periods = 30
 ```
 
 The same interpreter is reused in Stage 1 as the **differential-test oracle**
