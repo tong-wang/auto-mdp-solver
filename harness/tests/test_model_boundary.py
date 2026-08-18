@@ -328,6 +328,29 @@ def test_a_multi_dimensional_width_names_each_axis(ir_doc):
     assert "sets axis" in _axis_tiers(ir)["grid_size"]
 
 
+def test_a_cap_inside_a_bounds_expression_is_still_a_width(tmp_path, ir_doc):
+    """#53's companion: an envelope may be derived, and the boundary machinery
+    reads the constants the derivation *references* — otherwise writing
+    `2 * leadtime_max` instead of `leadtime_max` would hide the cap from the
+    coverage check that exists to catch a sweep outrunning its rendering."""
+    from mdp_conformance.checks import _axis_tiers
+
+    doc = json.loads(json.dumps(ir_doc))
+    doc["mdp"]["model"] = {"quantities": {"leadtime": {"domain": "integer >= 1"}}}
+    doc["mdp"]["scenario"]["constants"] += [
+        {"name": "leadtime", "value": 1, "axis": "leadtime"},
+        {"name": "leadtime_max", "value": 2, "axis": ""},
+    ]
+    for sv in doc["mdp"]["state_variables"]:
+        if sv["name"] == "level":
+            sv["bounds"] = [0, "2 * leadtime_max"]
+    doc["mdp"]["scenario"]["instances"] = {"overrun": {"leadtime": 9}}
+    ir = MdpIR.model_validate(doc)
+    assert "sets bounds" in _axis_tiers(ir)["leadtime_max"]
+    result = check_model_boundary(_domain(tmp_path, doc))
+    assert result.status == "FAIL" and "outruns its own rendering" in result.detail
+
+
 def test_a_decision_width_may_name_a_constant(ir_doc):
     """#33: `bounds` could name a constant and `dim` — the width of the same
     decision — could not, so an action count a study sweeps had to be padded."""

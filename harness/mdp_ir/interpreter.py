@@ -55,6 +55,7 @@ from mdp_ir.schema import (
     StateRole,
     UncertaintySource,
     UncertaintyStage,
+    _resolve_bound_entry,
 )
 
 _DRAW = re.compile(
@@ -452,10 +453,12 @@ class IrInterpreter:
         def policy(_ns: dict) -> dict:
             out = {}
             for d in self.ir.mdp.decisions:
-                # bound entries may name scenario constants (already merged
-                # with the instance overrides in self.constants)
+                # a bound entry is a literal, a scenario constant's name, or
+                # an expression over constants — all resolved against the pool
+                # already merged with this instance's overrides (#53)
                 lo, hi = (
-                    self.constants[x] if isinstance(x, str) else x
+                    _resolve_bound_entry(x, self.constants,
+                                         f"decision {d.name!r} bound")
                     for x in d.bounds.value
                 )
                 if d.type.value is DecisionType.discrete:

@@ -38,6 +38,8 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from mdp_ir import exprs
+
 
 # ---------------------------------------------------------------------------
 # Confirmable<T> — the no-oracle-field convention (sample §6)
@@ -217,6 +219,22 @@ def _identifiers(expr: str) -> set[str]:
     ))
 
 
+# an identifier in ROOT position: not preceded by a word character or a dot,
+# so `demand.mean` yields `demand` alone. An attribute suffix is a slot's
+# read API, never a scenario-constant name — the distinction a bounds entry
+# has to make (#53)
+_ROOT_IDENT = re.compile(r"(?<![\w.])[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _root_identifiers(expr: str) -> set[str]:
+    """The names an expression reads at the root: `40 * demand.mean` reads
+    `demand`, never `mean`. Same literal/comment stripping as
+    :func:`_identifiers`, which stays the whole-namespace tokenizer."""
+    return set(_ROOT_IDENT.findall(
+        _NUMLIT.sub(" ", _COMMENT.sub("", _STRLIT.sub(" ", expr)))
+    ))
+
+
 def _comprehension_targets(expr: str) -> set[str]:
     """Names a comprehension binds itself, e.g. `k` in `... for k in range(n)`.
 
@@ -262,6 +280,97 @@ def _check_expr(expr: str, known: set[str], where: str, *, shown: str | None = N
         raise ValueError(
             f"{where}: unresolved identifier(s) {sorted(unknown)} in expr {display!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Bounds entries
+# ---------------------------------------------------------------------------
+#
+# A bounds entry — `StateVariable.bounds` / `.element_bounds`,
+# `Decision.bounds`, `ActionMode.bounds` — is one of three things:
+#
+#     literal          [0, 30]
+#     constant name    [0, "horizon_T"]
+#     expression       [0, "40 * demand.mean"], ["-1 * N * demand.max", ...]
+#
+# and all three resolve at the SAME time — here, against the instance's
+# constant pool. The expression form used to be collapsed to a number during
+# catalog resolution instead, which made it catalog-only and froze any
+# constant inside it at its BASE value, silently, for every instance that
+# overrode one (#53). The catalog resolver still folds what only it can see —
+# a slot's read API, derived from the *selected* candidate — and leaves
+# everything that reads a constant symbolic until this point.
+
+
+def _resolve_bound_entry(entry: float | str, consts: dict, where: str) -> object:
+    """One bounds entry against an already-merged constant pool."""
+    if not isinstance(entry, str):
+        return entry
+    if entry in consts:
+        return consts[entry]
+    try:
+        return exprs.eval_expr(entry, dict(consts), None, where)
+    except Exception as exc:
+        raise ValueError(f"{where}: cannot evaluate bound {entry!r} ({exc})") from exc
+
+
+def _check_bound_entries(
+    entries: list, pair: list, consts: dict, instances: dict,
+    where: str, noun: str, pair_noun: str | None = None,
+    sources: set[str] = frozenset(),
+) -> None:
+    """Every entry must resolve to a number, and the pair to lo < hi, in the
+    base scenario and in every declared instance — one contract for all three
+    forms, which is what makes them interchangeable.
+
+    `entries` is everything to name-check (a Confirmable carries `suggested`
+    alongside `value`); `pair` is the [lo, hi] that is actually resolved.
+    """
+    pair_noun = pair_noun or noun
+    symbolic = [x for x in entries if isinstance(x, str)]
+    named = [x for x in symbolic if x not in consts and _IDENT.fullmatch(x)]
+    if named:
+        raise ValueError(f"{where}: {noun} entries {named} name no scenario constant")
+    for x in symbolic:
+        if x in consts:
+            continue
+        unknown = sorted(_root_identifiers(x) - set(consts) - _BUILTINS
+                         - _comprehension_targets(x))
+        stats = [n for n in unknown if n in sources]
+        if stats:
+            # the real cause, which "names no scenario constant" hides: a slot's
+            # read API derives from its *selected candidate*, so it exists only
+            # while a catalog document is being resolved (#53)
+            raise ValueError(
+                f"{where}: {noun} expression {x!r} reads the read-API of "
+                f"{stats}, which this file declares as an uncertainty source. "
+                f"Slot stats resolve only in the catalog form "
+                f"(mdp.uncertainty_slots), where the selected candidate is "
+                f"known; name a scenario constant instead, or move the file to "
+                f"catalog form"
+            )
+        if unknown:
+            raise ValueError(
+                f"{where}: {noun} expression {x!r} reads {unknown}, which name no "
+                f"scenario constant. A bounds expression reads constants — and, in "
+                f"a catalog IR, slot read-API stats like `demand.mean`, which the "
+                f"resolver folds at load"
+            )
+    scopes = {"base": {}}
+    if symbolic:
+        scopes |= {f"instance {i!r}": ov for i, ov in instances.items()}
+    for scope, overrides in scopes.items():
+        merged = consts | overrides
+        lo, hi = (_resolve_bound_entry(x, merged, where) for x in pair)
+        for tag, v in (("lo", lo), ("hi", hi)):
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ValueError(
+                    f"{where}: {noun} {tag} resolves to non-numeric {v!r} in {scope}"
+                )
+        if lo >= hi:
+            raise ValueError(
+                f"{where}: {pair_noun} resolve to lo >= hi ({lo} >= {hi}) in {scope}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -321,12 +430,13 @@ class StateVariable(_Narrowable):
     # [lo, hi] — the envelope the gym materializes into its spaces. The MDP
     # itself often has no bound (demand is normal, a counter runs to the
     # horizon); this field is the imposed one, so when it follows from other
-    # parameters, declare the derivation instead of freezing a literal:
-    # an entry may be an expression over constants/slot stats (resolved at
-    # load, e.g. "40 * demand.mean") or the *name of a scenario constant*
-    # overridable per instance (resolved per instance, like horizon.T —
-    # `MdpBlock.state_bounds`). A union-over-instances literal is correct
-    # for no instance and drags the structural fingerprint on every widen.
+    # parameters, declare the derivation instead of freezing a literal. An
+    # entry is a literal, the *name of a scenario constant* (like horizon.T),
+    # or an *expression* over constants and slot stats ("40 * demand.mean",
+    # "N * order_max") — and all three resolve per instance, at the same
+    # point, through `MdpBlock.state_bounds`. A union-over-instances literal
+    # is correct for no instance and drags the structural fingerprint on
+    # every widen.
     bounds: list[float | str] | None = None
     # a literal length, or the name of a scenario constant (overridable per
     # instance, like horizon.T) — e.g. a pipeline whose length tracks the
@@ -363,9 +473,10 @@ class Decision(_Narrowable):
     # so a padded maximum was unavoidable rather than a design choice (#33)
     dim: int | str = 1
     # [lo, hi], applied to every dim (per-dim bounds are out of v1 scope).
-    # An entry may be a number or the *name of a scenario constant* — like
-    # horizon.T, bounds are a scenario dimension and may vary per instance.
-    # Resolve with `MdpBlock.decision_bounds`.
+    # Like horizon.T, bounds are a scenario dimension and may vary per
+    # instance: an entry is a literal, the *name of a scenario constant*, or
+    # an expression over constants ("20 * demand.mean"), and all three resolve
+    # per instance. Resolve with `MdpBlock.decision_bounds`.
     bounds: Confirmable[list[float | str]]
     feasibility: list[Feasibility] = Field(default_factory=list)
     desc: str = ""
@@ -1159,18 +1270,25 @@ class MdpBlock(_Base):
             raise ValueError(f"decision {name!r} dim {d.dim!r} resolved to {v} < 1")
         return v
 
-    def decision_bounds(
-        self, name: str, instance: str | None = None
-    ) -> tuple[float, float]:
-        """Effective [lo, hi] of a decision: entries are literals or names of
-        scenario constants, overridable per instance (like `horizon_T`)."""
-        d = next(dd for dd in self.decisions if dd.name == name)
+    def _bounds_pool(self, instance: str | None) -> dict:
+        """Constant values under `instance`'s overrides — the namespace every
+        bounds entry resolves against, whatever form it takes."""
         consts = {c.name: c.value for c in self.scenario.constants}
         if instance is not None:
             consts.update(self.scenario.instances[instance])
+        return consts
+
+    def decision_bounds(
+        self, name: str, instance: str | None = None
+    ) -> tuple[float, float]:
+        """Effective [lo, hi] of a decision: entries are literals, names of
+        scenario constants, or expressions over them — all overridable per
+        instance (like `horizon_T`)."""
+        d = next(dd for dd in self.decisions if dd.name == name)
+        consts = self._bounds_pool(instance)
         out = []
         for x in d.bounds.value:
-            v = consts[x] if isinstance(x, str) else x
+            v = _resolve_bound_entry(x, consts, f"decision {name!r} bound")
             if isinstance(v, bool) or not isinstance(v, (int, float)):
                 raise TypeError(
                     f"decision {name!r} bound {x!r} resolved to non-numeric {v!r}"
@@ -1182,19 +1300,18 @@ class MdpBlock(_Base):
         self, name: str, instance: str | None = None, element: bool = False
     ) -> tuple[float, float] | None:
         """Effective [lo, hi] of a state variable's (element_)bounds: entries
-        are literals or names of scenario constants, overridable per instance
-        (like `horizon_T`). None when the variable declares no bounds. This is
-        what Stage-2 codegen resolves when writing the gym's spaces."""
+        are literals, names of scenario constants, or expressions over them —
+        all overridable per instance (like `horizon_T`). None when the variable
+        declares no bounds. This is what Stage-2 codegen resolves when writing
+        the gym's spaces."""
         sv = next(s for s in self.state_variables if s.name == name)
         raw = sv.element_bounds if element else sv.bounds
         if raw is None:
             return None
-        consts = {c.name: c.value for c in self.scenario.constants}
-        if instance is not None:
-            consts.update(self.scenario.instances[instance])
+        consts = self._bounds_pool(instance)
         out = []
         for x in raw:
-            v = consts[x] if isinstance(x, str) else x
+            v = _resolve_bound_entry(x, consts, f"state {name!r} bound")
             if isinstance(v, bool) or not isinstance(v, (int, float)):
                 raise TypeError(
                     f"state {name!r} bound {x!r} resolved to non-numeric {v!r}"
@@ -1319,46 +1436,27 @@ class MdpBlock(_Base):
 
     @model_validator(mode="after")
     def _decision_bounds_resolve(self) -> "MdpBlock":
-        """String bound entries must name scenario constants and resolve to
-        numeric lo < hi in the base scenario and in every instance."""
+        """Symbolic bound entries — a constant's name or an expression over
+        constants — must resolve to numeric lo < hi in the base scenario and
+        in every instance."""
         consts = {c.name: c.value for c in self.scenario.constants}
+        sources = {s.name for s in self.uncertainty_sources}
         for d in self.decisions:
-            names = [x for x in d.bounds.value + d.bounds.suggested if isinstance(x, str)]
-            unknown = [x for x in names if x not in consts]
-            if unknown:
-                raise ValueError(
-                    f"decision {d.name!r}: bound entries {unknown} name no scenario constant"
-                )
-            if not names:
-                continue
-            scopes = {"base": {}} | {
-                f"instance {i!r}": ov for i, ov in self.scenario.instances.items()
-            }
-            for where, overrides in scopes.items():
-                merged = consts | overrides
-                lo, hi = (
-                    merged[x] if isinstance(x, str) else x for x in d.bounds.value
-                )
-                for tag, v in (("lo", lo), ("hi", hi)):
-                    if isinstance(v, bool) or not isinstance(v, (int, float)):
-                        raise ValueError(
-                            f"decision {d.name!r}: bound {tag} resolves to "
-                            f"non-numeric {v!r} in {where}"
-                        )
-                if lo >= hi:
-                    raise ValueError(
-                        f"decision {d.name!r}: bounds resolve to lo >= hi "
-                        f"({lo} >= {hi}) in {where}"
-                    )
+            _check_bound_entries(
+                d.bounds.value + d.bounds.suggested, d.bounds.value,
+                consts, self.scenario.instances,
+                f"decision {d.name!r}", "bound", "bounds", sources,
+            )
         return self
 
     @model_validator(mode="after")
     def _state_bounds_resolve(self) -> "MdpBlock":
-        """String entries in state (element_)bounds must name scenario
-        constants and resolve to numeric lo < hi in the base scenario and in
-        every instance — same contract as decision bounds. (Expression-form
-        entries never reach here: layering collapses them at load.)"""
+        """Symbolic entries in state (element_)bounds must resolve to numeric
+        lo < hi in the base scenario and in every instance — same contract as
+        decision bounds. An expression reaching here still carries the
+        constants it reads: the catalog resolver folds only its slot stats."""
         consts = {c.name: c.value for c in self.scenario.constants}
+        sources = {s.name for s in self.uncertainty_sources}
         for sv in self.state_variables:
             for label, raw in (("bounds", sv.bounds),
                                ("element_bounds", sv.element_bounds)):
@@ -1368,31 +1466,10 @@ class MdpBlock(_Base):
                     raise ValueError(
                         f"state {sv.name!r}: {label} must be [lo, hi], got {raw}"
                     )
-                names = [x for x in raw if isinstance(x, str)]
-                unknown = [x for x in names if x not in consts]
-                if unknown:
-                    raise ValueError(
-                        f"state {sv.name!r}: {label} entries {unknown} name "
-                        f"no scenario constant"
-                    )
-                scopes = {"base": {}} | {
-                    f"instance {i!r}": ov
-                    for i, ov in self.scenario.instances.items()
-                } if names else {"base": {}}
-                for where, overrides in scopes.items():
-                    merged = consts | overrides
-                    lo, hi = (merged[x] if isinstance(x, str) else x for x in raw)
-                    for tag, v in (("lo", lo), ("hi", hi)):
-                        if isinstance(v, bool) or not isinstance(v, (int, float)):
-                            raise ValueError(
-                                f"state {sv.name!r}: {label} {tag} resolves to "
-                                f"non-numeric {v!r} in {where}"
-                            )
-                    if lo >= hi:
-                        raise ValueError(
-                            f"state {sv.name!r}: {label} resolve to lo >= hi "
-                            f"({lo} >= {hi}) in {where}"
-                        )
+                _check_bound_entries(
+                    raw, raw, consts, self.scenario.instances,
+                    f"state {sv.name!r}", label, label, sources,
+                )
         return self
 
     @model_validator(mode="after")
@@ -1574,9 +1651,10 @@ class ActionMode(_Base):
     # one decision name, or several driven by one vector action
     encodes: str | list[str]
     type: DecisionType
-    # entries may name scenario constants, like Decision.bounds (resolution is
-    # checked by the root validator, which can see the mdp block). Multi-decision
-    # modes carry one [lo, hi] pair per encoded decision, in the same order.
+    # entries take the same three forms as Decision.bounds — literal, constant
+    # name, expression over constants (resolution is checked by the root
+    # validator, which can see the mdp block). Multi-decision modes carry one
+    # [lo, hi] pair per encoded decision, in the same order.
     bounds: list[float | str] | list[list[float | str]]
     transform: str = ""                      # expr: agent action -> canonical decision
     feasibility_strategy: FeasibilityStrategy = FeasibilityStrategy.clip
@@ -1986,13 +2064,14 @@ class MdpIR(_Base):
         """gym → mdp: every action mode encodes a declared decision; transforms
         reference only the mode's own action name, decisions, and constants."""
         decision_names = {d.name for d in self.mdp.decisions}
-        constants = {c.name for c in self.mdp.scenario.constants}
+        const_values = {c.name: c.value for c in self.mdp.scenario.constants}
+        constants = set(const_values)
+        sources = {u.name for u in self.mdp.uncertainty_sources}
         for m in self.gym.action_modes:
-            flat = [x for pair in m.bounds_per_decision() for x in pair]
-            bad = [x for x in flat if isinstance(x, str) and x not in constants]
-            if bad:
-                raise ValueError(
-                    f"action mode {m.name!r}: bound entries {bad} name no scenario constant"
+            for pair in m.bounds_per_decision():
+                _check_bound_entries(
+                    pair, pair, const_values, self.mdp.scenario.instances,
+                    f"action mode {m.name!r}", "bound", "bounds", sources,
                 )
             unknown = [d for d in m.encoded_decisions() if d not in decision_names]
             if unknown:

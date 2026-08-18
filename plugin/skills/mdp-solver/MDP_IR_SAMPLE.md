@@ -149,14 +149,17 @@ verifying rather than dictating.
           // Bounds are the envelope the gym materializes into its spaces — the
           // MDP itself often has none (demand is unbounded; a counter runs to
           // the horizon). When the envelope follows from other parameters,
-          // DECLARE THE DERIVATION, never a literal frozen from it. Two forms:
-          //   expression over constants/slot stats — resolved once at load
-          //     ("40 * demand.mean", below);
-          //   bare name of a scenario constant instances override — kept
-          //     symbolic, resolved per instance via mdp.state_bounds()
-          //     ([0, "horizon_T"], like Decision.bounds and `length`).
-          // A union-over-instances literal is correct for no instance and drags
-          // the structural fingerprint every time a bigger cell is registered.
+          // DECLARE THE DERIVATION, never a literal frozen from it. An entry is
+          //   a literal                 ([0, 30]);
+          //   the name of a scenario constant instances override
+          //     ([0, "horizon_T"], like Decision.bounds and `length`);
+          //   an expression over constants and slot stats
+          //     ("40 * demand.mean", below; "N * order_max").
+          // All three resolve at the SAME time — per instance, at
+          // mdp.state_bounds() — so a constant inside an expression tracks its
+          // override exactly as a bare name does. A union-over-instances
+          // literal is correct for no instance and drags the structural
+          // fingerprint every time a bigger cell is registered.
           "bounds": ["-40 * demand.mean", "40 * demand.mean"],
           "observability": "observable",
           "desc": "net on-hand inventory after all period events; read by next transition"
@@ -880,7 +883,10 @@ legacy resolved form and still loads unchanged.
   envelope(gamma))`). Derivation is lazy per attribute — a slot nothing
   references may use state-dependent settings (dynamic_pricing's
   price-dependent rate). Escape hatch: an explicit `read_api` block on the
-  candidate.
+  candidate. A stat is folded into the entry at load — that namespace exists
+  only while the selection is being resolved — while everything the entry
+  reads from `scenario.constants` stays symbolic, so an envelope mixing the
+  two (`"N * demand.max"`) tracks the selection *and* the instance.
 - **What is frozen**: `layering.structural_fingerprint()` — the structural
   core plus the constant *names* its expressions reference (computed, never
   hand-tagged). Constant values, candidates, instances, mixtures are free,

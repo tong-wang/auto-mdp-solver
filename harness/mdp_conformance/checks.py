@@ -706,12 +706,28 @@ def check_grids(h: DomainHandle) -> list[CheckResult]:
     return results
 
 
+def _bound_constants(entry, constants: set[str]) -> list[str]:
+    """The scenario constants a bounds entry references: the entry itself when
+    it names one, else the constants its expression reads. A derived envelope
+    is a width site like any other, so the constants inside it have to reach
+    the boundary machinery — otherwise writing `40 * cap` instead of `cap`
+    makes the cap invisible to coverage (#53)."""
+    from mdp_ir.schema import _root_identifiers
+
+    if not isinstance(entry, str):
+        return []
+    if entry in constants:
+        return [entry]
+    return sorted(_root_identifiers(entry) & constants)
+
+
 def _axis_tiers(ir) -> dict[str, str]:
     """Constant name -> tier label, read off the IR's own declarations
     (spec §5.6 "Choosing axes"). Assignment order makes tier-1 win when a
     constant plays several roles — the action space is the harder break."""
     tiers: dict[str, str] = {}
     m = ir.mdp
+    constants = {c.name for c in m.scenario.constants}
     for sv in m.state_variables:
         for axis_pos, part in enumerate(
                 sv.length if isinstance(sv.length, list) else [sv.length]):
@@ -722,22 +738,22 @@ def _axis_tiers(ir) -> dict[str, str]:
                 tiers[part] = f"tier-2 obs-dim ({where})"
         for raw in (sv.bounds, sv.element_bounds):
             for x in raw or []:
-                if isinstance(x, str):
+                for c in _bound_constants(x, constants):
                     tiers.setdefault(
-                        x, f"tier-2 obs-dim (sets bounds of state {sv.name!r})")
+                        c, f"tier-2 obs-dim (sets bounds of state {sv.name!r})")
     if isinstance(m.horizon.T, str):
         tiers[m.horizon.T] = "tier-2 horizon"
     for d in m.decisions:
         if isinstance(d.dim, str):
             tiers[d.dim] = f"tier-1 (sets dim of decision {d.name!r})"
         for x in d.bounds.value:
-            if isinstance(x, str):
-                tiers[x] = f"tier-1 (sets action bounds of decision {d.name!r})"
+            for c in _bound_constants(x, constants):
+                tiers[c] = f"tier-1 (sets action bounds of decision {d.name!r})"
     for am in ir.gym.action_modes:
         for pair in am.bounds_per_decision():
             for x in pair:
-                if isinstance(x, str):
-                    tiers[x] = f"tier-1 (sets action bounds of mode {am.name!r})"
+                for c in _bound_constants(x, constants):
+                    tiers[c] = f"tier-1 (sets action bounds of mode {am.name!r})"
     return tiers
 
 

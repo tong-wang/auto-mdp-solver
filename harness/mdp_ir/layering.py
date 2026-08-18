@@ -44,7 +44,10 @@ so nothing downstream learns a new shape:
   namespace **derived** from :mod:`mdp_ir.families` (lazily, per attribute,
   composing through the latent hierarchy) — never hand-authored; a
   candidate's ``read_api`` block is the explicit override for underivable
-  cases.
+  cases. Only the *stats* resolve here: what a bound reads from
+  ``scenario.constants`` stays symbolic and resolves per instance at the
+  schema's read API, so the two halves of ``"N * demand.max"`` track the
+  selection and the instance respectively (#53).
 
 What is frozen is computed, not tagged: :func:`structural_fingerprint`
 hashes the structural core plus the constant *names* its expressions
@@ -57,6 +60,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from typing import Any
 
 from mdp_ir import exprs, families
@@ -68,6 +72,9 @@ READ_API = ("max", "mean", "min", "is_discrete")
 # moment/envelope derivations per read-API attribute
 _FAMILY_FNS = {"mean": families.mean, "max": families.max_value,
                "min": families.min_value}
+
+# a slot read-API reference inside an expression, e.g. `demand.mean`
+_STAT_REF = re.compile(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)")
 
 _CANDIDATE_KEYS = {"generator", "family", "settings", "is_discrete", "read_api", "desc"}
 _DRAW_KEYS = {"draw", "example", "hidden"}
@@ -227,15 +234,76 @@ def _mixture_namespace(slot: dict, comp_infos: list, where: str):
     return _Mix()
 
 
-def _resolve_bounds(
-    value: Any, ns: dict, where: str, instance_consts: set[str]
-) -> Any:
-    """Resolve a bounds list whose entries may be numbers or expressions.
+def _bound_refs(expr: str) -> set[str]:
+    """The names a bound expression reads at the root (``demand.mean`` reads
+    ``demand``, never ``mean``)."""
+    from mdp_ir.schema import _root_identifiers
+    return _root_identifiers(expr)
 
-    A bare string that names an instance-overridden scenario constant is left
-    untouched: that is the schema's existing *per-instance* bounds mechanism
-    (``Decision.bounds``), and collapsing it here would freeze one instance's
-    value for all of them.
+
+def _stat_literal(value: Any, where: str, expr: str) -> str:
+    """A slot stat as source text, so folding it back into an expression leaves
+    an expression. Numpy scalars and derived vectors normalize to plain Python;
+    anything else is not a number an envelope can be built from.
+    """
+    if not isinstance(value, bool):
+        if isinstance(value, int):
+            return repr(int(value))
+        if isinstance(value, float):
+            return repr(float(value))
+        if isinstance(value, (list, tuple)) and value and all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) for v in value
+        ):
+            return repr([float(v) for v in value])
+    raise LayeringError(
+        f"{where}: slot stat in bound {expr!r} resolved to non-numeric {value!r}"
+    )
+
+
+def _fold_slot_stats(expr: str, ns: dict, slot_names: set[str], where: str) -> str:
+    """Replace every ``slot.attr`` read with its value, leaving the rest of the
+    expression symbolic.
+
+    A slot's read API exists only here — it derives from the *selected*
+    candidate — so an expression kept symbolic for a constant's sake has to
+    carry its stats as numbers. String literals are stepped over: their
+    contents are data, never names (``mode == 'a.b'``).
+    """
+    from mdp_ir.schema import _STRLIT
+
+    def sub(text: str) -> str:
+        def repl(m: "re.Match[str]") -> str:
+            root, attr = m.group(1), m.group(2)
+            if root not in slot_names:
+                return m.group(0)
+            value = _eval_expr(f"{root}.{attr}", ns, where)
+            return f"({_stat_literal(value, where, expr)})"
+        return _STAT_REF.sub(repl, text)
+
+    out, pos = [], 0
+    for m in _STRLIT.finditer(expr):
+        out.append(sub(expr[pos:m.start()]))
+        out.append(m.group(0))
+        pos = m.end()
+    out.append(sub(expr[pos:]))
+    return "".join(out)
+
+
+def _resolve_bounds(
+    value: Any, ns: dict, where: str, instance_consts: set[str], slot_names: set[str]
+) -> Any:
+    """Resolve a bounds list whose entries may be numbers, constant names or
+    expressions.
+
+    Anything that reads a constant an instance overrides is left symbolic, so
+    it resolves per instance at the read API (``MdpBlock.state_bounds`` /
+    ``decision_bounds``) — for a bare name that is the schema's original
+    per-instance mechanism (#3); for an expression, collapsing it here froze
+    the base value for every instance, silently (#53). Only the slot stats such
+    an expression reads are folded, since their namespace lives here alone.
+
+    An expression reading no overridden constant still collapses to a number,
+    exactly as before: same value, same fingerprint, one less symbol to carry.
     """
     if not isinstance(value, list):
         return value
@@ -244,14 +312,17 @@ def _resolve_bounds(
         if isinstance(entry, str):
             if entry in instance_consts:
                 out.append(entry)          # leave to per-instance resolution
-                continue
-            out.append(_eval_expr(entry, ns, where))
+            elif _bound_refs(entry) & instance_consts:
+                out.append(_fold_slot_stats(entry, ns, slot_names, where))
+            else:
+                out.append(_eval_expr(entry, ns, where))
         else:
             out.append(entry)
     return out
 
 
-def _walk_bounds(node: Any, ns: dict, where: str, instance_consts: set[str]) -> None:
+def _walk_bounds(node: Any, ns: dict, where: str, instance_consts: set[str],
+                 slot_names: set[str]) -> None:
     """Resolve every ``bounds`` / ``element_bounds`` list in a nested document.
 
     Handles both the plain list form and the ``Confirmable`` form, whose
@@ -262,20 +333,21 @@ def _walk_bounds(node: Any, ns: dict, where: str, instance_consts: set[str]) -> 
             if key in ("bounds", "element_bounds"):
                 if isinstance(val, list):
                     node[key] = _resolve_bounds(
-                        val, ns, f"{where}.{key}", instance_consts
+                        val, ns, f"{where}.{key}", instance_consts, slot_names
                     )
                     continue
                 if isinstance(val, dict):
                     for tag in ("value", "suggested"):
                         if isinstance(val.get(tag), list):
                             val[tag] = _resolve_bounds(
-                                val[tag], ns, f"{where}.{key}.{tag}", instance_consts
+                                val[tag], ns, f"{where}.{key}.{tag}",
+                                instance_consts, slot_names,
                             )
                     continue
-            _walk_bounds(val, ns, f"{where}.{key}", instance_consts)
+            _walk_bounds(val, ns, f"{where}.{key}", instance_consts, slot_names)
     elif isinstance(node, list):
         for i, item in enumerate(node):
-            _walk_bounds(item, ns, f"{where}[{i}]", instance_consts)
+            _walk_bounds(item, ns, f"{where}[{i}]", instance_consts, slot_names)
 
 
 # ---------------------------------------------------------------------------
@@ -561,7 +633,8 @@ def resolve_catalog(
     }
     for block in ("mdp", "gym"):
         if block in merged:
-            _walk_bounds(merged[block], ns, f"{where}.{block}", instance_consts)
+            _walk_bounds(merged[block], ns, f"{where}.{block}",
+                         instance_consts, slot_names)
 
     merged["selection"] = selection
     return merged
