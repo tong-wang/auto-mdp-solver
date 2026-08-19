@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import pytest
 
-from mdp_conformance.checks import _add_argument_dests, check_script_cli_contract
+from mdp_conformance.checks import (
+    _add_argument_dests, check_schedule_pairs, check_script_cli_contract,
+)
 from mdp_conformance.loader import DomainHandle
 
 
@@ -133,3 +135,37 @@ def test_the_eval_owes_vecnorm_path_when_it_loads_the_stats(tmp_path):
     result = check_script_cli_contract(h)
     assert result.status == "WARN"
     assert "d_ppo_eval.py: missing vecnorm_path" in result.detail
+
+
+# --- §8.2 schedule pairs --------------------------------------------------
+
+def test_both_halves_of_a_schedule_pass(tmp_path):
+    h = domain(tmp_path, train=parser(["learning_rate", "lr_final",
+                                       "clip_init", "clip_final"]))
+    assert check_schedule_pairs(h).status == "PASS"
+
+
+def test_an_init_without_its_final_is_reported(tmp_path):
+    """The derivation is guarded on the final's dest, so a half pair makes it a
+    silent no-op — the run trains flat while its args log records a tuned init."""
+    h = domain(tmp_path, train=parser(["learning_rate", "clip_init", "clip_final"]))
+    result = check_schedule_pairs(h)
+    assert result.status == "WARN"
+    assert "--learning_rate without --lr_final" in result.detail
+
+
+def test_a_final_without_its_init_is_reported(tmp_path):
+    h = domain(tmp_path, train=parser(["clip_final"]))
+    assert "--clip_final without --clip_init" in check_schedule_pairs(h).detail
+
+
+def test_neither_half_is_out_of_scope(tmp_path):
+    """Exposing no schedule at all is tier-2 completeness, which mdp_tuning
+    owns — enumerating tuning knobs here would be the second source of truth
+    the tiering exists to prevent."""
+    h = domain(tmp_path, train=parser(["learning_rate", "lr_final"]))
+    assert check_schedule_pairs(h).status == "PASS"
+
+
+def test_no_train_script_skips_the_pair_check(tmp_path):
+    assert check_schedule_pairs(domain(tmp_path)).status == "SKIP"

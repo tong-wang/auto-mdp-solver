@@ -1395,7 +1395,18 @@ nothing, and that is correct.
   checkpoints" the moment `total_timesteps` changes. Convert at the call site:
   `save_freq = max(1, int(frac * total_timesteps / n_envs))`, since
   `CheckpointCallback` counts VecEnv steps, not environment steps.
-- **Schedule pairs are one degree of freedom:** `lr_final = lr_init/10`, `clip_final = clip_init/4`. The flags may exist separately, but defaults obey the ratios and `mdp_tuning` derives the finals from the tuned inits — a schedule must never invert.
+- **Schedule pairs are one degree of freedom, and both halves must exist:**
+  `lr_final = lr_init/10`, `clip_final = clip_init/4`. The two flags are
+  separate dests, but defaults obey the ratios and `mdp_tuning` derives the
+  final from the tuned init, so a schedule can never invert. **Exposing an init
+  without its final is the failure mode to avoid**: the derivation is guarded on
+  the final's dest existing, so it silently no-ops, the script's
+  `build_schedule(start, end)` collapses to a constant, and the run trains on a
+  flat schedule while every artifact says it was tuned. Nothing in the run
+  distinguishes that from a schedule that was derived — which is why
+  `mdp_conformance`'s `scripts.schedule_pairs` reports a half-exposed pair.
+  A script exposing *neither* half is a tier-2 completeness question, not this
+  one — `mdp_tuning --show-space` is where that surfaces (§8.6).
 - For high instance-variance domains pass `stats_window_size=500` (or more) to the model: the default 100-episode rolling `ep_rew_mean` swings even under a static policy.
 - **Pin BLAS/torch threads when launching training** (`OMP_NUM_THREADS=1 MKL_NUM_THREADS=1`): the policies in these domains are tiny, so torch's default all-cores threading adds sync overhead rather than speed, and on a shared machine it oversubscribes cores already used by other jobs (measured on a small-board CNN domain: 9 min → 11 s for 2048 steps on a box concurrently running an 8-core workload; expect a smaller but still real gain on an idle box). The `mdp_tuning` harness sets this for its subprocesses automatically.
 
@@ -1680,6 +1691,18 @@ default, and derives schedule finals — see its `--knobs`, `--fix`, `--beta`,
 `--episode-len` flags. A script that does not expose an in-tier knob makes the
 study search a smaller space than it reports, so naming a tier explicitly turns
 that into a launch failure rather than a warning (§8.2 tier 2).
+
+**Trial 0 is the L1 centre only if the L1 values are representable.** The warm
+start enqueues the script's defaults, and a default the space cannot encode is
+dropped and *sampled* instead — so the study still runs, still reports a best
+trial, and no longer measures Δ(L2−L1) against anything. The representability
+constraints are the space's own: `n_steps` and `batch_size` are powers of two,
+`net_arch` is uniform-width with a power-of-two width, `learning_rate` and
+`ent_coef` lie inside their log ranges. A derived value that lands outside one —
+a rollout floor rounded to 2560, a `(400, 300)` net — is a real derivation, so
+the fix is to reconcile it with the space deliberately, never to leave the
+warm start silently short. Both `--show-space` and the launch banner report
+which defaults fail to encode, so this is answerable before a study is run.
 
 ---
 

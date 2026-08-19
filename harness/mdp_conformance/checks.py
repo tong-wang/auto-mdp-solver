@@ -1650,6 +1650,47 @@ def check_script_cli_contract(h: DomainHandle) -> CheckResult:
                        f"{n_read} script(s) expose the tier-1 surface" + tail)
 
 
+# §8.2 schedule pairs. The names come from the spec's own text, not from
+# mdp_tuning's space — conformance must not learn the tuning knob list (that is
+# tier 2's whole point, and mdp_tuning imports this package, so the dependency
+# only runs one way).
+_SCHEDULE_PAIRS = (("learning_rate", "lr_final"), ("clip_init", "clip_final"))
+
+
+def check_schedule_pairs(h: DomainHandle) -> CheckResult:
+    """A schedule's init and final are exposed together (spec §8.2).
+
+    The derivation that keeps a schedule from inverting — `lr_final = lr/10`,
+    `clip_final = clip_init/4` — is guarded on the final's dest existing, so a
+    script exposing only the init makes it a silent no-op: `build_schedule`
+    collapses to a constant and the run trains flat while its args log and the
+    study both record a tuned init. No artifact downstream distinguishes that
+    from a schedule that was actually derived, which is the whole reason this is
+    checked statically rather than left to the run.
+
+    Exposing *neither* half is out of scope here — that is tier-2 completeness,
+    which `mdp_tuning --show-space` owns.
+    """
+    trains = sorted(h.directory.glob(f"{h.name}_*_train.py"))
+    if not trains:
+        return CheckResult("scripts.schedule_pairs", "SKIP", "no train script yet")
+    findings = []
+    for train in trains:
+        dests = _add_argument_dests(train.read_text())
+        for init, final in _SCHEDULE_PAIRS:
+            if init in dests and final not in dests:
+                findings.append(f"{train.name}: --{init} without --{final} "
+                                f"(schedule is silently constant)")
+            elif final in dests and init not in dests:
+                findings.append(f"{train.name}: --{final} without --{init}")
+    if findings:
+        return CheckResult("scripts.schedule_pairs", _CLI_CONTRACT_SEVERITY,
+                           "; ".join(findings))
+    return CheckResult("scripts.schedule_pairs", "PASS",
+                       f"{len(trains)} train script(s): every exposed schedule "
+                       f"init has its final")
+
+
 REGISTRY = [
     check_file_layout,
     check_layering,
@@ -1670,6 +1711,7 @@ REGISTRY = [
     check_bound_rationale,
     check_restatement_current,
     check_script_cli_contract,
+    check_schedule_pairs,
     check_init_state,
     check_gym_contract,
     check_determinism,

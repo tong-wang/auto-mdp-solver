@@ -76,6 +76,14 @@ Scripts (reads the parsers, without importing the training stack):
   script fails it on the day it lands, so a hard gate would make every domain
   non-conformant at once.
 
+- `scripts.schedule_pairs` — an exposed schedule init has its final
+  (`learning_rate`/`lr_final`, `clip_init`/`clip_final`, §8.2). `mdp_tuning`
+  guards the one-DOF derivation on the final's dest existing, so a half-exposed
+  pair makes it a silent no-op: `build_schedule` collapses to a constant and the
+  run trains flat while its args log and the study both record a tuned init.
+  Exposing *neither* half is out of scope — that is tier-2 completeness, which
+  `mdp_tuning --show-space` owns. Same WARN-then-FAIL adoption path.
+
 Documents (reads the artifacts beside the code, not the code):
 - `docs.restatement_current` — the restatement's sample trajectory still
   renders. A ```` ```step7b ```` fence declares the command that produced it;

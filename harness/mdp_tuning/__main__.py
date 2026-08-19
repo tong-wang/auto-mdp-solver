@@ -133,6 +133,18 @@ def _resolve_domain_dir(name: str) -> Path:
     raise FileNotFoundError(f"domain directory not found: {name}")
 
 
+def l1_defaults(scripts: DomainScripts, tunable: set[str]) -> dict[str, object]:
+    """The train script's own default for each tunable knob — the L1 centre."""
+    out: dict[str, object] = {}
+    for k in tunable:
+        v = scripts.train_args[k].default
+        if isinstance(v, list):
+            v = tuple(v)
+        if v is not None:
+            out[k] = v
+    return out
+
+
 def unmatched_knobs(scripts: DomainScripts, algo: str, tier: str) -> list[str]:
     """In-tier knobs the train script exposes no matching dest for (§8.2 tier 2).
 
@@ -181,6 +193,36 @@ def show_space(scripts: DomainScripts, algo: str, tier: str = "all",
         print(f"WARNING: in-tier knob(s) with no matching train-script flag: "
               f"{', '.join(rot)} — the script predates the spec's required "
               f"dests, or a dest was renamed (unmatched-knob lint)")
+
+
+def report_readiness(scripts: DomainScripts, args: argparse.Namespace) -> None:
+    """What a study would find wrong, answered without launching one.
+
+    Both facts below are otherwise discoverable only at launch — one as a fatal,
+    one as a banner warning — and both are properties of the *script*, so a
+    maintainer should be able to ask them of a domain directly.
+    """
+    space = SPACES[args.algo]
+    reach = []
+    for tier in ("core", "breadth", "all"):
+        rot = [k for k in unmatched_knobs(scripts, args.algo, tier)
+               if k not in set(args.fix)]
+        reach.append(f"{tier} " + ("ok" if not rot else f"BLOCKED({', '.join(rot)})"))
+    print(f"tier reach : {'  |  '.join(reach)}")
+
+    if space.encode is None:
+        return
+    tunable = resolve_tunable(scripts, args, {})
+    enq, skipped = space.encode(l1_defaults(scripts, tunable),
+                                **sample_kwargs_for(scripts, args))
+    if not skipped:
+        print(f"warm start : trial 0 = the L1 centre ({len(enq)} knobs encoded)")
+        return
+    # spec §8.6: a default the space cannot encode is SAMPLED, so the study
+    # measures no delta against L1 — and says so nowhere in its results
+    detail = ", ".join(f"{k}={scripts.train_args[k].default!r}" for k in sorted(skipped))
+    print(f"warm start : trial 0 is NOT the L1 centre — {detail} "
+          f"not representable, so it is sampled instead")
 
 
 def print_summary(study: optuna.Study, top: int = 5,
@@ -348,6 +390,7 @@ def main() -> None:
 
     if args.show_space:
         show_space(scripts, args.algo, tier=args.knobs, locked=set(args.fix))
+        report_readiness(scripts, args)
         return
 
     # spec §8.2 tier 2 — before the study directory exists, because a study that

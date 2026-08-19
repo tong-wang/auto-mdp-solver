@@ -90,3 +90,48 @@ def test_fix_is_the_deliberate_form_of_the_same_outcome(monkeypatch):
                           "ppo", "all")
     assert rot == ["clip_init"]
     assert [k for k in rot if k not in set(args.fix)] == []
+
+
+# --- what a study would find wrong, answered without launching one ---------
+
+def _readiness(capsys, dests: dict) -> str:
+    """--show-space's readiness report for a script with these dests/defaults."""
+    import argparse
+    from mdp_tuning.__main__ import report_readiness
+    scripts = DomainScripts(
+        prefix="d", directory=Path("."), algo="ppo",
+        train_script=Path("d_ppo_train.py"), eval_script=Path("d_ppo_eval.py"),
+        train_args={k: ArgSpec(flag=f"--{k}", multi=False, default=v)
+                    for k, v in dests.items()},
+        eval_args={})
+    report_readiness(scripts, argparse.Namespace(
+        algo="ppo", knobs="core", fix=[], beta=1.0, episode_len=None,
+        min_rollout_episodes=10))
+    return capsys.readouterr().out
+
+
+L1 = {"learning_rate": 3e-4, "net_arch": [64, 64], "n_steps": 2048,
+      "ent_coef": 0.005, "gae_lambda": 0.95}
+
+
+def test_a_ready_domain_reports_every_tier_open_and_trial_0_on_centre(capsys):
+    out = _readiness(capsys, {**L1, "n_epochs": 10, "batch_size": 256,
+                              "vf_coef": 0.5, "gamma": 1.0,
+                              "clip_init": 0.2, "max_grad_norm": 0.5})
+    assert "core ok" in out and "breadth ok" in out and "all ok" in out
+    assert "trial 0 = the L1 centre" in out
+
+
+def test_a_tier_the_script_cannot_reach_is_named_before_launch(capsys):
+    """Otherwise this is discoverable only as a fatal at study launch."""
+    out = _readiness(capsys, L1)
+    assert "core ok" in out
+    assert "breadth BLOCKED" in out and "vf_coef" in out
+
+
+def test_an_unrepresentable_default_is_named_with_its_value(capsys):
+    """The mab case: a rollout floor derived to 2560 is not a power of two, so
+    the warm start drops it and trial 0 silently stops being the L1 centre."""
+    out = _readiness(capsys, {**L1, "n_steps": 2560})
+    assert "trial 0 is NOT the L1 centre" in out
+    assert "n_steps=2560" in out

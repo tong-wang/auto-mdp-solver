@@ -48,8 +48,12 @@ objective. Add `--minimize` when that objective is lower-is-better.
 python -m mdp_tuning plugin/skills/mdp-solver/examples/dynamic_pricing -s simple --metric revenue_mean \
     --n-trials 25 --total-timesteps 200000 --eval-seeds 500
 
-# what would be tuned, no training
+# what would be tuned, no training — plus the two things that otherwise only
+# surface at launch: which tiers this script can actually reach, and whether
+# trial 0 would really be the L1 centre
 python -m mdp_tuning plugin/skills/mdp-solver/examples/dynamic_pricing --show-space
+#   tier reach : core ok  |  breadth BLOCKED(vf_coef)  |  all BLOCKED(vf_coef, ...)
+#   warm start : trial 0 is NOT the L1 centre — ent_coef=0.0 not representable
 # best trials so far
 python -m mdp_tuning plugin/skills/mdp-solver/examples/dynamic_pricing -s simple --summary-only
 ```
