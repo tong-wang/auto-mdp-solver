@@ -12,7 +12,15 @@ knobs, which values). This harness removes that judgment in three ways:
 
 1. **Algorithm-level search space** (`spaces.py`): broad, RL-Baselines3-Zoo
    style ranges over PPO's knobs, defined once for *all* domains. Judgment
-   about ranges is made once per algorithm, not per problem.
+   about ranges is made once per algorithm, not per problem. Knobs are grouped
+   into three budget tiers by how much spec §8.6's L1 derivation already knows:
+   `core` corrects the knobs whose derived value is a real guess
+   (`learning_rate`, `net_arch` width, `n_steps`, `ent_coef`, `gae_lambda`),
+   `breadth` opens what the derivation does not produce (`net_arch` depth,
+   `n_epochs`, `batch_size`, `vf_coef`, `gamma`), and `all` adds the frozen
+   pair (`clip_init`, `max_grad_norm`). Schedule finals are never tuned —
+   `lr_final` and `clip_final` are derived from the tuned inits (§8.2), so a
+   schedule cannot invert.
 2. **CLI introspection**: the spec mandates `_build_arg_parser()` in every
    train/eval script (§8.2), so the harness imports the domain's scripts,
    reads their real CLIs, and tunes exactly the knobs the domain exposes —

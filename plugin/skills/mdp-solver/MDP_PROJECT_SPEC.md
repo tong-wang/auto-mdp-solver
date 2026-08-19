@@ -1646,9 +1646,19 @@ result is always an escalation.
 | `n_epochs`, `target_kl` | 10 / 0.02 fixed; target_kl is the safety valve, never tuned — repeated `approx_kl` truncation is the LR-too-high signal, fix the LR. |
 | `norm_obs` | §8.3 decision per the IR (heterogeneous stationary → on; drifting/accumulator obs → off, prefer sufficient-statistic obs). Both values are reachable from the CLI (`--no_norm_obs`, §8.2 tier 1) — a derivation whose result the script cannot express is not a derivation. |
 | `norm_reward` | on, with `gamma=args.gamma` passed (§8.3). |
-| `net_arch` | (64,64) for obs dim ≤ ~32; scale the first hidden layer to ~2–4× obs dim above. Structured obs (set/permutation, grid, sequence) is never a width problem — record a *predicted escalation: arch* note. Boundary: `net_arch` widths = HP layer; custom extractors = arch layer. |
+| `net_arch` | (64,64) for obs dim ≤ ~32; scale the first hidden layer to ~2–4× obs dim above. Structured obs (set/permutation, grid, sequence) is never a width problem — record a *predicted escalation: arch* note. Boundary: `net_arch` widths = HP layer; custom extractors = arch layer. This row derives a **width**, not a layer count, which is why `mdp_tuning` searches width at its `core` tier and opens depth only at `breadth`: at core the derivation's own depth stands. The searched grid is width {32, 64, 128, 256} × depth {2, 3, 4}, uniform layers. |
 | budget | ceiling = 20k–50k episodes × T̄ steps AND ≥ ~300 updates. **A training run runs to its budget — no early stopping.** The training trajectory is too noisy to make any judgment from; judgment happens post-hoc, on CRN evals of saved checkpoints (the selection row). Early stopping exists only in tuning trials (§9.7), where it reads the periodic CRN eval, never the rollout curve, and the arm is one of many. |
 | model selection | **Post-hoc, three-layer (§9.7).** `CheckpointCallback` every ~5% of budget (~20 checkpoints — `--checkpoint-every-frac 0.05`, §8.2); after training, evaluate every checkpoint on the selection block (~2048 CRN seeds, disjoint from the protocol block — `--first-seed`, §9.7), take the top-k (k≈3, adjustable — widen when the leaders sit within one screen-SE), confirm those on the protocol block (~8192), ship the winner. No `EvalCallback`, no live selection env, no `sync_envs_normalization` — the machinery that selected a generalist's checkpoint on one wrong cell (mab #E36 V4) simply isn't there. **The terminal checkpoint is never the deliverable** — the marginal gain of the screen over a working callback is small (+1.4, mab #E33) but selecting *at all* is worth +43, and the post-hoc form buys the robustness. |
+
+**Which knobs a tuning study opens follows this table.** `mdp_tuning`'s
+tiers are budget scopes ordered by how much the derivation above already knows:
+`core` corrects the knobs whose derived value is a real guess (`learning_rate`,
+`net_arch` width, `n_steps`, `ent_coef`, `gae_lambda` — the row with the widest
+measured spread), `breadth` opens what no row derives at all (`net_arch` depth,
+`n_epochs`, `batch_size`, `vf_coef`) plus `gamma`, which is bounded by the
+problem since γ > β is never sampled, and `all` adds the frozen pair
+(`clip_init`, `max_grad_norm`). Schedule *finals* are in no tier — §8.2's
+one-degree-of-freedom rule derives them from the tuned inits.
 
 **The derivation records its basis.** The train script's L1 table comment
 states what each derived value was derived *from* — the measured T̄ (and at
@@ -1667,7 +1677,9 @@ L1 < L0 → the derivation misfired; L1 competitive vs baselines → done; gap �
 open L2. Tuning (`mdp_tuning`) is the L2(hp) layer: it warm-starts from the
 train script's defaults (= the L1 center), searches the `core` knob tier by
 default, and derives schedule finals — see its `--knobs`, `--fix`, `--beta`,
-`--episode-len` flags.
+`--episode-len` flags. A script that does not expose an in-tier knob makes the
+study search a smaller space than it reports, so naming a tier explicitly turns
+that into a launch failure rather than a warning (§8.2 tier 2).
 
 ---
 

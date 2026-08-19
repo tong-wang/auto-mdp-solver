@@ -52,6 +52,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-size",       type=int,   default=512)
     p.add_argument("--n-epochs",         type=int,   default=10)
     p.add_argument("--gamma",            type=float, default=1.0)
+    # L1 (§8.6): the price/inventory consequence realizes within the episode's
+    # remaining horizon, so credit spans it — 0.95 gives ~20 steps, re-derive if
+    # T̄ moves.
+    p.add_argument("--gae-lambda",       type=float, default=0.95)
     p.add_argument("--ent-coef",         type=float, default=0.0)
     p.add_argument("--net-arch",         type=int,   nargs="+", default=[64, 64])
     p.add_argument("--n-envs",           type=int,   default=1)
@@ -81,6 +85,7 @@ _SHORT_KEYS: dict[str, str] = {
     "batch_size":       "bs",
     "n_epochs":         "ep",
     "gamma":            "gamma",
+    "gae_lambda":       "gae",
     "ent_coef":         "ent",
     "net_arch":         "arch",
     "vecnorm_clip_obs": "clipobs",
@@ -178,6 +183,7 @@ def main() -> None:
         batch_size=args.batch_size,
         n_epochs=args.n_epochs,
         gamma=args.gamma,
+        gae_lambda=args.gae_lambda,
         ent_coef=args.ent_coef,
         policy_kwargs={"net_arch": list(args.net_arch)},
         verbose=1,

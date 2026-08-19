@@ -170,8 +170,9 @@ def show_space(scripts: DomainScripts, algo: str, tier: str = "all",
         print(f"locked   ({len(locked_shown)}): {', '.join(locked_shown)} "
               "(held at script default via --fix)")
     if outside:
+        opens = "all" if tier == "breadth" else "breadth|all"
         print(f"out-of-tier ({len(outside)}): {', '.join(outside)} "
-              "(open with --knobs breadth|all)")
+              f"(open with --knobs {opens})")
     if skipped:
         print(f"skipped  ({len(skipped)}): {', '.join(skipped)} "
               "(not exposed by the train script)")
@@ -244,7 +245,15 @@ def sample_kwargs_for(scripts: DomainScripts,
     min_n_steps = None
     if args.episode_len:
         min_n_steps = -(-args.min_rollout_episodes * args.episode_len // n_envs)
-    return {"n_envs": n_envs, "min_n_steps": min_n_steps, "beta": args.beta}
+    # the derivation's own depth: core searches net_arch's width and holds the
+    # layer count the train script derived (spaces.NET_DEPTH_RANGE)
+    arch = scripts.train_args.get("net_arch")
+    default_arch = arch.default if arch else None
+    net_depth_default = (len(default_arch)
+                         if isinstance(default_arch, (list, tuple)) and default_arch
+                         else 2)
+    return {"n_envs": n_envs, "min_n_steps": min_n_steps, "beta": args.beta,
+            "tier": args.knobs, "net_depth_default": net_depth_default}
 
 
 def make_objective(scripts: DomainScripts, args: argparse.Namespace,

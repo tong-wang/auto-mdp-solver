@@ -22,9 +22,15 @@ def test_tiers_nest() -> None:
     assert space.tiers["all"] == PPO_KNOBS
     # the dest-mismatch fix: the space speaks the script's schedule dest
     assert "clip_init" in PPO_KNOBS and "clip_range" not in PPO_KNOBS
-    # frozen tier stays out of core/breadth
-    for knob in ("clip_init", "max_grad_norm", "gamma"):
+    # frozen tier: what stays at its derived value unless explicitly opened
+    for knob in ("clip_init", "max_grad_norm"):
         assert knob not in PPO_TIER_BREADTH
+    # core corrects what the L1 derivation actually guesses at — gae_lambda is
+    # per-instance by §8.6 and two campaigns bracket its optimum ~10x apart
+    assert "gae_lambda" in PPO_TIER_CORE
+    # gamma is bounded by the problem (sampler cannot exceed β), so it opens a
+    # tier earlier than the genuinely frozen knobs
+    assert "gamma" in PPO_TIER_BREADTH and "gamma" not in PPO_TIER_CORE
 
 
 def test_gamma_containment() -> None:
@@ -112,3 +118,82 @@ def test_long_horizon_lambda_is_inside_the_space() -> None:
     for lam in (0.90, 0.9995):
         params, skipped = encode_ppo({"gae_lambda": lam}, beta=1.0)
         assert not skipped, lam
+
+
+# --- net_arch as two ordered axes (width in core, depth at breadth) --------
+
+def _arch(params: dict, tier: str, depth_default: int = 2) -> tuple[int, ...]:
+    cfg = sample_ppo(FixedTrial(params), {"net_arch"}, tier=tier,
+                     net_depth_default=depth_default)
+    return tuple(cfg["net_arch"])
+
+
+def test_core_searches_width_and_holds_the_derived_depth() -> None:
+    """§8.6 derives a width from obs dim and says nothing about layer count, so
+    core corrects the number the derivation produced and leaves the other."""
+    assert _arch({"log2_net_width": 8}, "core") == (256, 256)
+    assert _arch({"log2_net_width": 5}, "core", depth_default=3) == (32, 32, 32)
+
+
+def test_breadth_opens_depth() -> None:
+    assert _arch({"log2_net_width": 7, "net_depth": 4}, "breadth") == (128,) * 4
+    assert _arch({"log2_net_width": 6, "net_depth": 3}, "all") == (64, 64, 64)
+
+
+def test_the_grid_is_four_widths_by_three_depths() -> None:
+    shapes = {_arch({"log2_net_width": w, "net_depth": d}, "all")
+              for w in range(5, 9) for d in range(2, 5)}
+    assert len(shapes) == 12
+    assert (64, 64) in shapes and (128, 128, 128) in shapes and (256, 256) in shapes
+
+
+def test_the_shape_a_script_defaults_to_is_encodable() -> None:
+    """upstream #56: a (128,128) default matched no label, so the knob was
+    dropped from the warm start and trial 0 was not the L1 centre."""
+    for shape in [(64, 64), (128, 128), (256, 256), (32, 32, 32), (128, 128, 128)]:
+        params, skipped = encode_ppo({"net_arch": shape}, tier="all")
+        assert not skipped, shape
+        assert _arch(params, "all") == shape
+
+
+def test_a_non_uniform_shape_is_skipped_not_guessed() -> None:
+    _, skipped = encode_ppo({"net_arch": (400, 300)}, tier="all")
+    assert skipped == ["net_arch"]
+
+
+def test_core_encodes_a_depth_it_does_not_search() -> None:
+    """Refusing to encode an out-of-range depth at core would strand the warm
+    start over an axis core never touches."""
+    params, skipped = encode_ppo({"net_arch": (64,) * 6}, tier="core")
+    assert not skipped and params == {"log2_net_width": 6}
+
+
+def test_a_study_that_recorded_the_old_categorical_still_resumes(tmp_path) -> None:
+    """The reason net_arch became two int axes rather than a longer list.
+
+    Optuna keys a categorical by its ordered choices tuple, so *growing* the old
+    four-label list raises "CategoricalDistribution does not support dynamic
+    value space" on the first suggest of every study that already recorded it —
+    every downstream study, stranded. Retiring the param instead leaves the old
+    trials readable and simply stops suggesting it.
+    """
+    import logging
+    import optuna
+
+    optuna.logging.set_verbosity(logging.CRITICAL)
+    storage = f"sqlite:///{tmp_path / 'optuna.db'}"
+
+    def old(trial):
+        trial.suggest_categorical("net_arch", ["small", "medium", "large", "deep"])
+        return 0.0
+
+    study = optuna.create_study(study_name="s", storage=storage)
+    study.optimize(old, n_trials=2)
+
+    study = optuna.create_study(study_name="s", storage=storage, load_if_exists=True)
+    study.optimize(lambda t: (sample_ppo(t, {"net_arch"}, tier="all"), 0.0)[1],
+                   n_trials=2)
+
+    assert len(study.trials) == 4
+    assert {tuple(sorted(t.params)) for t in study.trials} == {
+        ("net_arch",), ("log2_net_width", "net_depth")}

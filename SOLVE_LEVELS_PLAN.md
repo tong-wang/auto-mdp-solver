@@ -140,11 +140,23 @@ and must contain the derived point.**
    `≥ 10·T̄/n_envs` intersected at trial time (same pattern as the existing
    flag intersection); batch cap becomes `min(batch, n_steps × n_envs)` (§4.6).
 5. **Tiers** (priority = membership, not weights — Optuna has no per-param
-   priority; at 25 trials × 10 dims TPE ≈ random search):
-   **core** = {learning_rate, net_arch, n_steps, ent_coef} — always tuned;
-   **breadth** = {gae_lambda, n_epochs, batch_size, vf_coef} — trials ≥ ~40 or
-   second stage; **frozen** = {clip, max_grad_norm} + locks. Driver flag:
-   `--knobs core|all` / `--fix KEY`.
+   priority; at 25 trials × 10 dims TPE ≈ random search). Membership follows
+   one question: how much does the L1 derivation already know?
+   **core** = {learning_rate, net_arch *width*, n_steps, ent_coef, gae_lambda}
+   — the knobs whose derived value is a real guess; always tuned.
+   **breadth** = {net_arch *depth*, n_epochs, batch_size, vf_coef, gamma} —
+   what the derivation does not produce at all, or (gamma) is bounded by the
+   problem; trials ≥ ~40 or second stage.
+   **frozen** = {clip, max_grad_norm} + locks — held at the derived value
+   unless explicitly opened. Driver flag: `--knobs core|breadth|all` /
+   `--fix KEY`.
+   *Revised 2026-08-19 (#56 follow-up):* `gae_lambda` moved core ← breadth on
+   the evidence of two campaigns bracketing its optimum an order of magnitude
+   apart (mab #E35, game2048 #E34/#E38) against a spec rule that calls it
+   per-instance and non-transferable; `gamma` moved breadth ← frozen, since the
+   sampler cannot exceed β and opening it buys only a logged bias-variance
+   move; `net_arch` split into an ordered width axis (core) and depth axis
+   (breadth), which is what makes a 4×3 shape grid searchable at core budget.
 6. **Warm start:** enqueue trial 0 = L1's config (`study.enqueue_trial`) —
    the derived center; the study directly measures "what does tuning add over
    L1". (L0 is generally not expressible through the train script's flags —
