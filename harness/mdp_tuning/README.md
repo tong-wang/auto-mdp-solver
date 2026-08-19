@@ -53,7 +53,7 @@ python -m mdp_tuning plugin/skills/mdp-solver/examples/dynamic_pricing -s simple
 # trial 0 would really be the L1 centre
 python -m mdp_tuning plugin/skills/mdp-solver/examples/dynamic_pricing --show-space
 #   tier reach : core ok  |  breadth BLOCKED(vf_coef)  |  all BLOCKED(vf_coef, ...)
-#   warm start : trial 0 is NOT the L1 centre — ent_coef=0.0 not representable
+#   warm start : trial 0 = L1 ROUNDED to the grid — ent_coef 0.0->1e-08
 # best trials so far
 python -m mdp_tuning plugin/skills/mdp-solver/examples/dynamic_pricing -s simple --summary-only
 ```
@@ -76,11 +76,15 @@ tier-1 surface it expects — and the check that reports it before a study is
 ever launched — is spec §8.2 and `mdp_conformance`'s `scripts.cli_contract`.
 
 **Warm start.** Trial 0 is enqueued as the train script's own defaults, so the
-study measures what tuning adds over the L1 centre (§8.6). A default the space
-cannot encode — most often a `net_arch` tuple matching no declared shape — is
-dropped and *sampled* instead, which silently makes trial 0 something other
-than L1; the launch banner now warns and names the value, so the study is not
-read as a Δ(L2−L1) it did not measure.
+study measures what tuning adds over the L1 centre (§8.6). The space is a grid,
+so a default off it (`n_steps` 2560, an `ent_coef` of exactly 0) is **snapped to
+its nearest representable neighbour** — dropping it would hand the knob to the
+sampler and put trial 0 an unbounded distance from L1, where a rounding step is
+bounded by the grid. Every move is named in `--show-space`, in the launch
+banner, and in the study's `warm_start_snapped` attribute, so a study is never
+read as a Δ(L2−L1) it did not measure. Values the space refuses *on purpose* —
+γ > β, an `n_steps` under the rollout floor, a channel stack — are not rounded;
+they are signals, and they still skip.
 
 Crashed trials (e.g. NaN policy divergence at aggressive learning rates) are
 **penalized to the study's worst completed value** rather than marked failed:

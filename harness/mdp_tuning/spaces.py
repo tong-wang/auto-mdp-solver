@@ -154,102 +154,181 @@ def sample_ppo(trial: optuna.Trial, tunable: set[str], *,
     return cfg
 
 
+def _nearest(value, choices):
+    """The declared choice closest to `value`, or None if it is not a number."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return min(choices, key=lambda c: abs(float(c) - v))
+
+
+def _nearest_log2(value, lo: int, hi: int) -> int | None:
+    """Nearest exponent within [lo, hi] — the grid n_steps/batch_size/width sit on."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v <= 0:
+        return None
+    return max(lo, min(hi, round(math.log2(v))))
+
+
+def _clamp(value, lo: float, hi: float) -> float | None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    return max(lo, min(hi, float(value)))
+
+
+def _same(a, b) -> bool:
+    if isinstance(a, (list, tuple)) or isinstance(b, (list, tuple)):
+        return tuple(a) == tuple(b)
+    try:
+        return math.isclose(float(a), float(b), rel_tol=1e-9, abs_tol=1e-12)
+    except (TypeError, ValueError):
+        return a == b
+
+
 def encode_ppo(cfg: dict[str, object], *, n_envs: int = 1,
                min_n_steps: int | None = None,
-               beta: float = 1.0, tier: str = "all",
-               net_depth_default: int = 2) -> tuple[dict[str, object], list[str]]:
+               beta: float = 1.0, tier: str = "all", net_depth_default: int = 2
+               ) -> tuple[dict[str, object], list[str], dict[str, tuple]]:
     """Inverse of :func:`sample_ppo`: map a concrete config (typically the
     train script's own defaults = the L1-derived center) to trial params for
-    ``study.enqueue_trial``. Returns ``(params, skipped)`` — knobs whose value
-    is not representable in the space are skipped (Optuna samples them)."""
+    ``study.enqueue_trial``. Returns ``(params, skipped, snapped)``.
+
+    A default the space cannot represent **exactly** is moved to its nearest
+    representable neighbour and recorded in ``snapped`` as ``(asked, used)``.
+    Dropping it instead would leave Optuna to *sample* that knob for trial 0,
+    which puts trial 0 an unbounded distance from L1 — a 0.0 ``ent_coef``
+    becomes any value across seven decades. Snapping bounds the distance by the
+    grid spacing (at most one rounding step), so the warm start stays the L1
+    centre to within the resolution the space has. The move is never silent:
+    every caller reports ``snapped``, because "trial 0 = L1" is exactly the
+    claim a study's Δ(L2−L1) rests on.
+
+    ``skipped`` is kept for values the space refuses **on purpose** rather than
+    for want of resolution — those are signals, not rounding errors, and
+    snapping them would paper over the thing worth seeing:
+
+    - ``gamma`` above β: §8.6 rules γ > β out entirely (more bias against the
+      objective *and* more variance), so a script defaulting there is stating a
+      spec violation, not a value to round.
+    - ``n_steps`` under the domain's rollout floor: the floor says the default
+      was derived under a different T̄, so the default is *stale*; rounding it
+      up would hide a derivation that needs redoing.
+    - ``channels``: a CNN channel stack is a structure, not a scalar on a grid,
+      so there is no "nearest" to move to.
+    """
     params: dict[str, object] = {}
     skipped: list[str] = []
+    snapped: dict[str, tuple] = {}
 
-    def _log2_exact(v: object) -> int | None:
-        try:
-            exp = int(math.log2(int(v)))
-        except (TypeError, ValueError, OverflowError):
-            return None
-        return exp if 2 ** exp == int(v) else None
+    def note(dest: str, asked, used) -> None:
+        if not _same(asked, used):
+            snapped[dest] = (asked, used)
 
     for dest, value in cfg.items():
         if dest == "learning_rate":
-            if isinstance(value, (int, float)) and 1e-5 <= value <= 3e-3:
-                params["learning_rate"] = float(value)
-            else:
+            v = _clamp(value, 1e-5, 3e-3)
+            if v is None:
                 skipped.append(dest)
+            else:
+                params["learning_rate"] = v
+                note(dest, value, v)
         elif dest == "ent_coef":
-            if isinstance(value, (int, float)) and 1e-8 <= value <= 0.1:
-                params["ent_coef"] = float(value)
-            else:
+            v = _clamp(value, 1e-8, 0.1)
+            if v is None:
                 skipped.append(dest)
+            else:
+                params["ent_coef"] = v
+                note(dest, value, v)
+        elif dest == "vf_coef":
+            v = _clamp(value, 0.2, 1.0)
+            if v is None:
+                skipped.append(dest)
+            else:
+                params["vf_coef"] = v
+                note(dest, value, v)
         elif dest == "gamma":
             if not isinstance(value, (int, float)):
                 skipped.append(dest)
-            elif abs(value - beta) < 1e-9:
+            elif value - beta > 1e-9:
+                skipped.append(dest)          # refused by rule, not resolution
+            elif beta - value < 1e-4:
                 params["gamma_at_beta"] = True
-            elif 1e-4 <= beta - value <= 0.05:
+                note(dest, value, beta)
+            else:
+                off = min(beta - value, 0.05)
                 params["gamma_at_beta"] = False
-                params["beta_minus_gamma"] = round(beta - value, 6)
-            else:
-                skipped.append(dest)
+                params["beta_minus_gamma"] = round(off, 6)
+                note(dest, value, round(beta - off, 6))
         elif dest == "gae_lambda":
-            om = round(1.0 - value, 6) if isinstance(value, (int, float)) else None
-            if om is not None and 5e-4 <= om <= 0.2:
-                params["one_minus_gae_lambda"] = om
-            else:
+            om = _clamp(1.0 - value, 5e-4, 0.2) if isinstance(
+                value, (int, float)) else None
+            if om is None:
                 skipped.append(dest)
+            else:
+                params["one_minus_gae_lambda"] = round(om, 6)
+                note(dest, value, round(1.0 - om, 6))
         elif dest == "clip_init":
-            if value in CLIP_INIT_CHOICES:
-                params["clip_init"] = value
-            else:
+            v = _nearest(value, CLIP_INIT_CHOICES)
+            if v is None:
                 skipped.append(dest)
+            else:
+                params["clip_init"] = v
+                note(dest, value, v)
         elif dest == "n_steps":
-            exp = _log2_exact(value)
-            if exp is not None and n_steps_log2_low(min_n_steps) <= exp <= 12:
+            lo = n_steps_log2_low(min_n_steps)
+            exp = _nearest_log2(value, 8, 12)
+            if exp is None or exp < lo:
+                skipped.append(dest)          # stale vs the rollout floor
+            else:
                 params["log2_n_steps"] = exp
-            else:
-                skipped.append(dest)
+                note(dest, value, 2 ** exp)
         elif dest == "n_epochs":
-            if value in N_EPOCHS_CHOICES:
-                params["n_epochs"] = value
-            else:
+            v = _nearest(value, N_EPOCHS_CHOICES)
+            if v is None:
                 skipped.append(dest)
-        elif dest == "vf_coef":
-            if isinstance(value, (int, float)) and 0.2 <= value <= 1.0:
-                params["vf_coef"] = float(value)
             else:
-                skipped.append(dest)
+                params["n_epochs"] = v
+                note(dest, value, v)
         elif dest == "max_grad_norm":
-            if value in MAX_GRAD_NORM_CHOICES:
-                params["max_grad_norm"] = value
-            else:
+            v = _nearest(value, MAX_GRAD_NORM_CHOICES)
+            if v is None:
                 skipped.append(dest)
+            else:
+                params["max_grad_norm"] = v
+                note(dest, value, v)
         elif dest == "net_arch":
             shape = tuple(value) if isinstance(value, (list, tuple)) else ()
-            exp = _log2_exact(shape[0]) if shape else None
-            # depth is only range-checked where it is searched: at core the
-            # script's own depth stands whatever it is, so refusing to encode it
-            # would strand the warm start over an axis core never touches
-            depth_ok = tier == "core" or (
-                NET_DEPTH_RANGE[0] <= len(shape) <= NET_DEPTH_RANGE[1])
-            if (shape and len(set(shape)) == 1 and depth_ok and exp is not None
-                    and NET_WIDTH_LOG2[0] <= exp <= NET_WIDTH_LOG2[1]):
+            exp = _nearest_log2(shape[0], *NET_WIDTH_LOG2) if shape else None
+            if exp is None:
+                skipped.append(dest)
+            else:
+                # at core the script's own depth stands whatever it is — the
+                # axis is not searched there, so it is not rounded either
+                depth = (len(shape) if tier == "core"
+                         else max(NET_DEPTH_RANGE[0],
+                                  min(NET_DEPTH_RANGE[1], len(shape))))
                 params["log2_net_width"] = exp
                 if tier != "core":
-                    params["net_depth"] = len(shape)
-            else:
-                skipped.append(dest)
+                    params["net_depth"] = depth
+                note(dest, shape, (2 ** exp,) * depth)
         elif dest == "embed_dim":
-            if value in EMBED_DIM_CHOICES:
-                params["embed_dim"] = value
-            else:
+            v = _nearest(value, EMBED_DIM_CHOICES)
+            if v is None:
                 skipped.append(dest)
+            else:
+                params["embed_dim"] = v
+                note(dest, value, v)
         elif dest == "features_dim":
-            if value in FEATURES_DIM_CHOICES:
-                params["features_dim"] = value
-            else:
+            v = _nearest(value, FEATURES_DIM_CHOICES)
+            if v is None:
                 skipped.append(dest)
+            else:
+                params["features_dim"] = v
+                note(dest, value, v)
         elif dest == "channels":
             label = next((k for k, v in CHANNELS_CHOICES.items()
                           if tuple(v) == tuple(value)), None) \
@@ -257,16 +336,17 @@ def encode_ppo(cfg: dict[str, object], *, n_envs: int = 1,
             if label:
                 params["channels"] = label
             else:
-                skipped.append(dest)
+                skipped.append(dest)          # a stack has no nearest neighbour
         elif dest == "batch_size":
-            exp = _log2_exact(value)
-            if exp is not None and 5 <= exp <= 9:
-                params["log2_batch_size"] = exp
-            else:
+            exp = _nearest_log2(value, 5, 9)
+            if exp is None:
                 skipped.append(dest)
+            else:
+                params["log2_batch_size"] = exp
+                note(dest, value, 2 ** exp)
         else:
             skipped.append(dest)
-    return params, skipped
+    return params, skipped, snapped
 
 
 # The tiers are budget scopes, and membership follows one question: how much
@@ -320,7 +400,8 @@ class Space:
     sample: Callable[..., dict[str, object]]
     tiers: dict[str, tuple[str, ...]] = field(default_factory=dict)
     derived: dict[str, tuple[str, float]] = field(default_factory=dict)
-    encode: Callable[..., tuple[dict[str, object], list[str]]] | None = None
+    # encode returns (params, skipped, snapped) — see encode_ppo
+    encode: Callable[..., tuple[dict, list[str], dict[str, tuple]]] | None = None
 
 
 SPACES: dict[str, Space] = {

@@ -94,7 +94,7 @@ def test_fix_is_the_deliberate_form_of_the_same_outcome(monkeypatch):
 
 # --- what a study would find wrong, answered without launching one ---------
 
-def _readiness(capsys, dests: dict) -> str:
+def _readiness(capsys, dests: dict, tier: str = "core") -> str:
     """--show-space's readiness report for a script with these dests/defaults."""
     import argparse
     from mdp_tuning.__main__ import report_readiness
@@ -105,7 +105,7 @@ def _readiness(capsys, dests: dict) -> str:
                     for k, v in dests.items()},
         eval_args={})
     report_readiness(scripts, argparse.Namespace(
-        algo="ppo", knobs="core", fix=[], beta=1.0, episode_len=None,
+        algo="ppo", knobs=tier, fix=[], beta=1.0, episode_len=None,
         min_rollout_episodes=10))
     return capsys.readouterr().out
 
@@ -129,9 +129,25 @@ def test_a_tier_the_script_cannot_reach_is_named_before_launch(capsys):
     assert "breadth BLOCKED" in out and "vf_coef" in out
 
 
-def test_an_unrepresentable_default_is_named_with_its_value(capsys):
-    """The mab case: a rollout floor derived to 2560 is not a power of two, so
-    the warm start drops it and trial 0 silently stops being the L1 centre."""
+def test_an_off_grid_default_is_reported_with_the_value_it_moved_to(capsys):
+    """The mab case: a rollout floor derived to 2560 is not a power of two. It
+    is rounded to the nearest one rather than dropped — but trial 0 is then L1
+    rounded to the grid, not L1, and the study's Δ(L2−L1) rests on knowing so."""
     out = _readiness(capsys, {**L1, "n_steps": 2560})
-    assert "trial 0 is NOT the L1 centre" in out
-    assert "n_steps=2560" in out
+    assert "L1 ROUNDED to the grid" in out
+    assert "n_steps 2560->2048" in out
+
+
+def test_a_refused_default_still_reads_as_not_the_centre(capsys):
+    """§8.6 rules γ > β out entirely, so it is not rounded into range — the
+    script is stating a spec violation, and the warm start says so."""
+    out = _readiness(capsys, {**L1, "gamma": 1.5}, tier="breadth")
+    assert "trial 0 is NOT the L1 centre" in out and "refuses" in out
+    assert "gamma=1.5" in out
+
+
+def test_a_default_outside_the_searched_tier_is_not_the_warm_start_s_problem(capsys):
+    """The warm start only encodes knobs the tier actually searches, so a
+    gamma the space would refuse is irrelevant to a core-tier study."""
+    out = _readiness(capsys, {**L1, "gamma": 1.5}, tier="core")
+    assert "trial 0 = the L1 centre" in out

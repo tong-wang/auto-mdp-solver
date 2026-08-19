@@ -213,16 +213,21 @@ def report_readiness(scripts: DomainScripts, args: argparse.Namespace) -> None:
     if space.encode is None:
         return
     tunable = resolve_tunable(scripts, args, {})
-    enq, skipped = space.encode(l1_defaults(scripts, tunable),
-                                **sample_kwargs_for(scripts, args))
-    if not skipped:
+    enq, skipped, snapped = space.encode(l1_defaults(scripts, tunable),
+                                         **sample_kwargs_for(scripts, args))
+    if not skipped and not snapped:
         print(f"warm start : trial 0 = the L1 centre ({len(enq)} knobs encoded)")
         return
-    # spec §8.6: a default the space cannot encode is SAMPLED, so the study
-    # measures no delta against L1 — and says so nowhere in its results
-    detail = ", ".join(f"{k}={scripts.train_args[k].default!r}" for k in sorted(skipped))
-    print(f"warm start : trial 0 is NOT the L1 centre — {detail} "
-          f"not representable, so it is sampled instead")
+    # spec §8.6: trial 0 carries the study's whole claim to measuring Δ(L2−L1),
+    # so both ways it can fall short of L1 are answerable before launch
+    if snapped:
+        moved = "; ".join(f"{k} {a!r}->{u!r}" for k, (a, u) in sorted(snapped.items()))
+        print(f"warm start : trial 0 = L1 ROUNDED to the grid — {moved}")
+    if skipped:
+        detail = ", ".join(f"{k}={scripts.train_args[k].default!r}"
+                           for k in sorted(skipped))
+        print(f"warm start : trial 0 is NOT the L1 centre — the space refuses "
+              f"{detail} outright, so it is sampled instead")
 
 
 def print_summary(study: optuna.Study, top: int = 5,
@@ -471,23 +476,32 @@ def main() -> None:
                 v = tuple(v)
             if v is not None:
                 defaults[k] = v
-        enq, skipped = space.encode(defaults, **sample_kw)
+        enq, skipped, snapped = space.encode(defaults, **sample_kw)
         if enq:
             study.enqueue_trial(enq)
             print(f"warm start: enqueued trial 0 = train-script defaults "
                   f"({', '.join(sorted(enq))})")
+        # trial 0 is supposed to BE the L1 centre, which is what makes Δ(L2−L1)
+        # readable off the study — so any distance from it is stated, and
+        # recorded on the study so the record outlives this console.
+        if snapped:
+            print(f"WARNING: warm start: {len(snapped)} L1 default(s) are not "
+                  f"exactly representable and were moved to the nearest value "
+                  f"the space has — trial 0 is L1 rounded to the grid, not L1:")
+            for dest, (asked, used) in sorted(snapped.items()):
+                print(f"         {dest}: {asked!r} -> {used!r}")
+            study.set_user_attr("warm_start_snapped",
+                                {k: [repr(a), repr(u)] for k, (a, u) in snapped.items()})
         if skipped:
-            # trial 0 is supposed to BE the L1 centre, which is what makes
-            # Δ(L2−L1) readable off the study. A silently dropped knob leaves a
-            # warm start that is not the train script's config and says so
-            # nowhere.
-            print(f"WARNING: warm start: the train script's default for "
-                  f"{sorted(skipped)} is outside the {args.algo} space, so "
-                  f"trial 0 SAMPLES it — trial 0 is then not the L1 centre and "
-                  f"the study does not measure what tuning adds over L1")
+            print(f"WARNING: warm start: the {args.algo} space refuses "
+                  f"{sorted(skipped)} outright, so trial 0 SAMPLES it — trial 0 "
+                  f"is then not the L1 centre and the study does not measure "
+                  f"what tuning adds over L1. A refusal is a signal, not a "
+                  f"rounding error (§8.6): γ > β, an n_steps under the rollout "
+                  f"floor, or a structure with no nearest neighbour.")
             for dest in sorted(skipped):
-                print(f"         {dest}={defaults.get(dest)!r} matches no "
-                      f"declared value; align the script default or the space")
+                print(f"         {dest}={defaults.get(dest)!r}")
+            study.set_user_attr("warm_start_skipped", sorted(skipped))
 
     study.optimize(
         make_objective(scripts, args, scenario, study_dir, fixed_train, fixed_eval),

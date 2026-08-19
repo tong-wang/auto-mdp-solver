@@ -1692,17 +1692,25 @@ default, and derives schedule finals — see its `--knobs`, `--fix`, `--beta`,
 study search a smaller space than it reports, so naming a tier explicitly turns
 that into a launch failure rather than a warning (§8.2 tier 2).
 
-**Trial 0 is the L1 centre only if the L1 values are representable.** The warm
-start enqueues the script's defaults, and a default the space cannot encode is
-dropped and *sampled* instead — so the study still runs, still reports a best
-trial, and no longer measures Δ(L2−L1) against anything. The representability
-constraints are the space's own: `n_steps` and `batch_size` are powers of two,
-`net_arch` is uniform-width with a power-of-two width, `learning_rate` and
-`ent_coef` lie inside their log ranges. A derived value that lands outside one —
-a rollout floor rounded to 2560, a `(400, 300)` net — is a real derivation, so
-the fix is to reconcile it with the space deliberately, never to leave the
-warm start silently short. Both `--show-space` and the launch banner report
-which defaults fail to encode, so this is answerable before a study is run.
+**Trial 0 is the L1 centre only as far as the space can represent it.** The
+warm start enqueues the script's defaults, and the space is a grid: `n_steps`
+and `batch_size` are powers of two, `net_arch` is uniform width on a power of
+two, `learning_rate` and `ent_coef` live inside log ranges. A derived value off
+that grid — a rollout floor derived to 2560, an `ent_coef` of exactly 0 — is
+**moved to its nearest representable neighbour**, and the move is reported in
+both `--show-space` and the launch banner and recorded on the study. Rounding,
+not dropping, because dropping hands the knob to the sampler and puts trial 0 an
+unbounded distance from L1 (a 0 `ent_coef` becomes any value across seven
+decades), where a rounding step is bounded by the grid. Read the report: trial 0
+is then *L1 rounded to the grid*, and Δ(L2−L1) is measured against that.
+
+**A refusal is not a rounding error.** Three values are rejected outright rather
+than moved, because each is a signal that rounding would hide: a γ above β
+(§8.6 rules it out entirely, so the script is stating a spec violation), an
+`n_steps` below the domain's rollout floor (the floor says the default was
+derived under a different T̄, so it is *stale* and wants re-deriving, not
+rounding up), and a CNN channel stack (a structure has no nearest neighbour).
+Those are sampled, and the study measures no delta against L1 for them.
 
 ---
 

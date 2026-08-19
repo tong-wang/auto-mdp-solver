@@ -78,8 +78,8 @@ def test_encode_roundtrip() -> None:
         "n_epochs": 10, "vf_coef": 0.5, "max_grad_norm": 0.5,
         "net_arch": (64, 64), "batch_size": 256,
     }
-    params, skipped = encode_ppo(defaults, beta=1.0)
-    assert not skipped, skipped
+    params, skipped, snapped = encode_ppo(defaults, beta=1.0)
+    assert not skipped and not snapped, (skipped, snapped)
     cfg = sample_ppo(FixedTrial(params), set(defaults), beta=1.0)
     for k, v in defaults.items():
         got = cfg[k]
@@ -89,18 +89,34 @@ def test_encode_roundtrip() -> None:
             assert abs(float(got) - float(v)) < 1e-9, (k, got, v)
 
 
-def test_encode_skips_unrepresentable() -> None:
-    params, skipped = encode_ppo(
-        {"ent_coef": 0.0,            # outside the log range
+def test_a_value_off_the_grid_is_snapped_not_dropped() -> None:
+    """Dropping leaves Optuna to *sample* the knob, which puts trial 0 an
+    unbounded distance from L1; snapping bounds it by one rounding step."""
+    params, skipped, snapped = encode_ppo(
+        {"ent_coef": 0.0,            # under the log range's floor
          "n_steps": 3000,            # not a power of two
-         "net_arch": (17, 3),        # no label
-         "learning_rate": 1e-4},
+         "net_arch": (17, 3),        # neither uniform nor a power of two
+         "learning_rate": 1e-4},     # exact
         beta=1.0)
-    assert set(skipped) == {"ent_coef", "n_steps", "net_arch"}
-    assert params == {"learning_rate": 1e-4}
-    # a default below a raised n_steps floor is skipped, not enqueued stale
-    params, skipped = encode_ppo({"n_steps": 2048}, min_n_steps=2500)
-    assert skipped == ["n_steps"] and not params
+    assert not skipped
+    assert params["log2_n_steps"] == 12          # 3000 -> 4096, the nearer 2^k
+    assert params["ent_coef"] == 1e-8
+    assert params["log2_net_width"] == 5 and params["net_depth"] == 2
+    assert snapped["n_steps"] == (3000, 4096)
+    assert snapped["ent_coef"] == (0.0, 1e-8)
+    assert snapped["net_arch"] == ((17, 3), (32, 32))
+    assert "learning_rate" not in snapped         # exact values are not noted
+
+
+def test_a_refusal_is_a_signal_and_still_skips() -> None:
+    """Two values the space rejects on purpose rather than for want of
+    resolution — rounding them would hide the thing worth seeing."""
+    # a default below a raised n_steps floor is stale, not off-grid
+    params, skipped, snapped = encode_ppo({"n_steps": 2048}, min_n_steps=2500)
+    assert skipped == ["n_steps"] and not params and not snapped
+    # §8.6 rules gamma > beta out entirely, so it is a spec violation to report
+    _, skipped, snapped = encode_ppo({"gamma": 0.999}, beta=0.99)
+    assert skipped == ["gamma"] and not snapped
 
 
 def test_long_horizon_lambda_is_inside_the_space() -> None:
@@ -109,15 +125,15 @@ def test_long_horizon_lambda_is_inside_the_space() -> None:
     enqueued as the warm-start trial. The range stays ABSOLUTE (never coupled
     to T̄): two campaigns measured opposite optima, so the tuner searches the
     full range and no episode-relative floor is imposed."""
-    params, skipped = encode_ppo({"gae_lambda": 0.994}, beta=1.0)
+    params, skipped, _ = encode_ppo({"gae_lambda": 0.994}, beta=1.0)
     assert not skipped
     cfg = sample_ppo(FixedTrial(params), {"gae_lambda"}, beta=1.0)
     assert abs(cfg["gae_lambda"] - 0.994) < 1e-9
 
     # both campaigns' winners representable: game2048's 0.90 and λ→0.9995
     for lam in (0.90, 0.9995):
-        params, skipped = encode_ppo({"gae_lambda": lam}, beta=1.0)
-        assert not skipped, lam
+        params, skipped, snapped = encode_ppo({"gae_lambda": lam}, beta=1.0)
+        assert not skipped and not snapped, lam
 
 
 # --- net_arch as two ordered axes (width in core, depth at breadth) --------
@@ -151,21 +167,26 @@ def test_the_shape_a_script_defaults_to_is_encodable() -> None:
     """upstream #56: a (128,128) default matched no label, so the knob was
     dropped from the warm start and trial 0 was not the L1 centre."""
     for shape in [(64, 64), (128, 128), (256, 256), (32, 32, 32), (128, 128, 128)]:
-        params, skipped = encode_ppo({"net_arch": shape}, tier="all")
-        assert not skipped, shape
+        params, skipped, snapped = encode_ppo({"net_arch": shape}, tier="all")
+        assert not skipped and not snapped, shape
         assert _arch(params, "all") == shape
 
 
-def test_a_non_uniform_shape_is_skipped_not_guessed() -> None:
-    _, skipped = encode_ppo({"net_arch": (400, 300)}, tier="all")
-    assert skipped == ["net_arch"]
+def test_a_non_uniform_shape_snaps_to_the_grid() -> None:
+    """(400, 300) left the grid when net_arch became width x depth; its nearest
+    uniform neighbour is what trial 0 gets, and the move is reported."""
+    params, skipped, snapped = encode_ppo({"net_arch": (400, 300)}, tier="all")
+    assert not skipped
+    assert params == {"log2_net_width": 8, "net_depth": 2}
+    assert snapped["net_arch"] == ((400, 300), (256, 256))
 
 
 def test_core_encodes_a_depth_it_does_not_search() -> None:
     """Refusing to encode an out-of-range depth at core would strand the warm
     start over an axis core never touches."""
-    params, skipped = encode_ppo({"net_arch": (64,) * 6}, tier="core")
+    params, skipped, snapped = encode_ppo({"net_arch": (64,) * 6}, tier="core")
     assert not skipped and params == {"log2_net_width": 6}
+    assert not snapped          # depth is not rounded where it is not searched
 
 
 def test_a_study_that_recorded_the_old_categorical_still_resumes(tmp_path) -> None:
