@@ -42,13 +42,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("-s", "--scenario_name", default=None, type=str,
                    help="scenario to tune on (default: the train script's own default)")
     p.add_argument("--algo", default="ppo", type=str, choices=sorted(SPACES))
-    p.add_argument("--knobs", default="core", type=str,
+    p.add_argument("--knobs", default=None, type=str,
                    choices=("core", "breadth", "all"),
                    help="knob tier to tune (SOLVE_LEVELS_PLAN §3.5): 'core' = "
                         "the high-impact knobs (default; right for ~25 trials); "
                         "'breadth' adds the second tier (use with ≥40 trials); "
                         "'all' also opens the frozen tier (clip, max_grad_norm, "
                         "gamma)")
+    p.add_argument("--strict-knobs", action="store_true",
+                   help="fail at launch when an in-tier knob has no matching "
+                        "train-script dest (spec §8.2 tier 2). Implied whenever "
+                        "--knobs is passed explicitly: asking for a tier and "
+                        "silently getting a subset of it is the failure this "
+                        "guards, and it is invisible in the result")
     p.add_argument("--fix", action="append", default=[], metavar="KNOB",
                    help="lock a knob at the train script's default instead of "
                         "tuning it (repeatable) — the forced-move lock; use "
@@ -106,7 +112,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def parse_args() -> argparse.Namespace:
-    return _build_arg_parser().parse_args()
+    args = _build_arg_parser().parse_args()
+    # "core" is the default tier, but a *request* for a tier is a different
+    # thing from falling into one, and only the request can be betrayed by a
+    # missing dest — so the sentinel is resolved here rather than by argparse.
+    args.knobs_explicit = args.knobs is not None
+    if args.knobs is None:
+        args.knobs = "core"
+    return args
 
 
 def _resolve_domain_dir(name: str) -> Path:
@@ -118,6 +131,18 @@ def _resolve_domain_dir(name: str) -> Path:
     if cand.is_dir():
         return cand
     raise FileNotFoundError(f"domain directory not found: {name}")
+
+
+def unmatched_knobs(scripts: DomainScripts, algo: str, tier: str) -> list[str]:
+    """In-tier knobs the train script exposes no matching dest for (§8.2 tier 2).
+
+    ``OPTIONAL_KNOBS`` are the extractor-shaped ones only some architectures
+    have; their absence is a fact about the domain, not a broken contract.
+    """
+    space = SPACES[algo]
+    tier_knobs = space.tiers.get(tier, space.knobs)
+    return [k for k in tier_knobs
+            if k not in scripts.train_args and k not in OPTIONAL_KNOBS]
 
 
 def show_space(scripts: DomainScripts, algo: str, tier: str = "all",
@@ -150,7 +175,7 @@ def show_space(scripts: DomainScripts, algo: str, tier: str = "all",
     if skipped:
         print(f"skipped  ({len(skipped)}): {', '.join(skipped)} "
               "(not exposed by the train script)")
-    rot = [k for k in skipped if k not in OPTIONAL_KNOBS]
+    rot = unmatched_knobs(scripts, algo, tier)
     if rot:
         print(f"WARNING: in-tier knob(s) with no matching train-script flag: "
               f"{', '.join(rot)} — the script predates the spec's required "
@@ -316,6 +341,22 @@ def main() -> None:
         show_space(scripts, args.algo, tier=args.knobs, locked=set(args.fix))
         return
 
+    # spec §8.2 tier 2 — before the study directory exists, because a study that
+    # searches 7 knobs while its banner says 8 leaves no trace of the
+    # discrepancy in any artifact downstream of this launch.
+    # --fix is the operator saying "hold this at the script default", which is
+    # exactly what a missing dest produces — asked-for, so not a silent shrink.
+    rot = [k for k in unmatched_knobs(scripts, args.algo, args.knobs)
+           if k not in set(args.fix)]
+    if rot and not args.summary_only and (args.knobs_explicit or args.strict_knobs):
+        raise SystemExit(
+            f"FATAL: --knobs {args.knobs} asks for {', '.join(rot)}, but "
+            f"{scripts.train_script.name} exposes no matching dest — the study "
+            f"would search a smaller space than it reports. Expose the flag(s), "
+            f"or --fix {rot[0]} to lock it deliberately, or drop to a tier that "
+            f"does not include them. (--show-space lists the resolved space "
+            f"without launching.)")
+
     scenario = args.scenario_name or str(scripts.train_args["scenario_name"].default)
     fixed_train = parse_overrides(args.train_arg, scripts.train_args, "train")
     fixed_eval = parse_overrides(args.eval_arg, scripts.eval_args, "eval")
@@ -384,8 +425,17 @@ def main() -> None:
             print(f"warm start: enqueued trial 0 = train-script defaults "
                   f"({', '.join(sorted(enq))})")
         if skipped:
-            print(f"warm start: default value outside the space for "
-                  f"{sorted(skipped)} — sampled instead")
+            # trial 0 is supposed to BE the L1 centre, which is what makes
+            # Δ(L2−L1) readable off the study. A silently dropped knob leaves a
+            # warm start that is not the train script's config and says so
+            # nowhere.
+            print(f"WARNING: warm start: the train script's default for "
+                  f"{sorted(skipped)} is outside the {args.algo} space, so "
+                  f"trial 0 SAMPLES it — trial 0 is then not the L1 centre and "
+                  f"the study does not measure what tuning adds over L1")
+            for dest in sorted(skipped):
+                print(f"         {dest}={defaults.get(dest)!r} matches no "
+                      f"declared value; align the script default or the space")
 
     study.optimize(
         make_objective(scripts, args, scenario, study_dir, fixed_train, fixed_eval),

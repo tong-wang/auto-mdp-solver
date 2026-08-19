@@ -44,7 +44,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("-r", "--reward_mode",      type=str, default="revenue",
                    choices=["revenue"])
     p.add_argument("--n-seeds", type=int, default=65536,
-                   help="Number of episode seeds (seeds 0..n-1)")
+                   help="Number of episode seeds in the block")
+    p.add_argument("--first-seed", type=int, default=0,
+                   help="First episode seed (spec §9.2). The protocol block is "
+                        "0; §9.7's checkpoint screen runs at 1000000 so the "
+                        "layer that ranks never touches the block that quotes.")
     p.add_argument("--outfile", type=str, default=None,
                    help="TSV output (defaults to <model_dir>/ppo_eval_<scenario_name>.tsv)")
     return p
@@ -63,11 +67,12 @@ def evaluate_scenario(
     vecnorm_path: Path | None,
     scenario: DynamicPricingScenario,
     n_seeds: int,
+    first_seed: int,
     observation_mode: str,
     action_mode: str,
     reward_mode: str,
 ) -> dict:
-    """Run episodes with seeds 0..n_seeds-1 on a fixed scenario, return stats."""
+    """Run the seed block first_seed..first_seed+n_seeds-1, return stats."""
     env = DynamicPricingEnv(
         scenario=scenario,
         observation_mode=observation_mode,
@@ -82,9 +87,9 @@ def evaluate_scenario(
 
     revenues = np.zeros(n_seeds)
 
-    for ep_seed in range(n_seeds):
-        if ep_seed % 10000 == 0:
-            print(f"  seed {ep_seed}/{n_seeds}", flush=True)
+    for i, ep_seed in enumerate(range(first_seed, first_seed + n_seeds)):
+        if i % 10000 == 0:
+            print(f"  seed {i}/{n_seeds}", flush=True)
         # inject seed via env_method so VecNormalize normalization stays active
         raw_obs, _ = venv.env_method("reset", seed=ep_seed)[0]
         obs        = venv.normalize_obs(raw_obs[np.newaxis, :])
@@ -97,7 +102,7 @@ def evaluate_scenario(
             revenue += float(rewards[0])
             done     = bool(done_arr[0])
 
-        revenues[ep_seed] = revenue
+        revenues[i] = revenue
 
     venv.close()
 
@@ -131,7 +136,7 @@ def main() -> None:
     print(f"model     {model_path}")
     print(f"vecnorm   {vecnorm_path}  (exists={vecnorm_path.exists()})")
     print(f"output    {outfile}")
-    print(f"n_seeds   {args.n_seeds}")
+    print(f"seeds     {args.n_seeds} from {args.first_seed}")
 
     header = "a\talpha\tn0\trevenue_mean\trevenue_var\tsemivar_d\tsemivar_u"
     print(header)
@@ -146,6 +151,7 @@ def main() -> None:
             vecnorm_path=vecnorm_path if vecnorm_path.exists() else None,
             scenario=scenario,
             n_seeds=args.n_seeds,
+            first_seed=args.first_seed,
             observation_mode=args.observation_mode,
             action_mode=args.action_mode,
             reward_mode=args.reward_mode,

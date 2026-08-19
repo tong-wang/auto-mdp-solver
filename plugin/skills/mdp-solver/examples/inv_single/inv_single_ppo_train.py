@@ -44,7 +44,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--total-timesteps",   type=int,   default=2_000_000)
     p.add_argument("--seed",              type=int,   default=1)
     p.add_argument("--outdir",            type=str,   default="results")
-    p.add_argument("--checkpoint-every",  type=int,   default=50_000)
+    p.add_argument("--tag",               type=str,   default="",
+                   help="escalation-log entry this run was launched under "
+                        "(spec §8.2); lands verbatim in the args log")
+    p.add_argument("--checkpoint-every-frac", type=float, default=0.05,
+                   help="checkpoint every this fraction of the budget (spec "
+                        "§9.7 wants ~20 for the post-hoc screen); 0 disables")
     p.add_argument("--report-every",      type=int,   default=50_000)
     p.add_argument("--progress-bar",      action="store_true")
     p.add_argument("--gym-log",           type=int,   default=0, choices=[0, 1],
@@ -70,6 +75,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--n-envs",            type=int,   default=1)
     # VecNormalize
     p.add_argument("--vecnorm-clip-obs",  type=float, default=10.0)
+    # L1 (§8.6): obs here are heterogeneous (inventory vs. pipeline vs. demand
+    # statistic) and stationary, so obs norm is on — but the decision is the
+    # IR's, so both values stay reachable (§8.3).
+    p.add_argument("--no-norm-obs",       action="store_false", dest="norm_obs", default=True)
     p.add_argument("--no-norm-reward",    action="store_false", dest="norm_reward", default=True)
     return p
 
@@ -113,10 +122,14 @@ _SHORT_KEYS: dict[str, str] = {
     "max_grad_norm":   "grad",
     "target_kl":       "kl",
     "vecnorm_clip_obs": "clipobs",
+    "norm_obs":        "normobs",
     "norm_reward":     "normrew",
 }
-_SKIP_KEYS = {"outdir", "scenario_name", "progress_bar", "checkpoint_every",
-              "report_every", "gym_log"}
+_SKIP_KEYS = {"outdir", "scenario_name", "progress_bar",
+              "checkpoint_every_frac", "report_every", "gym_log",
+              # campaign metadata, not config: a run's identity must not depend
+              # on which escalation entry happened to motivate it
+              "tag"}
 
 
 def build_run_name(args: argparse.Namespace) -> str:
@@ -257,7 +270,7 @@ def build_training_env(args: argparse.Namespace, outdir: Path) -> VecNormalize:
         return _make
 
     env = DummyVecEnv([make_env(i) for i in range(args.n_envs)])
-    return VecNormalize(env, norm_obs=True, norm_reward=args.norm_reward,
+    return VecNormalize(env, norm_obs=args.norm_obs, norm_reward=args.norm_reward,
                         clip_obs=args.vecnorm_clip_obs, gamma=args.gamma)
 
 
@@ -285,16 +298,29 @@ def build_model(args: argparse.Namespace, env, outdir: Path) -> PPO:
     )
 
 
+def checkpoint_freq(args: argparse.Namespace) -> int:
+    """Checkpoint stride in VecEnv steps, which is what CheckpointCallback counts.
+
+    The knob is a *fraction* of the budget (§8.2): §9.7 asks for ~20
+    checkpoints to screen, and an absolute stride stops meaning that the moment
+    --total-timesteps moves.
+    """
+    return max(1, int(args.checkpoint_every_frac * args.total_timesteps
+                      / max(1, args.n_envs)))
+
+
 def build_callbacks(args: argparse.Namespace, ckpt_dir: Path) -> CallbackList:
+    metrics = InventoryMetricsCallback(
+        report_every_steps=max(1, args.report_every),
+    )
+    if args.checkpoint_every_frac <= 0:
+        return CallbackList([metrics])
     checkpoint = CheckpointCallback(
-        save_freq=max(1, args.checkpoint_every),
+        save_freq=checkpoint_freq(args),
         save_path=str(ckpt_dir),
         name_prefix="ppo_inv_single",
         save_replay_buffer=False,
         save_vecnormalize=False,
-    )
-    metrics = InventoryMetricsCallback(
-        report_every_steps=max(1, args.report_every),
     )
     return CallbackList([checkpoint, metrics])
 

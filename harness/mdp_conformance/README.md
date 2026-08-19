@@ -60,6 +60,22 @@ Behavioral (constructs the gym and runs the simulator):
   need more state (e.g. a board-game spawn conditioned on the current board) are
   classified **state-conditioned** and skipped, not failed.
 
+Scripts (reads the parsers, without importing the training stack):
+- `scripts.cli_contract` — the train/eval CLIs expose §8.2's **tier-1** names:
+  the problem and rendering modes, `total_timesteps`/`outdir`/`seed`/`tag`,
+  the VecNormalize trio, `gym_log`/`checkpoint_every_frac`, and on the eval side
+  `model_path`/`vecnorm_path`/`outfile`/`n_seeds`/`first_seed`. Tier 2
+  (algorithm knobs) is not enumerated here — `mdp_tuning --show-space` is its
+  oracle — and tier 3 (domain-specific) is checked by nothing, by design. Two
+  groups are conditional and read from the domain: a rendering mode is owed when
+  the env's `__init__` accepts it (a domain whose env has no `reward_mode`
+  parameter owes no flag), the VecNormalize names when the script builds the
+  wrapper. Dests are read from the AST, so the gate needs no SB3/torch. A
+  script that does not exist yet is not a violation — a domain mid-formalization
+  owes no eval script. **WARN for one release, then FAIL**: every existing
+  script fails it on the day it lands, so a hard gate would make every domain
+  non-conformant at once.
+
 Documents (reads the artifacts beside the code, not the code):
 - `docs.restatement_current` — the restatement's sample trajectory still
   renders. A ```` ```step7b ```` fence declares the command that produced it;

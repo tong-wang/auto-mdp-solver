@@ -514,7 +514,7 @@ components in `info`, `terminated` at horizon + any early-termination expr.
 
 **GATE:** the module `__main__` runs random-action episodes in every
 obs/action mode with `observation_space.contains(obs)` asserted each step,
-and `python -m mdp_conformance {domain}` still passes 11/11.
+and `python -m mdp_conformance {domain}` still passes.
 
 ### Stage 3 — baselines (mandatory)
 
@@ -577,12 +577,14 @@ applies here. An entry's `#E` citations resolve in that example's
   world sampler for a specialist, or `grid.as_sampler()` for a generalist) —
   eval enumerates the grid's cells only when the strategy is generalist.
 - `{domain}_ppo_train.py` per spec §8 (`_build_arg_parser`/`parse_args`/
-  `main`; expose `--learning_rate` under that dest plus `--net_arch` and
-  `--n-envs` (spec §8.2) so `mdp_tuning` can reach them; VecNormalize per
-  the IR's `obs_normalization` decision **with `gamma=args.gamma` passed**;
-  script defaults = the L1-derived values, so the tuner's warm-start trial 0
-  is the L1 center; run-name encodes obs/act/rew + non-default
-  hyperparameters).
+  `main`; the **tier-1 CLI surface** of §8.2's table — every name there is one
+  tooling and humans join on across domains, and `scripts.cli_contract` reports
+  what is missing; tier-2 knobs are whatever `mdp_tuning --show-space` names for
+  the family, expose all of them or the study searches a smaller space than it
+  reports; VecNormalize per the IR's `obs_normalization` decision **with
+  `gamma=args.gamma` passed**; script defaults = the L1-derived values, so the
+  tuner's warm-start trial 0 is the L1 center; run-name encodes obs/act/rew +
+  non-default hyperparameters).
 - Launch with `OMP_NUM_THREADS=1 MKL_NUM_THREADS=1`, in the background;
   watch `ep_rew_mean` against the baseline bounds while it runs. The train
   script tees its own stdout/stderr to `{run_dir}/train.log` (spec §8.4), so
@@ -598,8 +600,10 @@ applies here. An entry's `#E` citations resolve in that example's
   Never redirect a run's output into the domain folder — that is what leaves
   orphaned `results_train_*.log` files behind.
 - `{domain}_ppo_eval.py` per spec §9.5 (VecNormalize injection), same seed
-  protocol as the baselines. It knows its run directory from `--model-path`,
-  so redirect it straight there: `> $(dirname <model-path>)/eval.log 2>&1`.
+  protocol as the baselines — the same `(--first-seed, --n-seeds)` block on
+  every arm, which is what makes the per-seed differences paired. It knows its
+  run directory from `--model-path`, so redirect it straight there:
+  `> $(dirname <model-path>)/eval.log 2>&1`.
 
 **GATE:** `python -m mdp_gates --candidate <ppo_eval.tsv>
 --baseline <random.tsv> --baseline <myopic.tsv> [--reference <dp.tsv>]

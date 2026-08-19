@@ -65,6 +65,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("-g", "--grid_name", type=str, default=None,
                    help="train a GENERALIST on this GRIDS entry via "
                         "as_sampler(); mutually exclusive with -s")
+    p.add_argument("-r", "--reward_mode",      type=str, default="payout",
+                   choices=["payout"],
+                   help="reward rendering; one legal value today, but the flag "
+                        "is the name every arm joins on (spec §8.2 tier 1)")
     p.add_argument("-a", "--action_mode",      type=str, default="arm",
                    choices=["arm"])
     p.add_argument("--level", type=str, default="l1", choices=["l0", "l1"],
@@ -87,7 +91,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         "ESCALATION.md's RUNS table and the by_action/ "
                         "TensorBoard symlinks.")
     p.add_argument("--outdir",           type=str, default="results")
-    p.add_argument("--checkpoint-every", type=int, default=1_000_000)
+    p.add_argument("--checkpoint-every-frac", type=float, default=0.05,
+                   help="checkpoint every this fraction of the budget (spec "
+                        "§9.7 wants ~20 for the post-hoc screen); 0 disables")
     p.add_argument("--progress-bar",     action="store_true")
     p.add_argument("--gym-log",          type=int, default=0, choices=[0, 1],
                    help="Write per-episode/per-step gym logs (spec §11). Off by "
@@ -197,7 +203,7 @@ _L0_PRESET: dict[str, object] = {
     "vf_coef": 0.5, "max_grad_norm": 0.5, "target_kl": 0.0,
     "net_arch": [64, 64], "n_envs": 1,
     "norm_obs": False, "norm_reward": False,
-    "eval_every": 0,
+    "eval_every": 0, "checkpoint_every_frac": 0.0,   # terminal checkpoint only
     "total_timesteps": 2_000_000,
     "policy": "mlp", "shape_coef": 0.0,   # escalation levers are never L0
     "anchor_coef": 0.0,
@@ -356,7 +362,7 @@ _SHORT_KEYS: dict[str, str] = {
     "net_arch":         "arch",
     "n_envs":           "nenvs",
 }
-_SKIP_KEYS = {"outdir", "scenario_name", "progress_bar", "checkpoint_every",
+_SKIP_KEYS = {"outdir", "scenario_name", "progress_bar", "checkpoint_every_frac",
               "gym_log", "eval_every", "selection_seeds",
               "selection_base_seed", "patience", "min_delta", "level", "seed",
               # campaign metadata, not config: a run's identity must not
@@ -546,6 +552,7 @@ def build_training_env(args: argparse.Namespace, outdir: Path) -> VecNormalize:
                 scenario=scenario,
                 observation_mode=args.observation_mode,
                 action_mode=args.action_mode,
+                reward_mode=args.reward_mode,
                 logger_filename=(str(outdir / f"train_log_{rank}")
                                  if args.gym_log else None),
             )
@@ -682,6 +689,7 @@ class SelectionEvalCallback(BaseCallback):
                 scenario=resolve_target(self.args),
                 observation_mode=self.args.observation_mode,
                 action_mode=self.args.action_mode,
+                reward_mode=self.args.reward_mode,
             )
         venv = self.model.get_vec_normalize_env()
 
@@ -751,6 +759,7 @@ def evaluate(
         scenario=scenario,
         observation_mode=args.observation_mode,
         action_mode=args.action_mode,
+        reward_mode=args.reward_mode,
     )
     eval_env = DummyVecEnv([lambda: raw_env])
     if vecnorm_path.exists():
@@ -799,14 +808,18 @@ def main() -> None:
 
     env   = build_training_env(args, outdir)
     model = build_model(args, env, outdir)
-    checkpoint = CheckpointCallback(
-        save_freq=max(1, args.checkpoint_every // max(1, args.n_envs)),
-        save_path=str(ckpt_dir),
-        name_prefix="ppo_mab",
-        save_replay_buffer=False,
-        save_vecnormalize=True,
-    )
-    callbacks = [checkpoint]
+    # the stride is a fraction of the budget (§8.2), so "~20 checkpoints for the
+    # screen" survives a budget change; CheckpointCallback counts VecEnv steps
+    callbacks = []
+    if args.checkpoint_every_frac > 0:
+        callbacks.append(CheckpointCallback(
+            save_freq=max(1, int(args.checkpoint_every_frac * args.total_timesteps
+                                 / max(1, args.n_envs))),
+            save_path=str(ckpt_dir),
+            name_prefix="ppo_mab",
+            save_replay_buffer=False,
+            save_vecnormalize=True,
+        ))
     selection = None
     if args.eval_every > 0:
         selection = SelectionEvalCallback(args, outdir)

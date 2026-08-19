@@ -1326,6 +1326,54 @@ if __name__ == "__main__":
 
 ### 8.2 Mandatory conventions
 
+**The CLI tier contract.** Every argument of a train or eval script belongs to
+exactly one of three tiers. The tier decides who owns the name, who may change
+the value, and what enforces it.
+
+**Tier 1 — the invariant surface.** Arguments that mean the same thing in every
+domain and under every algorithm family. Tooling and humans join across domains
+on these, so their *names* are the contract:
+
+| group | train | eval |
+|---|---|---|
+| problem & rendering | `scenario_name` `observation_mode` `action_mode` `reward_mode` | `scenario_name` `observation_mode` `action_mode` `reward_mode` |
+| process & identity | `total_timesteps` `outdir` `seed` `tag` | `model_path` `vecnorm_path` `outfile` |
+| protocol | — | `n_seeds` `first_seed` |
+| env / wrapper stack | `n_envs` `norm_obs` `norm_reward` `vecnorm_clip_obs` | — |
+| artifacts & diagnostics | `gym_log` `checkpoint_every_frac` | — |
+
+`mdp_conformance`'s `scripts.cli_contract` check reads the parsers that exist
+and compares their dests against this table. Two groups are owed only where
+they apply, and the check reads that from the domain rather than from prose: a
+**rendering** mode is owed when the env's `__init__` accepts it — including
+where only one value is legal today, since the flag is the join point and a
+second rendering must not change the CLI's shape — and the **VecNormalize** names
+are owed when the script builds a `VecNormalize` (§8.3). Everything else is
+owed unconditionally. A script that does not exist yet is not a violation — a
+domain still in Phase A owes no `{domain}_ppo_eval.py`, and the check reads the
+parsers it finds and skips the rest, so a Phase-B-stage-0 gate never reports a
+stage the campaign has not claimed.
+
+**Tier 2 — algorithm knobs**, owned by the family's tuning space and
+deliberately **not** enumerated here. `learning_rate`, `n_steps`, `batch_size`,
+`n_epochs`, `gae_lambda`, `ent_coef`, `vf_coef`, `clip_init`, `max_grad_norm`,
+`gamma`, `net_arch` and any extractor knobs are whatever `mdp_tuning`'s space
+for that family declares; `python -m mdp_tuning <domain-dir> --show-space` is
+the machine-readable oracle. §8.6 already obliges a new family to bring its own
+L0 one-liner and its own L1 derivation table, so its knobs are family-property
+by construction — freezing PPO's set in prose would create a second source of
+truth that goes stale on the first off-policy family. What this section asks
+for is enforcement, not enumeration: `mdp_tuning` **fails the study at launch**
+when an in-tier knob has no matching dest and `--knobs` was passed explicitly
+(or `--strict-knobs` is set). Silence is the failure mode that earns the
+fatality — a study accepts `--knobs breadth`, finds one dest missing, warns
+once, and then searches seven knobs while its own banner says eight, with
+nothing downstream of that log able to tell.
+
+**Tier 3 — domain-specific.** `frame_stack`, `cnn_arch`, `mask`, `edge_dim`,
+`anchor_coef`, and anything else one problem needs. Named locally, checked by
+nothing, and that is correct.
+
 - Always `_build_arg_parser()` (private) + `parse_args()` (public) + `main()` + `if __name__ == "__main__": main()`.
 - `_build_arg_parser()` returns the parser; `parse_args()` calls `.parse_args()` on it and returns the namespace. This split lets other scripts reuse the parser (e.g. to add extra arguments) without re-implementing it.
 - Scenario lookup via `SCENARIOS[args.scenario_name]` (not `globals()`).
@@ -1336,6 +1384,17 @@ if __name__ == "__main__":
 - **Do not hard-code `gamma`** in PPO kwargs — expose it as a CLI argument instead. Its default is the IR's `objective.discount_factor` (β): training γ = β is the faithful setting; γ < β only as a logged escalation move, γ > β never (§8.6).
 - **Expose `--net_arch`** (`nargs="+", type=int`, default `64 64` → `policy_kwargs`): network size is a core tuning knob, and `mdp_tuning` can only reach dests the script exposes.
 - **Expose `--n-envs`** (structural, never tuned; default from the §8.6 derivation). All env access goes through the VecEnv API — **never `venv.envs`** — with zero-arg env factories and rank-suffixed Monitor filenames, so `DummyVecEnv`/`SubprocVecEnv` stay a one-argument swap. `DummyVecEnv` is the default; `SubprocVecEnv` only when a *measured* env-step cost (≳1 ms) justifies the IPC overhead. Eval scripts stay single-env (§9.5) regardless.
+- **Expose `--tag <ledger-address>`** (free-form, default empty): the
+  escalation-log entry this run was launched under (`A8a`, `E14`). It costs
+  nothing — the args log records every CLI arg verbatim, so the tag lands in the
+  run dir's immutable `{scenario}_{algo}_args.txt` and a reader standing in the
+  run dir can find its birth entry without grep.
+- **Expose `--checkpoint-every-frac`** (default `0.05`, `0` disables): §9.7's
+  screen wants ~20 checkpoints, and a **fraction of the budget** is what keeps
+  that true when the budget moves — an absolute step count stops meaning "~20
+  checkpoints" the moment `total_timesteps` changes. Convert at the call site:
+  `save_freq = max(1, int(frac * total_timesteps / n_envs))`, since
+  `CheckpointCallback` counts VecEnv steps, not environment steps.
 - **Schedule pairs are one degree of freedom:** `lr_final = lr_init/10`, `clip_final = clip_init/4`. The flags may exist separately, but defaults obey the ratios and `mdp_tuning` derives the finals from the tuned inits — a schedule must never invert.
 - For high instance-variance domains pass `stats_window_size=500` (or more) to the model: the default 100-episode rolling `ep_rew_mean` swings even under a static policy.
 - **Pin BLAS/torch threads when launching training** (`OMP_NUM_THREADS=1 MKL_NUM_THREADS=1`): the policies in these domains are tiny, so torch's default all-cores threading adds sync overhead rather than speed, and on a shared machine it oversubscribes cores already used by other jobs (measured on a small-board CNN domain: 9 min → 11 s for 2048 steps on a box concurrently running an 8-core workload; expect a smaller but still real gain on an idle box). The `mdp_tuning` harness sets this for its subprocesses automatically.
@@ -1353,7 +1412,7 @@ def make_env(rank: int):
     return _make
 
 env = DummyVecEnv([make_env(i) for i in range(args.n_envs)])
-env = VecNormalize(env, norm_obs=True, norm_reward=args.norm_reward,
+env = VecNormalize(env, norm_obs=args.norm_obs, norm_reward=args.norm_reward,
                    clip_obs=args.vecnorm_clip_obs, gamma=args.gamma)
 ```
 
@@ -1361,7 +1420,7 @@ env = VecNormalize(env, norm_obs=True, norm_reward=args.norm_reward,
 - **n_envs is structural** (§8.2): the rollout buffer is `n_steps × n_envs`; more envs decorrelate the buffer (more instances per update, stabler `obs_rms`), which matters most for long-episode domains. Rank-suffixed Monitor files keep per-env logs from interleaving.
 
 - **Order matters.** `Monitor` must sit **inside** `VecNormalize` so `rollout/ep_rew_mean` is logged on the **raw** reward scale — this keeps the metric comparable across runs regardless of reward normalization. (Only `train/value_loss`, `train/explained_variance`, etc. are on the normalized scale.)
-- **Expose two CLI flags:** `--vecnorm_clip_obs` (default `10.0`) and `--no_norm_reward` (`action="store_false", dest="norm_reward", default=True`). Encode both in the run name when non-default.
+- **Expose three CLI flags:** `--vecnorm_clip_obs` (default `10.0`), `--no_norm_obs` (`action="store_false", dest="norm_obs"`) and `--no_norm_reward` (`action="store_false", dest="norm_reward", default=True`). Encode each in the run name when non-default. **`norm_obs` is a flag, never a literal**: §8.6's L1 table derives it per domain and L0 requires it off, so a skeleton that hardcodes `norm_obs=True` can express neither — which is exactly how a script written to this section ends up unable to run its own domain's derived config.
 - **Save the stats:** `env.save(outdir / "vecnormalize.pkl")` after `model.learn(...)`, then `env.close()`.
 - **What each normalization is for:**
   - *Obs norm* conditions the network **inputs** (features often span several orders of magnitude — e.g. inventory vs. a price index). It is **part of the policy's input contract**: the saved `obs_rms` **must** be reused at eval/deploy time (§9.5), otherwise the policy sees inputs it was never trained on.
@@ -1549,7 +1608,8 @@ result is always an escalation.
   (`objective.discount_factor`), the algorithm class the IR's validators
   force, the env as built, the shared eval protocol, and a declared 2M-step
   budget constant. No VecNormalize, constant LR 3e-4, constant clip 0.2,
-  `ent_coef` 0, batch 64, MLP (64,64), 1 env, terminal checkpoint. In one
+  `ent_coef` 0, batch 64, MLP (64,64), 1 env, terminal checkpoint
+  (`--no_norm_obs --no_norm_reward --n-envs 1 --checkpoint-every-frac 0`). In one
   line: `PPO("MlpPolicy", env, gamma=β, seed=s).learn(2_000_000)` — anything
   that can't fit in that line is L1+. Record the SB3 version in args.txt.
   L0 is the ruler: Δ(L1−L0) measures the configuration layer per case.
@@ -1584,11 +1644,11 @@ result is always an escalation.
 | clip schedule | 0.2 → 0.05 (`clip_final = clip_init/4`). |
 | `ent_coef` | 0.005; 0.01+ where premature determinism is a known hazard (bandit-like exploration, sparse success). |
 | `n_epochs`, `target_kl` | 10 / 0.02 fixed; target_kl is the safety valve, never tuned — repeated `approx_kl` truncation is the LR-too-high signal, fix the LR. |
-| `norm_obs` | §8.3 decision per the IR (heterogeneous stationary → on; drifting/accumulator obs → off, prefer sufficient-statistic obs). |
+| `norm_obs` | §8.3 decision per the IR (heterogeneous stationary → on; drifting/accumulator obs → off, prefer sufficient-statistic obs). Both values are reachable from the CLI (`--no_norm_obs`, §8.2 tier 1) — a derivation whose result the script cannot express is not a derivation. |
 | `norm_reward` | on, with `gamma=args.gamma` passed (§8.3). |
 | `net_arch` | (64,64) for obs dim ≤ ~32; scale the first hidden layer to ~2–4× obs dim above. Structured obs (set/permutation, grid, sequence) is never a width problem — record a *predicted escalation: arch* note. Boundary: `net_arch` widths = HP layer; custom extractors = arch layer. |
 | budget | ceiling = 20k–50k episodes × T̄ steps AND ≥ ~300 updates. **A training run runs to its budget — no early stopping.** The training trajectory is too noisy to make any judgment from; judgment happens post-hoc, on CRN evals of saved checkpoints (the selection row). Early stopping exists only in tuning trials (§9.7), where it reads the periodic CRN eval, never the rollout curve, and the arm is one of many. |
-| model selection | **Post-hoc, three-layer (§9.7).** `CheckpointCallback` every ~5% of budget (~20 checkpoints); after training, evaluate every checkpoint on the selection block (~2048 CRN seeds, disjoint from the protocol block), take the top-k (k≈3, adjustable — widen when the leaders sit within one screen-SE), confirm those on the protocol block (~8192), ship the winner. No `EvalCallback`, no live selection env, no `sync_envs_normalization` — the machinery that selected a generalist's checkpoint on one wrong cell (mab #E36 V4) simply isn't there. **The terminal checkpoint is never the deliverable** — the marginal gain of the screen over a working callback is small (+1.4, mab #E33) but selecting *at all* is worth +43, and the post-hoc form buys the robustness. |
+| model selection | **Post-hoc, three-layer (§9.7).** `CheckpointCallback` every ~5% of budget (~20 checkpoints — `--checkpoint-every-frac 0.05`, §8.2); after training, evaluate every checkpoint on the selection block (~2048 CRN seeds, disjoint from the protocol block — `--first-seed`, §9.7), take the top-k (k≈3, adjustable — widen when the leaders sit within one screen-SE), confirm those on the protocol block (~8192), ship the winner. No `EvalCallback`, no live selection env, no `sync_envs_normalization` — the machinery that selected a generalist's checkpoint on one wrong cell (mab #E36 V4) simply isn't there. **The terminal checkpoint is never the deliverable** — the marginal gain of the screen over a working callback is small (+1.4, mab #E33) but selecting *at all* is worth +43, and the post-hoc form buys the robustness. |
 
 **The derivation records its basis.** The train script's L1 table comment
 states what each derived value was derived *from* — the measured T̄ (and at
@@ -1626,9 +1686,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     # for a benchmark eval that replays a precomputed solution table:
     p.add_argument("--solutions", type=str, required=True)
     # shared:
+    p.add_argument("-s", "--scenario_name",    type=str, default="simple")
     p.add_argument("-o", "--observation_mode", type=str, default="vec")
     p.add_argument("-a", "--action_mode",      type=str, default="box")
-    p.add_argument("--n-seeds", type=int, default=65536)
+    p.add_argument("--n-seeds",    type=int, default=65536)
+    p.add_argument("--first-seed", type=int, default=0)
     p.add_argument("--outfile", type=str, default=None)
     return p
 
@@ -1645,26 +1707,36 @@ Two conventions the parsers follow:
   flag's meaning is visible in `--help`. A `store_true` whose other value is
   the silent default is exactly how 73 trials get ranked on the wrong
   criterion without an error.
-- **Train scripts accept `--tag <ledger-address>`** (free-form, default
-  empty): the escalation-log entry this run was launched under (`A8a`,
-  `E14`). It costs nothing — the args log records every CLI arg verbatim, so
-  the tag lands in the run dir's immutable `{scenario}_{algo}_args.txt` and a
-  reader standing in the run dir can find its birth entry without grep.
+- **The parser's names are §8.2's tier-1 table**, eval column: the problem and
+  rendering modes, `model_path` / `vecnorm_path` / `outfile`, and the protocol
+  pair `n_seeds` / `first_seed`. `first_seed` is what makes §9.7's *disjoint*
+  blocks expressible — the protocol block starts at 0 and the screen block at
+  `1_000_000`, and without an offset flag the requirement is unsatisfiable as
+  written. (The corresponding train-side flag is `--tag`, §8.2.)
 
 ### 9.2 Seed loop
 
-For each `(scenario_param_combo)`, run exactly `n_seeds` episodes using episode seeds `0, 1, ..., n_seeds-1`, accumulating the domain's per-episode objective (the episode return, or whatever the domain reports as its outcome):
+For each `(scenario_param_combo)`, run exactly `n_seeds` episodes over the
+seed block `first_seed, ..., first_seed + n_seeds - 1` (the default block is
+the 0-based one), accumulating the domain's per-episode objective (the episode
+return, or whatever the domain reports as its outcome):
 
 ```python
 returns = np.zeros(n_seeds)          # the domain's per-episode objective
 
-for ep_seed in range(n_seeds):
-    if ep_seed % 10000 == 0:
-        print(f"  seed {ep_seed}/{n_seeds}", flush=True)
+for i, ep_seed in enumerate(range(args.first_seed, args.first_seed + n_seeds)):
+    if i % 10000 == 0:
+        print(f"  seed {i}/{n_seeds}", flush=True)
     obs, _ = env.reset(seed=ep_seed)
     ...
-    returns[ep_seed] = info_last["<objective>"]   # e.g. profit (maximize) / cost (minimize)
+    returns[i] = info_last["<objective>"]   # e.g. profit (maximize) / cost (minimize)
 ```
+
+**The block is the unit of comparison, so it must be identical across arms and
+disjoint across layers.** Every arm on one leaderboard reads the same
+`(first_seed, n_seeds)` — that is what makes the per-seed differences paired
+(§9.7). A layer that *ranks* must not read the block a layer that *quotes*
+reads, which is the whole reason the offset is a flag.
 
 Default `n_seeds=65536` provides tight confidence intervals without tuning;
 see §9.7 for the reporting tiers actually used per run level.
@@ -1820,13 +1892,19 @@ judgment input** — too noisy for any decision, in training or tuning. Every
 judgment reads a CRN eval, and the three layers trade randomness against
 efficiency (the numbers are defaults, adjustable case by case; the *blocks
 are mutually disjoint* — a layer that ranks must not touch the block that
-quotes):
+quotes).
+
+Disjointness is a property of the seed block, so it is set by
+`--first-seed` / `--n-seeds` (§8.2 tier 1, §9.1): the **protocol** block is
+`first_seed = 0`, the **screen** block is `first_seed = 1_000_000`, and a
+trial's periodic eval reads its own block above that. The offsets are
+conventional, the disjointness is not.
 
 | layer | where | episodes | job |
 |---|---|---|---|
 | trial | periodic eval inside a tuning trial, every ~5% of budget | ~512 CRN seeds | the tuner's signal: trial value = the **last** eval (it describes the artifact the trial ships); early stopping reads THIS curve, never the rollout curve — patience ~4 evals with a min-evals guard ~5, strict comparison (the fixed CRN block pairs the evals, so policy differences are not draw noise); `trial.report` on the same curve enables population pruning. **Its scores are never quoted** — a trial value is a tuning signal on a different instrument, and comparing one to a protocol number manufactures a result in either direction |
-| screen | post-hoc over a training run's ~20 checkpoints (§8.6) | ~2048 CRN seeds | rank the checkpoints, pass the top-k to confirmation; its scores are never quoted |
-| protocol | `{domain}_ppo_eval.py` / benchmark evals | **~8192 evidence-grade** (2048 default for cheap domains) | confirm the top-k, crown the winner — the leaderboard number; a ladder run *exists* only once this TSV does |
+| screen | post-hoc over a training run's ~20 checkpoints (§8.6, `--checkpoint-every-frac 0.05`) | ~2048 CRN seeds from `--first-seed 1000000` | rank the checkpoints, pass the top-k to confirmation; its scores are never quoted |
+| protocol | `{domain}_ppo_eval.py` / benchmark evals, `--first-seed 0` | **~8192 evidence-grade** (2048 default for cheap domains) | confirm the top-k, crown the winner — the leaderboard number; a ladder run *exists* only once this TSV does |
 
 A smoke eval (train-script tail, ~50 episodes, "did it learn anything")
 stays outside the layers and is never quoted.

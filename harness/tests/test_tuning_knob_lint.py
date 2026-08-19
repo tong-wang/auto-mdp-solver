@@ -1,0 +1,92 @@
+"""The unmatched-knob lint, and why asking for a tier makes it fatal (§8.2 tier 2).
+
+The failure this guards is silent and invisible in the result: a study accepts
+`--knobs breadth`, finds one dest missing, warns once, and then searches seven
+knobs while its own banner says eight. Nothing downstream of that log — not the
+study, not the winner, not the eval TSV — records that the space was smaller
+than the one requested. So the distinction that matters is between *requesting*
+a tier and falling into the default one, which is what `knobs_explicit` carries.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from mdp_tuning.__main__ import parse_args, unmatched_knobs
+from mdp_tuning.driver import ArgSpec, DomainScripts
+from mdp_tuning.spaces import OPTIONAL_KNOBS, SPACES
+
+
+def scripts(*dests: str) -> DomainScripts:
+    return DomainScripts(
+        prefix="d", directory=Path("."), algo="ppo",
+        train_script=Path("d_ppo_train.py"), eval_script=Path("d_ppo_eval.py"),
+        train_args={d: ArgSpec(flag=f"--{d}", multi=False, default=None) for d in dests},
+        eval_args={},
+    )
+
+
+def test_a_fully_exposed_tier_has_nothing_unmatched():
+    core = SPACES["ppo"].tiers["core"]
+    assert unmatched_knobs(scripts(*core), "ppo", "core") == []
+
+
+def test_one_missing_dest_is_named():
+    core = list(SPACES["ppo"].tiers["core"])
+    assert unmatched_knobs(scripts(*core[1:]), "ppo", "core") == [core[0]]
+
+
+def test_an_out_of_tier_knob_is_not_unmatched():
+    """`--knobs core` promising nothing about the breadth tier is the point of
+    having tiers; only what the requested tier names can be betrayed."""
+    core = SPACES["ppo"].tiers["core"]
+    breadth_only = set(SPACES["ppo"].tiers["breadth"]) - set(core)
+    assert breadth_only
+    assert unmatched_knobs(scripts(*core), "ppo", "core") == []
+
+
+def test_extractor_knobs_absent_from_an_mlp_domain_are_not_a_broken_contract():
+    """OPTIONAL_KNOBS describe architectures only some domains have, so their
+    absence is a fact about the domain rather than a missing flag."""
+    optional_in_all = [k for k in SPACES["ppo"].knobs if k in OPTIONAL_KNOBS]
+    assert optional_in_all
+    exposed = [k for k in SPACES["ppo"].knobs if k not in OPTIONAL_KNOBS]
+    assert unmatched_knobs(scripts(*exposed), "ppo", "all") == []
+
+
+# --- requesting a tier vs falling into one --------------------------------
+
+def _args(monkeypatch, *argv: str):
+    monkeypatch.setattr("sys.argv", ["mdp_tuning", "some_domain", *argv])
+    return parse_args()
+
+
+def test_the_default_tier_is_not_a_request(monkeypatch):
+    args = _args(monkeypatch)
+    assert args.knobs == "core" and args.knobs_explicit is False
+
+
+def test_naming_the_default_tier_is_still_a_request(monkeypatch):
+    """`--knobs core` and no flag resolve to the same space but not the same
+    intent: only the first can be answered with a smaller space than it asked
+    for."""
+    args = _args(monkeypatch, "--knobs", "core")
+    assert args.knobs == "core" and args.knobs_explicit is True
+
+
+def test_strict_knobs_is_the_opt_in_for_the_default_tier(monkeypatch):
+    args = _args(monkeypatch, "--strict-knobs")
+    assert args.knobs_explicit is False and args.strict_knobs is True
+
+
+def test_fix_is_the_deliberate_form_of_the_same_outcome(monkeypatch):
+    """A locked knob and an unexposed one both end up at the script default;
+    only one of them is a surprise, and `--fix` is what tells them apart."""
+    args = _args(monkeypatch, "--knobs", "all", "--fix", "clip_init")
+    core = list(SPACES["ppo"].tiers["all"])
+    rot = unmatched_knobs(scripts(*[k for k in core if k != "clip_init"]),
+                          "ppo", "all")
+    assert rot == ["clip_init"]
+    assert [k for k in rot if k not in set(args.fix)] == []

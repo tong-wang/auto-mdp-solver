@@ -25,6 +25,7 @@ from __future__ import annotations
 import ast
 import copy
 import dataclasses
+import inspect
 import math
 import re
 from pathlib import Path
@@ -1523,6 +1524,132 @@ def check_restatement_current(h: DomainHandle) -> CheckResult:
                        f"{rendered} declared step-7b render(s) reproduce verbatim")
 
 
+# ---------------------------------------------------------------------------
+# §8.2 — the CLI tier contract
+# ---------------------------------------------------------------------------
+
+# Tier 1: the invariant surface. These names mean the same thing in every domain
+# and under every algorithm family, which is why they are the ones tooling and
+# humans join across domains — so the *names* are the contract.
+_TIER1_TRAIN = ("scenario_name", "total_timesteps", "outdir", "seed", "tag",
+                "n_envs", "gym_log", "checkpoint_every_frac")
+_TIER1_EVAL = ("scenario_name", "model_path", "outfile", "n_seeds", "first_seed")
+
+# Owed only where they apply, read from the domain rather than from prose: a
+# rendering mode when the env's __init__ accepts it — one legal value still owes
+# the flag, since the name is what other arms join on — and the VecNormalize
+# names when the script actually builds the wrapper (§8.3).
+_TIER1_RENDER = ("observation_mode", "action_mode", "reward_mode")
+_TIER1_VECNORM_TRAIN = ("norm_obs", "norm_reward", "vecnorm_clip_obs")
+_TIER1_VECNORM_EVAL = ("vecnorm_path",)
+
+# Tier 2 is deliberately not listed here. `mdp_tuning`'s space for the family is
+# its oracle and §8.6 obliges a new family to bring its own; a second list in the
+# checker would be a second source of truth that goes stale on the first
+# off-policy family. Tier 3 is checked by nothing, by design.
+
+# Adoption path (§8.2): every existing script fails this on the day it lands —
+# upstream's own examples included — so a hard gate would make every domain
+# non-conformant simultaneously. WARN for one release, then FAIL.
+_CLI_CONTRACT_SEVERITY = "WARN"
+
+
+def _add_argument_dests(source: str) -> set[str]:
+    """Every dest the ``add_argument`` calls in one script declare.
+
+    Static, and deliberately so: opening a train script's parser for real means
+    importing SB3 and torch, and the gate that reports a missing flag must not
+    need the training stack to do it. The dest rule is argparse's own — an
+    explicit ``dest=`` wins, else the first long option with ``--`` stripped and
+    ``-`` folded to ``_``.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    dests: set[str] = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "add_argument"):
+            continue
+        explicit = next((kw.value.value for kw in node.keywords
+                         if kw.arg == "dest" and isinstance(kw.value, ast.Constant)
+                         and isinstance(kw.value.value, str)), None)
+        if explicit:
+            dests.add(explicit)
+            continue
+        options = [a.value for a in node.args
+                   if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+        if not options:
+            continue
+        flags = [o for o in options if o.startswith("-")]
+        name = next((f for f in flags if f.startswith("--")), flags[0] if flags else options[0])
+        dests.add(name.lstrip("-").replace("-", "_"))
+    return dests
+
+
+def _env_accepts(env_cls, name: str) -> bool:
+    try:
+        return name in inspect.signature(env_cls.__init__).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _cli_findings(path: Path, owed: list[str]) -> str | None:
+    missing = sorted(set(owed) - _add_argument_dests(path.read_text()))
+    return f"{path.name}: missing {', '.join(missing)}" if missing else None
+
+
+def check_script_cli_contract(h: DomainHandle) -> CheckResult:
+    """Train and eval scripts expose the tier-1 CLI surface (spec §8.2, §9.1).
+
+    The convention existed and had converged — the four IR-era domains agreed on
+    every contested name — but it was written down nowhere, so each new domain
+    re-derived it and sometimes missed. Three of the names exist because a spec
+    section imposed a capability while naming no flag for it: `first_seed` makes
+    §9.7's *disjoint* selection block expressible at all, `checkpoint_every_frac`
+    keeps "~20 checkpoints" true when the budget moves, and `norm_obs` is the one
+    §8.3 hardcoded, so a script written to that skeleton could express neither L0
+    nor its own L1 derivation.
+
+    A script that does not exist yet is not a violation: the check reads the
+    parsers it finds and skips the rest, so it never reports a stage the campaign
+    has not claimed.
+    """
+    trains = sorted(h.directory.glob(f"{h.name}_*_train.py"))
+    if not trains:
+        return CheckResult("scripts.cli_contract", "SKIP",
+                           "no train script yet — a domain mid-formalization owes none")
+    render = [m for m in _TIER1_RENDER if _env_accepts(h.env_cls, m)]
+    findings: list[str] = []
+    n_read = 0
+    absent: list[str] = []
+    for train in trains:
+        algo = train.name[len(h.name) + 1: -len("_train.py")]
+        n_read += 1
+        owed = list(_TIER1_TRAIN) + render
+        if "VecNormalize" in train.read_text():
+            owed += list(_TIER1_VECNORM_TRAIN)
+        findings.append(_cli_findings(train, owed))
+        ev = h.directory / f"{h.name}_{algo}_eval.py"
+        if not ev.exists():
+            absent.append(ev.name)
+            continue
+        n_read += 1
+        owed = list(_TIER1_EVAL) + render
+        if "VecNormalize" in ev.read_text():
+            owed += list(_TIER1_VECNORM_EVAL)
+        findings.append(_cli_findings(ev, owed))
+    findings = [f for f in findings if f]
+    tail = f"; no {', '.join(absent)} yet (not a violation)" if absent else ""
+    if findings:
+        return CheckResult("scripts.cli_contract", _CLI_CONTRACT_SEVERITY,
+                           "; ".join(findings) + tail)
+    return CheckResult("scripts.cli_contract", "PASS",
+                       f"{n_read} script(s) expose the tier-1 surface" + tail)
+
+
 REGISTRY = [
     check_file_layout,
     check_layering,
@@ -1542,6 +1669,7 @@ REGISTRY = [
     check_no_enumeration,
     check_bound_rationale,
     check_restatement_current,
+    check_script_cli_contract,
     check_init_state,
     check_gym_contract,
     check_determinism,

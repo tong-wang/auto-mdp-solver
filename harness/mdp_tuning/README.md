@@ -18,7 +18,11 @@ knobs, which values). This harness removes that judgment in three ways:
    reads their real CLIs, and tunes exactly the knobs the domain exposes —
    skipping the rest. Fixed `--train-arg KEY=VALUE` overrides are validated
    the same way, and shared settings (e.g. `observation_mode`) are
-   auto-forwarded to the eval script.
+   auto-forwarded to the eval script. "Skipping the rest" is also how a study
+   can quietly search a smaller space than it was asked for, so **naming a tier
+   makes the skip fatal**: pass `--knobs` explicitly (or `--strict-knobs`) and
+   an in-tier knob with no matching dest aborts the launch instead of warning
+   once. `--show-space` reports the same thing without launching.
 3. **Optuna TPE**: where to sample next is model-based, not hand-picked.
    Studies live in sqlite under `{domain}/results/tuning/`, so interrupted
    sweeps resume with their full history.
@@ -54,6 +58,17 @@ domain-appropriate defaults (see
   `--model-path`, `--outfile`, and an episode-count flag (`--n-seeds` per
   spec §9.1; `--episodes` accepted for legacy scripts).
 - The eval TSV has one header row and numeric metric columns (§9.3).
+
+Those three are the hard minimum this harness cannot run without. The full
+tier-1 surface it expects — and the check that reports it before a study is
+ever launched — is spec §8.2 and `mdp_conformance`'s `scripts.cli_contract`.
+
+**Warm start.** Trial 0 is enqueued as the train script's own defaults, so the
+study measures what tuning adds over the L1 centre (§8.6). A default the space
+cannot encode — most often a `net_arch` tuple matching no declared shape — is
+dropped and *sampled* instead, which silently makes trial 0 something other
+than L1; the launch banner now warns and names the value, so the study is not
+read as a Δ(L2−L1) it did not measure.
 
 Crashed trials (e.g. NaN policy divergence at aggressive learning rates) are
 **penalized to the study's worst completed value** rather than marked failed:

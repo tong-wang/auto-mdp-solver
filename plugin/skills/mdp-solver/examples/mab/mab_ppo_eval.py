@@ -35,8 +35,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--observation_mode", type=str, default=None,
                    choices=["stats", "bayes"],
                    help="default: read from the run's {scenario}_ppo_args.txt")
+    p.add_argument("-a", "--action_mode",      type=str, default="arm",
+                   choices=["arm"])
+    p.add_argument("-r", "--reward_mode",      type=str, default="payout",
+                   choices=["payout"])
     p.add_argument("--model-path", type=str, required=True)
+    p.add_argument("--vecnorm-path", type=str, default=None,
+                   help="VecNormalize stats (default: vecnormalize.pkl next to "
+                        "the model). They are part of the policy's input "
+                        "contract (spec §9.5), not an optional decoration.")
     p.add_argument("--n-seeds",    type=int, default=8192)
+    p.add_argument("--first-seed", type=int, default=0,
+                   help="First episode seed (spec §9.2). The protocol block is "
+                        "0; §9.7's checkpoint screen runs at 1000000 so the "
+                        "layer that ranks never touches the block that quotes.")
     p.add_argument("--outfile",    type=str, default=None,
                    help="write the TSV here instead of the derived path next "
                         "to the model (spec §9.1). mdp_tuning requires this "
@@ -76,9 +88,12 @@ def main() -> None:
 
     model = PPO.load(str(model_path), device="cpu")
     raw_env = MabEnv(scenario=SCENARIOS[args.scenario_name],
-                     observation_mode=obs_mode)
+                     observation_mode=obs_mode,
+                     action_mode=args.action_mode,
+                     reward_mode=args.reward_mode)
     env = DummyVecEnv([lambda: raw_env])
-    vecnorm_path = run_dir / "vecnormalize.pkl"
+    vecnorm_path = (Path(args.vecnorm_path) if args.vecnorm_path
+                    else run_dir / "vecnormalize.pkl")
     if vecnorm_path.exists():
         env = VecNormalize.load(str(vecnorm_path), env)
         env.training    = False
@@ -89,9 +104,10 @@ def main() -> None:
 
     rewards = np.zeros(args.n_seeds)
     oracles = np.zeros(args.n_seeds)
-    for seed in range(args.n_seeds):
-        if seed % 1000 == 0:
-            print(f"  seed {seed}/{args.n_seeds}", flush=True)
+    for i, seed in enumerate(range(args.first_seed,
+                                   args.first_seed + args.n_seeds)):
+        if i % 1000 == 0:
+            print(f"  seed {i}/{args.n_seeds}", flush=True)
         raw_env.reset(seed=seed)          # fix the episode seed protocol
         obs = env.normalize_obs(raw_env._get_obs()[np.newaxis]) \
             if isinstance(env, VecNormalize) else raw_env._get_obs()[np.newaxis]
@@ -104,8 +120,8 @@ def main() -> None:
             obs = env.normalize_obs(o[np.newaxis]) \
                 if isinstance(env, VecNormalize) else o[np.newaxis]
             total += float(r)
-        rewards[seed] = total
-        oracles[seed] = raw_env.horizon * info["opt_mean"]
+        rewards[i] = total
+        oracles[i] = raw_env.horizon * info["opt_mean"]
 
     stats = reward_stats(rewards)
     stats["oracle_mean"] = float(oracles.mean())
@@ -130,13 +146,14 @@ def main() -> None:
     # derived path stays the human/ledger artifact and keeps its provenance.
     provenance = (f"# ppo obs={obs_mode} "
                   f"policy={'stochastic' if args.stochastic else 'deterministic'} "
-                  f"| n_seeds={args.n_seeds}\n")
+                  f"| n_seeds={args.n_seeds} from {args.first_seed}\n")
     out.write_text(f"{'' if args.outfile else provenance}{header}\n{row}\n")
 
     print(f"\n{'─' * 56}")
     print(f"  model       : {model_path.name}  (obs={obs_mode}, "
           f"{'stochastic' if args.stochastic else 'deterministic'})")
-    print(f"  scenario    : {args.scenario_name}  (n_seeds={args.n_seeds})")
+    print(f"  scenario    : {args.scenario_name}  "
+          f"(n_seeds={args.n_seeds} from {args.first_seed})")
     print(f"  reward_mean : {stats['reward_mean']:10.4f}  "
           f"± {np.sqrt(stats['reward_var'] / args.n_seeds):.4f} (SE)")
     print(f"  oracle_mean : {stats['oracle_mean']:10.4f}")
