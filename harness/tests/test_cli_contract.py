@@ -162,35 +162,67 @@ def test_the_eval_owes_vecnorm_path_when_it_loads_the_stats(tmp_path):
 
 # --- a parser assembled elsewhere in the folder ---------------------------
 
+def builder(dests, name: str = "build_arg_parser", extra: str = "") -> str:
+    """A module exporting `name`, a builder declaring exactly `dests`."""
+    body = "\n".join(f'    p.add_argument("--{d.replace("_", "-")}")' for d in dests)
+    return (f"import argparse\n\n\ndef {name}():\n"
+            "    p = argparse.ArgumentParser()\n" + body + "\n" + extra + "    return p\n")
+
+
 def test_a_shared_builder_in_the_folder_offers_its_names(tmp_path):
     """The table is a contract over the names the eval surface offers. A domain
     that factors the common surface into one builder offers them from every
     script that calls it; a one-file reader would report flags in daily use as
     missing, clearable only by duplicating the builder into each script."""
-    (tmp_path / "d_benchmark_common.py").write_text(parser(EVAL))
+    (tmp_path / "d_benchmark_common.py").write_text(builder(EVAL))
     h = domain(tmp_path, train=parser(TRAIN),
-               eval="from d_benchmark_common import build_arg_parser\n\n"
+               eval="from d_benchmark_common import build_arg_parser, evaluate\n\n"
                     "def _build_arg_parser():\n    return build_arg_parser()\n")
     result = check_script_cli_contract(h)
     assert result.status == "PASS", result.detail
 
 
-def test_the_shared_reader_follows_the_chain_but_leaves_the_folder(tmp_path):
-    """Transitive within the domain directory — and only there, so `argparse`
-    and SB3 resolve to nothing and no training stack is ever imported."""
-    (tmp_path / "d_cli_base.py").write_text(parser(["first_seed"]))
+def test_the_reader_follows_the_calls_a_builder_makes(tmp_path):
+    """Transitive — through a second local module, and only within the folder,
+    so `argparse` and SB3 resolve to nothing and no training stack is ever
+    imported."""
+    (tmp_path / "d_cli_base.py").write_text(
+        "def add_protocol(p):\n"
+        '    p.add_argument("--n-seeds", type=int)\n'
+        '    p.add_argument("--first-seed", type=int)\n')
     (tmp_path / "d_benchmark_common.py").write_text(
-        "import argparse\nfrom d_cli_base import add_protocol\n"
-        + parser([d for d in EVAL if d != "first_seed"]))
+        "from d_cli_base import add_protocol\n"
+        + builder([d for d in EVAL if d not in ("n_seeds", "first_seed")],
+                  extra="    add_protocol(p)\n"))
     h = domain(tmp_path, train=parser(TRAIN),
                eval="from d_benchmark_common import build_arg_parser\n")
     assert check_script_cli_contract(h).status == "PASS"
 
 
+def test_an_unrelated_module_s_own_cli_is_not_credited(tmp_path):
+    """The reason the reach is per-symbol and not per-module: a domain's policy
+    wrapper carries a `__main__` demo CLI of its own, and an eval that imports
+    the policy class from it must not be credited with the demo's flags — that
+    would hide a name the eval surface genuinely does not offer behind an
+    unrelated file."""
+    (tmp_path / "d_policy.py").write_text(
+        "class DPolicy:\n    pass\n\n\n"
+        "if __name__ == \"__main__\":\n"
+        "    import argparse\n"
+        "    p = argparse.ArgumentParser()\n"
+        '    p.add_argument("--n-seeds", type=int)\n')
+    h = domain(tmp_path, train=parser(TRAIN),
+               eval="from d_policy import DPolicy\n"
+                    + parser([d for d in EVAL if d != "n_seeds"]))
+    result = check_script_cli_contract(h)
+    assert result.status == "WARN"
+    assert "d_ppo_eval.py: missing n_seeds" in result.detail
+
+
 def test_a_name_missing_from_the_whole_surface_is_still_reported(tmp_path):
     """Following imports widens where the check looks, not what it forgives."""
     (tmp_path / "d_benchmark_common.py").write_text(
-        parser([d for d in EVAL if d != "n_seeds"]))
+        builder([d for d in EVAL if d != "n_seeds"]))
     h = domain(tmp_path, train=parser(TRAIN),
                eval="from d_benchmark_common import build_arg_parser\n")
     result = check_script_cli_contract(h)
@@ -198,8 +230,17 @@ def test_a_name_missing_from_the_whole_surface_is_still_reported(tmp_path):
     assert "d_ppo_eval.py: missing n_seeds" in result.detail
 
 
+def test_a_module_imported_whole_is_followed_through_its_attribute(tmp_path):
+    (tmp_path / "d_benchmark_common.py").write_text(builder(EVAL))
+    h = domain(tmp_path, train=parser(TRAIN),
+               eval="import d_benchmark_common as common\n\n"
+                    "def _build_arg_parser():\n"
+                    "    return common.build_arg_parser()\n")
+    assert check_script_cli_contract(h).status == "PASS"
+
+
 def test_a_schedule_half_declared_in_a_shared_builder_is_not_a_half_pair(tmp_path):
-    (tmp_path / "d_cli_base.py").write_text(parser(["lr_final"]))
+    (tmp_path / "d_cli_base.py").write_text(builder(["lr_final"], name="add_schedule"))
     h = domain(tmp_path, train="from d_cli_base import add_schedule\n"
                                + parser(["learning_rate"]))
     assert check_schedule_pairs(h).status == "PASS"

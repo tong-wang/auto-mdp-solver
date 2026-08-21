@@ -1346,8 +1346,12 @@ on these, so their *names* are the contract:
 and compares their dests against this table. A parser assembled by a helper in
 the domain folder is a parser that exists: factoring the common eval surface
 into one `{domain}_benchmark_common.build_arg_parser` is the *right* shape, and
-the check follows imports within the folder to find it — the table is a
-contract over the names the surface offers, not over which file spells them.
+the check resolves the builders a script imports from its own folder — and the
+calls those builders make — to find it. The table is a contract over the names
+the surface offers, not over which file spells them. The reach is per-import,
+not per-folder: a helper's flags count for the scripts that import it, so the
+`__main__` demo CLI in a `{domain}_policy.py` never credits an evaluator that
+imports the policy class from it.
 Two groups are owed only where they apply, and the check reads that from the
 domain rather than from prose: a **rendering** mode is owed when the env's
 `__init__` accepts it — including where only one value is legal today, since

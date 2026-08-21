@@ -1568,8 +1568,13 @@ def _add_argument_dests(source: str) -> set[str]:
         tree = ast.parse(source)
     except SyntaxError:
         return set()
+    return _dests_in(tree)
+
+
+def _dests_in(root: ast.AST) -> set[str]:
+    """The dests declared anywhere under one AST node — a file, or one `def`."""
     dests: set[str] = set()
-    for node in ast.walk(tree):
+    for node in ast.walk(root):
         if not (isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr == "add_argument"):
@@ -1590,57 +1595,109 @@ def _add_argument_dests(source: str) -> set[str]:
     return dests
 
 
-def _local_imports(source: str, directory: Path) -> list[Path]:
-    """The same-directory modules a script imports, as paths.
+def _local_module(name: str, directory: Path) -> Path | None:
+    """A module name resolved against the domain folder, or None.
 
-    Only the domain folder is searched, so `argparse` and SB3 resolve to
-    nothing: the reader never leaves the folder it was handed.
+    Only the folder is searched, so `argparse` and SB3 resolve to nothing: the
+    reader never leaves the directory it was handed.
     """
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return []
-    names: set[str] = set()
-    for node in ast.walk(tree):
+    for candidate in (name, name.split(".")[0]):
+        path = directory / f"{candidate}.py"
+        if path.exists():
+            return path
+    return None
+
+
+def _module_index(tree: ast.Module, directory: Path):
+    """`(top-level symbols, imported name -> (module, original), alias -> module)`."""
+    symbols = {n.name: n for n in tree.body
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+    imported: dict[str, tuple[Path, str]] = {}
+    aliases: dict[str, Path] = {}
+    for node in tree.body:
         if isinstance(node, ast.ImportFrom) and node.module:
-            names.add(node.module.split(".")[0])
+            dep = _local_module(node.module, directory)
+            if dep:
+                for a in node.names:
+                    imported[a.asname or a.name] = (dep, a.name)
         elif isinstance(node, ast.Import):
-            names.update(a.name.split(".")[0] for a in node.names)
-    return [d for n in sorted(names) if (d := directory / f"{n}.py").exists()]
+            for a in node.names:
+                dep = _local_module(a.name, directory)
+                if dep:
+                    aliases[a.asname or a.name] = dep
+    return symbols, imported, aliases
+
+
+def _symbol_dests(path: Path, name: str, directory: Path,
+                  seen: set[tuple[str, str]]) -> set[str]:
+    """The dests one imported callable declares, following the calls it makes.
+
+    Scoped to the symbol's own body, not its module: a domain's `_policy.py`
+    has a `__main__` demo CLI of its own, and an eval that imports the policy
+    class from it must not be credited with the demo's flags — that would hide
+    a genuinely missing name behind an unrelated file.
+    """
+    key = (str(path.resolve()), name)
+    if key in seen:
+        return set()
+    seen.add(key)
+    try:
+        tree = ast.parse(path.read_text())
+    except (OSError, SyntaxError):
+        return set()
+    symbols, imported, aliases = _module_index(tree, directory)
+    if name not in symbols:
+        if name in imported:  # re-exported by this module; keep walking
+            dep, original = imported[name]
+            return _symbol_dests(dep, original, directory, seen)
+        return set()
+    node = symbols[name]
+    dests = _dests_in(node)
+    for call in ast.walk(node):
+        if not isinstance(call, ast.Call):
+            continue
+        func = call.func
+        if isinstance(func, ast.Name):
+            if func.id in symbols:
+                dests |= _symbol_dests(path, func.id, directory, seen)
+            elif func.id in imported:
+                dep, original = imported[func.id]
+                dests |= _symbol_dests(dep, original, directory, seen)
+        elif (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+                and func.value.id in aliases):
+            dests |= _symbol_dests(aliases[func.value.id], func.attr, directory, seen)
+    return dests
 
 
 def _cli_dests(path: Path, directory: Path) -> set[str]:
-    """Every dest the script's CLI surface offers, shared builders included.
+    """Every dest a script's CLI surface offers, a shared builder's included.
 
     A domain that factors the common eval surface into one
     `{domain}_benchmark_common.build_arg_parser` offers those names from every
     script that calls it, and §8.2's table is a contract over the names the
-    surface offers. Reading one file at a time would report them missing, and
-    the only way to clear that is to copy the builder's flags into each script
-    — a second source of truth for the very surface the tier exists to
-    standardize. So the reader follows imports, transitively, within the domain
-    folder. Nothing is imported for real, so the no-training-stack property of
-    `_add_argument_dests` survives.
+    surface offers, not over which file spells them. Reading one file at a time
+    reports them missing, and the only way to clear that warning is to copy the
+    builder's flags into each script — a second source of truth for the very
+    surface tier 1 exists to standardize.
 
-    Deliberately loose in one direction: it unions the dests of every local
-    module the script imports, not only the one whose builder it calls. A name
-    credited to a script that imports the module without calling its builder is
-    a far cheaper error than a warning a domain can only clear by duplicating
-    the builder.
+    So the reader resolves the callables a script imports from its own folder,
+    transitively through the calls they make. Nothing is imported for real, so
+    the reason this is static at all — reporting a missing flag must not need
+    SB3 and torch — survives.
     """
-    dests: set[str] = set()
-    seen = {path.resolve()}
-    queue = [path]
-    while queue:
-        try:
-            source = queue.pop().read_text()
-        except OSError:
-            continue
-        dests |= _add_argument_dests(source)
-        for dep in _local_imports(source, directory):
-            if dep.resolve() not in seen:
-                seen.add(dep.resolve())
-                queue.append(dep)
+    try:
+        tree = ast.parse(path.read_text())
+    except (OSError, SyntaxError):
+        return set()
+    dests = _dests_in(tree)
+    symbols, imported, aliases = _module_index(tree, directory)
+    seen: set[tuple[str, str]] = set()
+    for dep, original in imported.values():
+        dests |= _symbol_dests(dep, original, directory, seen)
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                and node.value.id in aliases):
+            dests |= _symbol_dests(aliases[node.value.id], node.attr, directory, seen)
     return dests
 
 
