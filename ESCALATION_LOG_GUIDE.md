@@ -24,7 +24,11 @@ upstream proposals split out to the mdp-propose skill.
 and §11 gains a multi-arm entry shape. Proposed from the `game2048` campaign
 (issue #16), which measured the cost of the prose form: numbers had to be
 re-extracted by hand when a later diagnosis entry consolidated dozens of
-runs, and two ledger corrections traced to transcription from prose.*
+runs, and two ledger corrections traced to transcription from prose.
+2026-08-21 (sixth revision): §12 added — local extensions, and the one under
+evaluation (`§CONFIG-REGISTRY`, upstream issue #60, proposed from `game2048`).
+Guidance only: written down so two campaigns trying it produce comparable
+artifacts rather than two dialects, with its open points recorded beside it.*
 
 ## 1. Why this format
 
@@ -60,6 +64,10 @@ ESCALATION.md
 ├── §IR-CHANGELOG     append-only, one entry per formalization reversal
 └── §LEDGER           append-only, hypothesis → runs → verdict
 ```
+
+Four sections is the **spine**, not a ceiling: a campaign that needs more adds
+a *local extension* and labels it as one, so a reader can tell campaign-local
+structure from format (§12).
 
 Cross-references use **four id spaces, one prefix each** — `F{n}` is reserved
 by §IR-CHANGELOG (the first trial's frontier briefly squatted on F and
@@ -722,3 +730,120 @@ observed: {established, scope attached}
 missing:  {named gaps → tree nodes}
 plan:     {A items + arbiters + pre-decided branches}
 ```
+
+## 12. Local extensions, and the one under evaluation
+
+§2's four sections are the spine. A campaign that needs more structure adds a
+**local extension** and marks it as one — `examples/mab` carries two, a
+`### Deviation register` and a `## RUNS` table, each labelled *(local extension
+— not a guide §11 section)*. That label is the whole convention: it tells the
+next reader which parts of the log are format and which are one campaign's
+apparatus, and it keeps an extension from being copied as though it were
+mandated.
+
+What follows is one extension **under evaluation across campaigns**. It is
+written down here, rather than left in the campaign that invented it, for one
+reason: ids from it land in run-directory names, and run dirs are immutable
+(§8). Two campaigns inventing two spellings produce two archives that can never
+be reconciled. So adopt the shape below verbatim or not at all.
+
+### §CONFIG-REGISTRY — guidance, not a rule
+
+**Status.** Proposed upstream as **issue #60**, from `game2048` (2026-08-21),
+where it has run since. Deliberately not a binding rule: §10's graduation bar
+asks for confirmation across ≥2 campaigns, the data half (`{domain}_configs.py`)
+is not built anywhere yet, and the four open points below are unsettled. Adopt
+it if the problem is yours; do not cite it as format.
+
+**The problem.** The log answers *what question does this run answer* — §7
+rule 1's address — and nothing answers *what was this run configured from*.
+Two arms can share an address exactly and differ on four knobs. The map holds
+the **crowned** bundle (§3.4), so an arm's base is not there at launch time,
+when it is by definition not crowned; and the run name is a diff against the
+train script's *current* defaults (spec §8.4), so a knob sitting at its default
+leaves no trace in the join key. An inherited base is therefore invisible in
+both directions. `game2048` reports nine incidents of one shape — a knob nobody
+chose — including ~15 arms sharing a `gae_lambda` derived at a different board
+scale, and a declared base that had never actually been run.
+
+**The shape.** A **living** section (edited in place, like §MAP; unlike the
+three append-only ones), holding one table per axis, with per-id anchors so a
+ledger entry can link to a definition.
+
+**Three independently versioned axes, plus the scenario.** They are the spec's
+own L2 sub-layers (`L2(gym)` / `L2(arch)` / `L2(hp)`), not a new taxonomy, and
+they move on different clocks — a tuning sweep moves `h` and leaves `a` alone,
+so one bundled id would churn on every run and hide which axis moved.
+
+| axis | scope | the test — *which layer implements it* |
+|---|---|---|
+| `sc` | the study base | an alias for one key in the domain's `SCENARIOS` registry (spec §5.4); it **references**, never defines |
+| `g` | the env as presented to the algorithm: `observation_mode`, `action_mode`, `reward_mode`, and the §8.3 vec-env wrapper stack | something between the MDP and the algorithm implements it — `{domain}_gym.py` or a vec-env wrapper |
+| `a` | policy family, feature extractor, critic form, value routing. **Not** loss weights | the policy/extractor code implements it — a custom class, not a constructor argument |
+| `h` | optimizer, schedules, rollout geometry, loss weights, epochs | it is an argument to the algorithm constructor, consumed by the learner |
+
+Six boundary calls, each of which has been got wrong somewhere:
+
+- **The vec-env wrapper stack is `g`** — `norm_obs`, `norm_reward`, frame-stack
+  depth in particular. They read as hyperparameters because they are booleans
+  configured next to the learner, and they are the easiest knobs here to
+  misfile. They change *what the agent sees and what it is paid*, spec §8.3
+  makes the saved normalizer part of the artifact contract (eval reloads it),
+  and §8.6 derives them from the IR's observation structure and objective —
+  from the model, never from optimization behaviour.
+- **A transform of the environment's reward is `g`; a transform of the critic's
+  target or output space is `a`.** The first changes what is optimized, the
+  second how a value is represented. A symlog value head is `a` on both
+  readings — a policy-class mixin, and the objective is untouched.
+- **`gamma` stays `h`** even though §8.3 hands it to the normalizer. The wrapper
+  *consumes* the discount; it does not define it.
+- **Loss weights are `h`**, even when they weight a head only an `a` introduces.
+  The head is `a`; the coefficient multiplying its loss is `h`.
+- **`net_arch` width is `h`; a custom extractor is `a`** — inherited from spec
+  §8.6's `net_arch` row, not a new line.
+- **Rollout geometry is `h`**, including `n_envs`. Being *locked* as a
+  structural forced move does not make a knob its own axis.
+
+**Ids.** `{axis}{integer}`, dense and append-only from the L1 origin at 0 —
+`g0`, `g1`, … — with a generation letter for a re-derivation (`g0b`). The
+integer is an **identity, not a description**: nothing about the config may be
+encoded in it, or the id becomes a rename waiting to happen. Each row records
+its parent and its delta from that parent, so a full expansion is recoverable
+by walking to the origin. Two further rules make the ids trustworthy:
+
+- **Budget and seed are not config.** `total_timesteps` is recoverable from the
+  run log and gets extended constantly; a seed is a replicate, not a design
+  choice. (A comparison must still *state* its budget — a reporting rule.)
+- **Ids are append-only.** Never edit `a4`; add `a5 = a4 + {delta}`, recording
+  parent, delta, and what promoted it. Only the CURRENT-BASE line changes in
+  place, so a historical citation of `a8` still means what it meant.
+
+**Four open points.** Recorded so that adopting this is a considered act:
+
+1. **A tuning study is not one axis.** Spec §8.6 calls `mdp_tuning` the L2(hp)
+   layer, but its **default** `core` tier searches `embed_dim` / `features_dim`
+   / `channels` (which §8.6's own `net_arch` row puts at the arch layer), and
+   since v0.9.20 `breadth` searches `norm_obs` and `all` searches `norm_reward`
+   (gym, by the test above). So one study can return a config differing from
+   its parent on all three axes, and how to cite that is unsettled.
+2. **Mint the origin rows first.** `game2048`'s tables are 1-indexed with no id
+   for the L1-derived config every other id is a delta *from* — the same shape
+   as its own phantom-base incident, one level up. The §8.6 derivation's output
+   is `g0`/`a0`/`h0`, reserved, and nothing else may occupy it.
+3. **The duplication is unenforced.** Issue #60 pairs the table with a
+   `{domain}_configs.py` and says a mismatch refuses the next launch; there is
+   no launch gate (proposed separately as **#62**). Until one exists, keeping
+   two artifacts in step is unassisted — and an unchecked second source of
+   truth is what the issue-#11 disposition rejected for `run_status.json`.
+   Carry the table alone, or accept that the module is the authority and the
+   table can lag it.
+4. **The token grammar is the expensive part.** Ids land in run names and run
+   dirs are immutable (§8), so a spelling change orphans an archive.
+   `game2048` writes `s3`; #60 generalizes to `sc3`. Take the grammar from the
+   issue, and if it changes there, the change is a new generation rather than a
+   rename.
+
+**What would promote this to a rule** (§10 rule 3): the module built and run;
+one **structurally different** campaign — continuous control or tuning-heavy,
+not a second board game — using the axis test without bending it; and open
+point 3 settled either way.
