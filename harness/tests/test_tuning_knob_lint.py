@@ -56,6 +56,26 @@ def test_extractor_knobs_absent_from_an_mlp_domain_are_not_a_broken_contract():
     assert unmatched_knobs(scripts(*exposed), "ppo", "all") == []
 
 
+def test_the_vecnormalize_pair_is_optional_because_tier_1_owes_it_conditionally():
+    """§8.2 owes `norm_obs`/`norm_reward` only where the script *builds* a
+    VecNormalize, so a domain that normalizes its own inputs is missing them by
+    design. The unconditional case has a better home: `scripts.cli_contract`
+    fails a script that builds the wrapper and hides the flags, and checking it
+    here too would give one violation two voices."""
+    assert {"norm_obs", "norm_reward"} <= OPTIONAL_KNOBS
+    exposed = [k for k in SPACES["ppo"].knobs if k not in OPTIONAL_KNOBS]
+    assert unmatched_knobs(scripts(*exposed), "ppo", "all") == []
+
+
+def test_a_missing_normalize_advantage_is_a_broken_contract():
+    """It is PPO's own knob, not a wrapper's — every script in this family owes
+    it, so its absence is the fatal that `--knobs breadth` exists to raise."""
+    breadth = [k for k in SPACES["ppo"].tiers["breadth"]
+               if k != "normalize_advantage"]
+    assert unmatched_knobs(scripts(*breadth), "ppo", "breadth") == \
+        ["normalize_advantage"]
+
+
 # --- requesting a tier vs falling into one --------------------------------
 
 def _args(monkeypatch, *argv: str):
@@ -117,7 +137,10 @@ L1 = {"learning_rate": 3e-4, "net_arch": [64, 64], "n_steps": 2048,
 def test_a_ready_domain_reports_every_tier_open_and_trial_0_on_centre(capsys):
     out = _readiness(capsys, {**L1, "n_epochs": 10, "batch_size": 256,
                               "vf_coef": 0.5, "gamma": 1.0,
-                              "clip_init": 0.2, "max_grad_norm": 0.5})
+                              "clip_init": 0.2, "max_grad_norm": 0.5,
+                              # the wrapper pair is optional; PPO's own
+                              # boolean is not, so a ready script exposes it
+                              "normalize_advantage": True})
     assert "core ok" in out and "breadth ok" in out and "all ok" in out
     assert "trial 0 = the L1 centre" in out
 

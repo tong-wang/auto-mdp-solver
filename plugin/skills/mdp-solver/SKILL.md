@@ -633,7 +633,9 @@ the CWD.
   pre-filling `--metric <metric>_mean` (and `--beta`/`--episode-len` from
   the IR). The driver warm-starts trial 0 from the script defaults (the L1
   center) and tunes the `core` knob tier by default — `--knobs breadth`
-  needs ≥ ~40 trials. Diagnosis before escalating (spec §8.6): L1 ≤ random
+  needs ≥ ~40 trials, and is also where the two normalization priors
+  (`norm_obs`, `normalize_advantage`) get checked, since §8.6's rows for
+  them are settled by a run and by nothing earlier. Diagnosis before escalating (spec §8.6): L1 ≤ random
   → build bug; L1 < L0 → derivation misfired; competitive → stop at L1.
   **Selection-bias rule:** the study winner was selected on its tuning
   seeds — always re-evaluate the winning artifact with the full protocol

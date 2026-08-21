@@ -72,6 +72,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-grad-norm",     type=float, default=0.5)
     p.add_argument("--target-kl",         type=float, default=0.02)
     p.add_argument("--net_arch",          type=int,   nargs="+", default=[64, 64])
+    # L1 (§8.6): on. PPO's per-minibatch advantage rescaling — the premise
+    # §8.3 reasons FROM when it calls reward norm a critic-scaling detail, so
+    # it must be checkable rather than inherited silently from SB3. Off only as
+    # a logged L2 move; `mdp_tuning`'s breadth tier opens it.
+    p.add_argument("--no-normalize-advantage", action="store_false",
+                   dest="normalize_advantage", default=True)
     p.add_argument("--n-envs",            type=int,   default=1)
     # VecNormalize
     p.add_argument("--vecnorm-clip-obs",  type=float, default=10.0)
@@ -120,6 +126,7 @@ _SHORT_KEYS: dict[str, str] = {
     "ent_coef":        "ent",
     "vf_coef":         "vf",
     "max_grad_norm":   "grad",
+    "normalize_advantage": "advnorm",
     "target_kl":       "kl",
     "vecnorm_clip_obs": "clipobs",
     "norm_obs":        "normobs",
@@ -289,12 +296,12 @@ def build_model(args: argparse.Namespace, env, outdir: Path) -> PPO:
         vf_coef=args.vf_coef,
         max_grad_norm=args.max_grad_norm,
         target_kl=args.target_kl,
+        normalize_advantage=args.normalize_advantage,
         policy_kwargs={"net_arch": list(args.net_arch)},
         verbose=1,
         tensorboard_log=str(outdir),
         seed=args.seed,
         device="cpu",
-        # normalize_advantage=False,
     )
 
 

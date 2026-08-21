@@ -53,6 +53,11 @@ CHANNELS_CHOICES: dict[str, tuple[int, ...]] = {
     "deep":  (32, 64, 64),
 }
 
+# Dests drawn as a plain boolean categorical — no grid, so nothing to snap to:
+# a value is either one of the two or it is not a value at all. Ordered,
+# because the sampler draws them in this order.
+BOOL_KNOBS: tuple[str, ...] = ("norm_obs", "norm_reward", "normalize_advantage")
+
 CLIP_INIT_CHOICES = [0.1, 0.2, 0.3, 0.4]
 N_EPOCHS_CHOICES = [4, 10, 20]
 MAX_GRAD_NORM_CHOICES = [0.3, 0.5, 1.0, 5.0]
@@ -142,6 +147,12 @@ def sample_ppo(trial: optuna.Trial, tunable: set[str], *,
     # enqueue_trial warm start uses external values and is order-independent.
     put("channels",      lambda: CHANNELS_CHOICES[
         trial.suggest_categorical("channels", list(CHANNELS_CHOICES))])
+    # Boolean knobs. Each has exactly two values and both are reachable from
+    # the CLI, so a tier's only decision is whether the L1 value is a *prior*
+    # the study may check or a verdict it holds — see the tier comments below.
+    # Choice order is [True, False] and must never be reordered (see NOTE).
+    for dest in BOOL_KNOBS:
+        put(dest, lambda d=dest: trial.suggest_categorical(d, [True, False]))
 
     # batch_size last so it can respect the sampled n_steps and the domain's
     # structural n_envs (rollout buffer = n_steps × n_envs)
@@ -219,6 +230,11 @@ def encode_ppo(cfg: dict[str, object], *, n_envs: int = 1,
       up would hide a derivation that needs redoing.
     - ``channels``: a CNN channel stack is a structure, not a scalar on a grid,
       so there is no "nearest" to move to.
+    - a **boolean** knob whose script default is not a ``bool`` — a script that
+      derives ``norm_obs`` from the observation mode inside ``parse_args``
+      (``default=None``) has no single L1 value for the warm start to pin, and
+      saying so is the point: trial 0 then samples that knob, and the study's
+      Δ(L2−L1) is not measured against L1 for it.
     """
     params: dict[str, object] = {}
     skipped: list[str] = []
@@ -337,6 +353,11 @@ def encode_ppo(cfg: dict[str, object], *, n_envs: int = 1,
                 params["channels"] = label
             else:
                 skipped.append(dest)          # a stack has no nearest neighbour
+        elif dest in BOOL_KNOBS:
+            if isinstance(value, bool):
+                params[dest] = value
+            else:
+                skipped.append(dest)  # derived at runtime — no L1 value here
         elif dest == "batch_size":
             exp = _nearest_log2(value, 5, 9)
             if exp is None:
@@ -371,17 +392,47 @@ PPO_TIER_BREADTH: tuple[str, ...] = PPO_TIER_CORE + (
     # never exceed β, so opening it buys a logged bias-variance move (§8.6),
     # not a free parameter
     "gamma",
+    # norm_obs is derived by a §8.6 row, but from signals that are statements
+    # about the TRAINED policy's state distribution — "heterogeneous stationary
+    # scales", "drifting accumulator obs" — which is information the derivation
+    # does not have yet. Two campaigns falsified the row in opposite directions
+    # (mab #E8/#E10: signal said off, isolation measured +71.9 for ON;
+    # adi_flex F36-F38: signal said on, a factorial measured a 74.6-point
+    # encoding artifact that exists ONLY at on). So the row is a prior and this
+    # is where it gets checked — the same standing gamma has: two values, one
+    # of which the derivation already prefers.
+    "norm_obs",
+    # normalize_advantage is derived by no row at all — the category breadth
+    # exists for. §8.3 reasons FROM it (reward norm is downgraded to a critic
+    # detail because the policy step is already scale-invariant), so it is a
+    # load-bearing premise that nothing exposed and nothing could check;
+    # adi_flex A14 measured a +108-point main effect for the SB3 default.
+    "normalize_advantage",
 )
 PPO_KNOBS: tuple[str, ...] = PPO_TIER_BREADTH + (
     # frozen tier: held at the derived value unless explicitly opened
     "clip_init", "max_grad_norm",
+    # norm_reward sits here rather than at breadth on §8.3's own reasoning —
+    # training-only, and largely redundant with normalize_advantage — and
+    # because no campaign has yet moved it. It is here for reachability: a
+    # derivation nothing can contradict is not one.
+    "norm_reward",
 )
 
 # knobs that are *deliberately* absent from plain-MLP train scripts — their
 # absence is the arch-layer boundary at work, not template rot, so the
 # unmatched-knob lint stays silent about them
 OPTIONAL_KNOBS: frozenset[str] = frozenset(
-    {"embed_dim", "features_dim", "channels"})
+    {"embed_dim", "features_dim", "channels",
+     # the VecNormalize pair is owed *conditionally* (§8.2 tier 1: when the
+     # script builds the wrapper), so a domain that normalizes its own inputs
+     # — or is not on SB3 at all — is missing them by design, not by rot. The
+     # unconditional case already has a better home: cli_contract fails a
+     # script that builds a VecNormalize and hides the flags, and duplicating
+     # that here would give one violation two voices.
+     # normalize_advantage is deliberately NOT here: it is PPO's own knob, so
+     # every script in this family owes it.
+     "norm_obs", "norm_reward"})
 
 # one-degree-of-freedom schedule pairs: dest -> (source knob, factor).
 # Applied by the driver when the train script exposes the dest — schedule

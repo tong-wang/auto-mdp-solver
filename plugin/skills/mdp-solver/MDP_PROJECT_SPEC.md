@@ -1328,7 +1328,10 @@ if __name__ == "__main__":
 
 **The CLI tier contract.** Every argument of a train or eval script belongs to
 exactly one of three tiers. The tier decides who owns the name, who may change
-the value, and what enforces it.
+the value, and what enforces it. It does **not** decide who may *search* the
+value: `norm_obs` is tier 1 — every domain spells its normalization flag the
+same way — and is also a knob `mdp_tuning` opens at its `breadth` tier (§8.6).
+A tier-1 name inside a tuning space is the ordinary case, not a conflict.
 
 **Tier 1 — the invariant surface.** Arguments that mean the same thing in every
 domain and under every algorithm family. Tooling and humans join across domains
@@ -1372,7 +1375,8 @@ stage the campaign has not claimed.
 **Tier 2 — algorithm knobs**, owned by the family's tuning space and
 deliberately **not** enumerated here. `learning_rate`, `n_steps`, `batch_size`,
 `n_epochs`, `gae_lambda`, `ent_coef`, `vf_coef`, `clip_init`, `max_grad_norm`,
-`gamma`, `net_arch` and any extractor knobs are whatever `mdp_tuning`'s space
+`gamma`, `net_arch`, `normalize_advantage` and any extractor knobs are
+whatever `mdp_tuning`'s space
 for that family declares; `python -m mdp_tuning <domain-dir> --show-space` is
 the machine-readable oracle. §8.6 already obliges a new family to bring its own
 L0 one-liner and its own L1 derivation table, so its knobs are family-property
@@ -1446,11 +1450,11 @@ env = VecNormalize(env, norm_obs=args.norm_obs, norm_reward=args.norm_reward,
 - **n_envs is structural** (§8.2): the rollout buffer is `n_steps × n_envs`; more envs decorrelate the buffer (more instances per update, stabler `obs_rms`), which matters most for long-episode domains. Rank-suffixed Monitor files keep per-env logs from interleaving.
 
 - **Order matters.** `Monitor` must sit **inside** `VecNormalize` so `rollout/ep_rew_mean` is logged on the **raw** reward scale — this keeps the metric comparable across runs regardless of reward normalization. (Only `train/value_loss`, `train/explained_variance`, etc. are on the normalized scale.)
-- **Expose three CLI flags:** `--vecnorm_clip_obs` (default `10.0`), `--no_norm_obs` (`action="store_false", dest="norm_obs"`) and `--no_norm_reward` (`action="store_false", dest="norm_reward", default=True`). Encode each in the run name when non-default. **`norm_obs` is a flag, never a literal**: §8.6's L1 table derives it per domain and L0 requires it off, so a skeleton that hardcodes `norm_obs=True` can express neither — which is exactly how a script written to this section ends up unable to run its own domain's derived config.
+- **Expose three CLI flags:** `--vecnorm_clip_obs` (default `10.0`), `--no_norm_obs` (`action="store_false", dest="norm_obs"`) and `--no_norm_reward` (`action="store_false", dest="norm_reward", default=True`). Encode each in the run name when non-default. **`norm_obs` is a flag, never a literal**: §8.6's L1 table derives it per domain and L0 requires it off, so a skeleton that hardcodes `norm_obs=True` can express neither — which is exactly how a script written to this section ends up unable to run its own domain's derived config. **Where the derived value is computed at runtime** rather than written as the argparse default — `mab` reads the observation mode inside `parse_args` and leaves `default=None` — declare the flag as one `argparse.BooleanOptionalAction`, not a `store_true`/`store_false` pair: a parser is read per *dest*, so two actions sharing one leave whichever was declared first unreachable to anything driving the CLI, and `mdp_tuning` searches this knob (§8.6). The runtime derivation is still legitimate; what it costs is the warm start, which reports trial 0 as *not* the L1 centre for that knob because the script states no single default to enqueue.
 - **Save the stats:** `env.save(outdir / "vecnormalize.pkl")` after `model.learn(...)`, then `env.close()`.
 - **What each normalization is for:**
   - *Obs norm* conditions the network **inputs** (features often span several orders of magnitude — e.g. inventory vs. a price index). It is **part of the policy's input contract**: the saved `obs_rms` **must** be reused at eval/deploy time (§9.5), otherwise the policy sees inputs it was never trained on.
-  - *Reward norm* scales the reward by the running std of the discounted return (no centering). It is **training-only** — never needed for inference/deployment. Because SB3 PPO's `normalize_advantage=True` already makes the policy-gradient step scale-invariant, reward norm mostly affects the **critic** (value-loss scale / `vf_coef` balance), not the policy behavior.
+  - *Reward norm* scales the reward by the running std of the discounted return (no centering). It is **training-only** — never needed for inference/deployment. Because SB3 PPO's `normalize_advantage=True` already makes the policy-gradient step scale-invariant, reward norm mostly affects the **critic** (value-loss scale / `vf_coef` balance), not the policy behavior. That premise is a §8.6 derivation row with a flag behind it rather than an SB3 default inherited in silence — it carries a large lever arm, so it is checkable: `adi_flex` A14 measured a **+108-point** main effect for ON and roughly 6× worse seed dispersion for OFF.
 - **Not for non-SB3 frameworks.** VecNormalize is SB3-specific; RLlib/PettingZoo/DreamerV3 scripts use their own normalization (e.g. RLlib's `rllib_vecnormalize`).
 
 **When obs norm helps vs. when it hurts** — decide per domain, don't apply blindly:
@@ -1459,7 +1463,27 @@ env = VecNormalize(env, norm_obs=args.norm_obs, norm_reward=args.norm_reward,
 - **Little benefit** when obs are already **homogeneous and bounded** on a common small scale (e.g. one-hot planes, or log2-scaled tiles on a game board) — there is no cross-feature imbalance to fix; a static encoding is enough.
 - **Risk** when the obs distribution is **non-stationary** — i.e. what the agent observes shifts as it improves (e.g. a tile-merging game whose reachable tile values keep growing). The running `obs_rms` never stabilizes and the frozen eval stats match no single stage ("stats-mismatch under distribution shift"). Domains with this property may deliberately omit VecNormalize.
 
-Reward norm is training-only and largely redundant with PPO's `normalize_advantage`, so the decision above is really about **obs** norm.
+Reward norm is training-only and largely redundant with PPO's `normalize_advantage`, so the decision above is really about **obs** norm. That is also why the two sit in different tuning scopes: `norm_obs` is opened at `breadth`, `norm_reward` only in `all`.
+
+**The list above is a prior, not a verdict.** Every signal in it — "span very
+different magnitudes", "roughly stationary", "shifts as it improves" — is a
+claim about the state distribution a **trained** policy visits, and the only
+magnitudes available when the derivation is made are the declared observation
+bounds, which §4.2 says to keep generous ("Looseness is free"). So the call is
+made from information that cannot settle it, and both readings have now been
+measured wrong:
+
+- `mab` (#E8/#E10) read climbing counts and unbounded payout totals as the
+  accumulator case → derived **off**; the isolation probe measured
+  927.63 ± 6.88 for ON vs 855.73 ± 7.18 for OFF (**+71.9**, z≈7.2).
+- `adi_flex` (F36–F38) read the declared envelopes as heterogeneous → derived
+  **on**; the true feature sds on the optimal-policy state distribution were
+  homogeneous (8–11 against an accumulated VecNormalize divisor of ~216), and a
+  12-run factorial found a **74.6-point** observation-encoding gap that exists
+  only at `norm_obs=on` and is statistically absent without it.
+
+Derive it, log the rationale, and treat an L2 study that opens the knob as the
+thing that settles it (§8.6).
 
 ### 8.4 Output directory structure and run name encoding
 
@@ -1670,8 +1694,9 @@ result is always an escalation.
 | clip schedule | 0.2 → 0.05 (`clip_final = clip_init/4`). |
 | `ent_coef` | 0.005; 0.01+ where premature determinism is a known hazard (bandit-like exploration, sparse success). |
 | `n_epochs`, `target_kl` | 10 / 0.02 fixed; target_kl is the safety valve, never tuned — repeated `approx_kl` truncation is the LR-too-high signal, fix the LR. |
-| `norm_obs` | §8.3 decision per the IR (heterogeneous stationary → on; drifting/accumulator obs → off, prefer sufficient-statistic obs). Both values are reachable from the CLI (`--no_norm_obs`, §8.2 tier 1) — a derivation whose result the script cannot express is not a derivation. |
-| `norm_reward` | on, with `gamma=args.gamma` passed (§8.3). |
+| `norm_obs` | §8.3 decision per the IR (heterogeneous stationary → on; drifting/accumulator obs → off, prefer sufficient-statistic obs). Both values are reachable from the CLI (`--no_norm_obs`, §8.2 tier 1) — a derivation whose result the script cannot express is not a derivation. **The signal is a prior, not a verdict**: both of its branches are claims about the state distribution a *trained* policy visits, so neither is observable when the row is applied, and two campaigns have falsified it in opposite directions (mab #E8/#E10 → +71.9 for the ON the rule ruled out; adi_flex F36–F38 → a 74.6-point observation-encoding artifact that exists only at the ON the rule prescribed; §8.3). So derive it *and* let `mdp_tuning`'s `breadth` tier check it — a campaign that opens it records the outcome the way γ's bias-variance move is recorded. Where the derived value is computed at runtime, §8.3's `BooleanOptionalAction` rule applies. |
+| `norm_reward` | on, with `gamma=args.gamma` passed (§8.3). Reachable in `mdp_tuning`'s `all` scope and held at this value below it: §8.3's own reasoning — training-only, largely redundant with `normalize_advantage` — is what puts it in the frozen tier rather than at `breadth`, and no campaign has yet moved it. It is there for reachability, since a derivation nothing can contradict is not one. |
+| `normalize_advantage` | on. PPO's per-minibatch rescaling of advantages to zero mean / unit variance, exposed as `--no-normalize-advantage`. It is stated here rather than inherited silently from SB3 because §8.3 *reasons from* it — it is the premise that downgrades reward norm to a critic-scaling detail — and a load-bearing premise no script exposes is one no campaign can check. `mdp_tuning` opens it at `breadth`. Off only as a logged L2 move: the one measurement is decisively for the default (adi_flex A14, +108.05 main effect for ON, ~6× worse seed dispersion for OFF), which is also why searching it is cheap rather than dangerous. |
 | `net_arch` | (64,64) for obs dim ≤ ~32; scale the first hidden layer to ~2–4× obs dim above. Structured obs (set/permutation, grid, sequence) is never a width problem — record a *predicted escalation: arch* note. Boundary: `net_arch` widths = HP layer; custom extractors = arch layer. This row derives a **width**, not a layer count, which is why `mdp_tuning` searches width at its `core` tier and opens depth only at `breadth`: at core the derivation's own depth stands. The searched grid is width {32, 64, 128, 256} × depth {2, 3, 4}, uniform layers. |
 | budget | ceiling = 20k–50k episodes × T̄ steps AND ≥ ~300 updates. **A training run runs to its budget — no early stopping.** The training trajectory is too noisy to make any judgment from; judgment happens post-hoc, on CRN evals of saved checkpoints (the selection row). Early stopping exists only in tuning trials (§9.7), where it reads the periodic CRN eval, never the rollout curve, and the arm is one of many. |
 | model selection | **Post-hoc, three-layer (§9.7).** `CheckpointCallback` every ~5% of budget (~20 checkpoints — `--checkpoint-every-frac 0.05`, §8.2); after training, evaluate every checkpoint on the selection block (~2048 CRN seeds, disjoint from the protocol block — `--first-seed`, §9.7), take the top-k (k≈3, adjustable — widen when the leaders sit within one screen-SE), confirm those on the protocol block (~8192), ship the winner. No `EvalCallback`, no live selection env, no `sync_envs_normalization` — the machinery that selected a generalist's checkpoint on one wrong cell (mab #E36 V4) simply isn't there. **The terminal checkpoint is never the deliverable** — the marginal gain of the screen over a working callback is small (+1.4, mab #E33) but selecting *at all* is worth +43, and the post-hoc form buys the robustness. |
@@ -1681,9 +1706,11 @@ tiers are budget scopes ordered by how much the derivation above already knows:
 `core` corrects the knobs whose derived value is a real guess (`learning_rate`,
 `net_arch` width, `n_steps`, `ent_coef`, `gae_lambda` — the row with the widest
 measured spread), `breadth` opens what no row derives at all (`net_arch` depth,
-`n_epochs`, `batch_size`, `vf_coef`) plus `gamma`, which is bounded by the
-problem since γ > β is never sampled, and `all` adds the frozen pair
-(`clip_init`, `max_grad_norm`). Schedule *finals* are in no tier — §8.2's
+`n_epochs`, `batch_size`, `vf_coef`, `normalize_advantage`) plus the two knobs
+whose derivation is *bounded* rather than free — `gamma`, since γ > β is never
+sampled, and `norm_obs`, whose row states a prior neither branch of which is
+observable when it is made — and `all` adds what stays at its derived value
+unless asked for (`clip_init`, `max_grad_norm`, `norm_reward`). Schedule *finals* are in no tier — §8.2's
 one-degree-of-freedom rule derives them from the tuned inits.
 
 **The derivation records its basis.** The train script's L1 table comment

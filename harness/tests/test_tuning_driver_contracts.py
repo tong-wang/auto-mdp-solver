@@ -189,6 +189,46 @@ def test_unreachable_flag_value_raises(tmp_path):
         build_cmd(tmp_path / "eval.py", args_map, {"strict": False})
 
 
+def test_two_actions_on_one_dest_leave_one_value_unreachable(tmp_path):
+    """The shape a runtime-derived default invites: `--norm-obs` (store_true)
+    and `--no-norm-obs` (store_false) declared separately, both default None.
+    A parser is read per *dest*, so the second action wins and the True arm is
+    gone — a study opening the knob would die on its first True trial. The fix
+    is one BooleanOptionalAction, which is what the error names."""
+    args_map = _args_of(
+        lambda p: p.add_argument("--norm-obs", action="store_true",
+                                 dest="norm_obs", default=None),
+        lambda p: p.add_argument("--no-norm-obs", action="store_false",
+                                 dest="norm_obs", default=None))
+    assert build_cmd(tmp_path / "train.py", args_map,
+                     {"norm_obs": False})[-1] == "--no-norm-obs"
+    with pytest.raises(ValueError, match="BooleanOptionalAction"):
+        build_cmd(tmp_path / "train.py", args_map, {"norm_obs": True})
+
+
+def test_a_none_default_reaches_the_space_as_a_refusal(tmp_path):
+    """`l1_defaults` used to drop a None default, which made "the script
+    derives this at runtime" indistinguishable from "the space encoded it" —
+    trial 0 silently sampled the knob. Keeping it lets `encode` refuse it,
+    which is what the launch banner reports."""
+    from mdp_tuning.__main__ import l1_defaults
+    from mdp_tuning.driver import ArgSpec, DomainScripts
+    from mdp_tuning.spaces import encode_ppo
+
+    scripts = DomainScripts(
+        prefix="d", directory=tmp_path, algo="ppo",
+        train_script=tmp_path / "d_ppo_train.py",
+        eval_script=tmp_path / "d_ppo_eval.py",
+        train_args={"norm_obs": ArgSpec(flag="--norm-obs", multi=False,
+                                        default=None, takes_value=False,
+                                        flag_const=True,
+                                        negative_flag="--no-norm-obs")},
+        eval_args={})
+    defaults = l1_defaults(scripts, {"norm_obs"})
+    assert defaults == {"norm_obs": None}
+    assert encode_ppo(defaults)[1] == ["norm_obs"]
+
+
 def test_value_taking_args_are_unaffected(tmp_path):
     args_map = _args_of(
         lambda p: p.add_argument("--learning_rate", type=float, default=3e-4),

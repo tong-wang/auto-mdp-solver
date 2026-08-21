@@ -33,6 +33,52 @@ def test_tiers_nest() -> None:
     assert "gamma" in PPO_TIER_BREADTH and "gamma" not in PPO_TIER_CORE
 
 
+def test_the_normalization_knobs_sit_where_the_derivation_ends() -> None:
+    """Tier membership answers one question: how much does L1 already know?
+
+    `norm_obs` HAS a §8.6 row, but the row reads signals about the *trained*
+    policy's state distribution, which the derivation does not have — two
+    campaigns falsified it in opposite directions (mab #E8/#E10, adi_flex
+    F36-F38). So it is a prior, and breadth is where a prior gets checked.
+    `normalize_advantage` has no row at all, which is breadth's stated
+    category. `norm_reward` is reachable but frozen — §8.3 calls it
+    training-only and largely redundant with `normalize_advantage`, and no
+    campaign has yet moved it.
+    """
+    assert "norm_obs" in PPO_TIER_BREADTH and "norm_obs" not in PPO_TIER_CORE
+    assert "normalize_advantage" in PPO_TIER_BREADTH
+    assert "norm_reward" in PPO_KNOBS and "norm_reward" not in PPO_TIER_BREADTH
+
+
+def test_a_boolean_knob_round_trips_so_trial_zero_pins_it() -> None:
+    """The gap this closes: a boolean with no encode branch fell through to
+    `skipped`, so the warm start dropped it and Optuna *sampled* it for trial 0
+    — trial 0 stops being the L1 centre for exactly the knob just opened."""
+    l1 = {"norm_obs": True, "norm_reward": True, "normalize_advantage": False}
+    params, skipped, snapped = encode_ppo(dict(l1))
+    assert params == l1 and not skipped and not snapped
+    assert sample_ppo(FixedTrial(params), set(l1)) == l1
+
+
+def test_both_values_of_a_boolean_knob_are_reachable() -> None:
+    """A one-value knob is not a search axis — the §8.6 rows for these two say
+    outright that a derivation whose result cannot be expressed is not one."""
+    for want in (True, False):
+        cfg = sample_ppo(FixedTrial({"norm_obs": want,
+                                     "normalize_advantage": want}),
+                         {"norm_obs", "normalize_advantage"})
+        assert cfg == {"norm_obs": want, "normalize_advantage": want}
+
+
+def test_a_runtime_derived_boolean_default_is_refused_not_pinned() -> None:
+    """mab derives `norm_obs` from the observation mode inside `parse_args`, so
+    its argparse default is None. There is no single L1 value to enqueue, and
+    the space says so — the launch banner then reports trial 0 as NOT the L1
+    centre instead of implying it carries one."""
+    params, skipped, snapped = encode_ppo({"norm_obs": None})
+    assert not params and skipped == ["norm_obs"] and not snapped
+
+
 def test_gamma_containment() -> None:
     # β itself must be reachable (center-containment rule)
     cfg = sample_ppo(FixedTrial({"gamma_at_beta": True}), {"gamma"}, beta=1.0)

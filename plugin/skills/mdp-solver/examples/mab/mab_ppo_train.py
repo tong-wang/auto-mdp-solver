@@ -116,6 +116,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--vf-coef",       type=float, default=0.5)
     p.add_argument("--max-grad-norm", type=float, default=0.5)
     p.add_argument("--target-kl",     type=float, default=0.02)
+    # L1 (§8.6): on. PPO's per-minibatch advantage rescaling — the premise §8.3
+    # reasons FROM when it calls reward norm a critic-scaling detail, so it must
+    # be checkable rather than inherited silently from SB3. Off only as a logged
+    # L2 move; `mdp_tuning`'s breadth tier opens it.
+    p.add_argument("--no-normalize-advantage", action="store_false",
+                   dest="normalize_advantage", default=True)
     p.add_argument("--net_arch",      type=int,   nargs="+", default=[64, 64])
     p.add_argument("--n-envs",        type=int,   default=4)
     # escalation levers (ESCALATION.md #E12) — both default OFF; the plain
@@ -159,9 +165,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     # VecNormalize; with both norms off the wrapper is skipped entirely.
     # norm_obs defaults per observation mode — see _derived_norm_obs.
     p.add_argument("--vecnorm-clip-obs", type=float, default=10.0)
-    p.add_argument("--norm-obs",         action="store_true",
-                   dest="norm_obs", default=None)
-    p.add_argument("--no-norm-obs",      action="store_false",
+    # One BooleanOptionalAction, not a store_true/store_false pair: a parser is
+    # read per *dest*, so two actions sharing `norm_obs` leave whichever came
+    # first unreachable to any tool that drives this CLI — and with the default
+    # derived at runtime (below), the reachable half is the wrong one.
+    # `mdp_tuning` searches norm_obs at its breadth tier, so both arms must run.
+    p.add_argument("--norm-obs", action=argparse.BooleanOptionalAction,
                    dest="norm_obs", default=None)
     p.add_argument("--no-norm-reward",   action="store_false",
                    dest="norm_reward", default=True)
@@ -203,6 +212,7 @@ _L0_PRESET: dict[str, object] = {
     "vf_coef": 0.5, "max_grad_norm": 0.5, "target_kl": 0.0,
     "net_arch": [64, 64], "n_envs": 1,
     "norm_obs": False, "norm_reward": False,
+    "normalize_advantage": True,                   # the SB3 default, stated
     "eval_every": 0, "checkpoint_every_frac": 0.0,   # terminal checkpoint only
     "total_timesteps": 2_000_000,
     "policy": "mlp", "shape_coef": 0.0,   # escalation levers are never L0
@@ -353,6 +363,7 @@ _SHORT_KEYS: dict[str, str] = {
     "vf_coef":          "vf",
     "max_grad_norm":    "grad",
     "target_kl":        "kl",
+    "normalize_advantage": "advnorm",
     "vecnorm_clip_obs": "clipobs",
     "norm_obs":         "normobs",
     "shape_coef":       "shape",
@@ -620,6 +631,7 @@ def build_model(args: argparse.Namespace, env, outdir: Path) -> PPO:
         vf_coef=args.vf_coef,
         max_grad_norm=args.max_grad_norm,
         target_kl=args.target_kl if args.target_kl > 0 else None,
+        normalize_advantage=args.normalize_advantage,
         policy_kwargs=policy_kwargs,
         stats_window_size=100 if args.level == "l0" else 500,
         verbose=1,

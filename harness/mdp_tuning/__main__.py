@@ -134,14 +134,19 @@ def _resolve_domain_dir(name: str) -> Path:
 
 
 def l1_defaults(scripts: DomainScripts, tunable: set[str]) -> dict[str, object]:
-    """The train script's own default for each tunable knob — the L1 centre."""
+    """The train script's own default for each tunable knob — the L1 centre.
+
+    A ``None`` default is **kept**, not dropped. It means the script derives
+    that knob's L1 value at runtime (mab's ``norm_obs`` reads the observation
+    mode inside ``parse_args``), so there is no single centre for the warm
+    start to enqueue — and dropping it here made that indistinguishable from a
+    knob the space encoded successfully: trial 0 silently sampled it. Passing
+    it on lets ``encode`` refuse it, which is what the launch banner reports.
+    """
     out: dict[str, object] = {}
     for k in tunable:
         v = scripts.train_args[k].default
-        if isinstance(v, list):
-            v = tuple(v)
-        if v is not None:
-            out[k] = v
+        out[k] = tuple(v) if isinstance(v, list) else v
     return out
 
 

@@ -57,6 +57,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     # T̄ moves.
     p.add_argument("--gae-lambda",       type=float, default=0.95)
     p.add_argument("--ent-coef",         type=float, default=0.0)
+    # L1 (§8.6): on. PPO's per-minibatch advantage rescaling — the premise
+    # §8.3 reasons FROM when it calls reward norm a critic-scaling detail, so
+    # it must be checkable rather than inherited silently from SB3. Off only as
+    # a logged L2 move; `mdp_tuning`'s breadth tier opens it.
+    p.add_argument("--no-normalize-advantage", action="store_false",
+                   dest="normalize_advantage", default=True)
     p.add_argument("--net-arch",         type=int,   nargs="+", default=[64, 64])
     p.add_argument("--n-envs",           type=int,   default=1)
     # VecNormalize
@@ -87,6 +93,7 @@ _SHORT_KEYS: dict[str, str] = {
     "gamma":            "gamma",
     "gae_lambda":       "gae",
     "ent_coef":         "ent",
+    "normalize_advantage": "advnorm",
     "net_arch":         "arch",
     "vecnorm_clip_obs": "clipobs",
     "norm_obs":         "normobs",
@@ -185,6 +192,7 @@ def main() -> None:
         gamma=args.gamma,
         gae_lambda=args.gae_lambda,
         ent_coef=args.ent_coef,
+        normalize_advantage=args.normalize_advantage,
         policy_kwargs={"net_arch": list(args.net_arch)},
         verbose=1,
         tensorboard_log=str(outdir),
