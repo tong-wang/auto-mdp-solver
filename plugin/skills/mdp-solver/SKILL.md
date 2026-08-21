@@ -628,14 +628,19 @@ A miss here is almost always a script resolving `Path(args.outdir)` instead of
 `Path(__file__).resolve().parent / args.outdir`, or a shell redirect aimed at
 the CWD.
 
-- Tuning — the **L2(hp)** escalation, opened only when the L1 gate shows a
+- Tuning — the escalation opened only when the L1 gate shows a
   gap (or on request): `{domain}_ppo_tune.py` thin wrapper over `mdp_tuning`
   pre-filling `--metric <metric>_mean` (and `--beta`/`--episode-len` from
   the IR). The driver warm-starts trial 0 from the script defaults (the L1
   center) and tunes the `core` knob tier by default — `--knobs breadth`
   needs ≥ ~40 trials, and is also where the two normalization priors
   (`norm_obs`, `normalize_advantage`) get checked, since §8.6's rows for
-  them are settled by a run and by nothing earlier. Diagnosis before escalating (spec §8.6): L1 ≤ random
+  them are settled by a run and by nothing earlier. **Tag the round by what
+  moved, not by the fact that a study produced it:** the tiers cross layer
+  lines (`core` reaches the extractor knobs, `breadth` reaches `norm_obs`),
+  so a winner can be `L3(hp+arch)` or `L3(hp+gym)` — `--show-space` says
+  which layers a study can reach before it runs, `--fix` closes one.
+  Diagnosis before escalating (spec §8.6): L1 ≤ random
   → build bug; L1 < L0 → derivation misfired; competitive → stop at L1.
   **Selection-bias rule:** the study winner was selected on its tuning
   seeds — always re-evaluate the winning artifact with the full protocol

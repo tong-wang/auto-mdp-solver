@@ -1710,7 +1710,10 @@ measured spread), `breadth` opens what no row derives at all (`net_arch` depth,
 whose derivation is *bounded* rather than free — `gamma`, since γ > β is never
 sampled, and `norm_obs`, whose row states a prior neither branch of which is
 observable when it is made — and `all` adds what stays at its derived value
-unless asked for (`clip_init`, `max_grad_norm`, `norm_reward`). Schedule *finals* are in no tier — §8.2's
+unless asked for (`clip_init`, `max_grad_norm`, `norm_reward`). Membership
+answers *what does the derivation still not know*, which is a different
+question from *which layer implements the knob* — so a tier spans layers, and
+the paragraph below the diagnosis rules says how to read a winner's level. Schedule *finals* are in no tier — §8.2's
 one-degree-of-freedom rule derives them from the tuned inits.
 
 **The derivation records its basis.** The train script's L1 table comment
@@ -1727,12 +1730,29 @@ episodes did not collapse), which is why it is a warning.
 
 Diagnosis at the L1 gate: L1 ≤ random → suspect the build, don't escalate;
 L1 < L0 → the derivation misfired; L1 competitive vs baselines → done; gap →
-open L2. Tuning (`mdp_tuning`) is the L2(hp) layer: it warm-starts from the
-train script's defaults (= the L1 center), searches the `core` knob tier by
-default, and derives schedule finals — see its `--knobs`, `--fix`, `--beta`,
-`--episode-len` flags. A script that does not expose an in-tier knob makes the
-study search a smaller space than it reports, so naming a tier explicitly turns
-that into a launch failure rather than a warning (§8.2 tier 2).
+open L2. Tuning (`mdp_tuning`) is the escalation the hp layer is searched from:
+it warm-starts from the train script's defaults (= the L1 center), searches the
+`core` knob tier by default, and derives schedule finals — see its `--knobs`,
+`--fix`, `--beta`, `--episode-len` flags. A script that does not expose an
+in-tier knob makes the study search a smaller space than it reports, so naming
+a tier explicitly turns that into a launch failure rather than a warning (§8.2
+tier 2).
+
+**A study is not automatically `L2(hp)`, and the tier tables say which layers
+it can reach.** Two of them cross the boundary this section draws elsewhere.
+`core` searches the extractor knobs (`embed_dim`, `features_dim`, `channels`)
+on the scripts that expose them — and the `net_arch` row above puts custom
+extractors at the **arch** layer, not the hp one. `breadth` searches
+`norm_obs` and `all` searches `norm_reward` — the §8.3 vec-env wrapper stack,
+which this table derives from the IR's observation structure and objective and
+which §8.3 makes part of the saved artifact's input contract, so it is a
+**gym**-layer knob, not an optimizer setting. A winner that moved one of those
+is `L3(hp+arch)` or `L3(hp+gym)` in the notation above, and the escalation
+entry says so: **read the level off the knobs that actually moved**, never off
+the fact that a study produced it. Two flags make this answerable rather than
+archaeological — `--show-space` prints the resolved tunable set before launch,
+and `--fix` holds a knob at its derived value, so a study that means to stay
+inside one layer can say so (`--fix norm_obs`, `--fix embed_dim`).
 
 **Trial 0 is the L1 centre only as far as the space can represent it.** The
 warm start enqueues the script's defaults, and the space is a grid: `n_steps`
