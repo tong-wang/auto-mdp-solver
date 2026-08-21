@@ -1343,13 +1343,24 @@ on these, so their *names* are the contract:
 | artifacts & diagnostics | `gym_log` `checkpoint_every_frac` | — |
 
 `mdp_conformance`'s `scripts.cli_contract` check reads the parsers that exist
-and compares their dests against this table. Two groups are owed only where
-they apply, and the check reads that from the domain rather than from prose: a
-**rendering** mode is owed when the env's `__init__` accepts it — including
-where only one value is legal today, since the flag is the join point and a
-second rendering must not change the CLI's shape — and the **VecNormalize** names
-are owed when the script builds a `VecNormalize` (§8.3). Everything else is
-owed unconditionally. A script that does not exist yet is not a violation — a
+and compares their dests against this table. A parser assembled by a helper in
+the domain folder is a parser that exists: factoring the common eval surface
+into one `{domain}_benchmark_common.build_arg_parser` is the *right* shape, and
+the check follows imports within the folder to find it — the table is a
+contract over the names the surface offers, not over which file spells them.
+Two groups are owed only where they apply, and the check reads that from the
+domain rather than from prose: a **rendering** mode is owed when the env's
+`__init__` accepts it — including where only one value is legal today, since
+the flag is the join point and a second rendering must not change the CLI's
+shape — and the **VecNormalize** names are owed when the script reaches for the
+wrapper in code (§8.3): `norm_obs` `norm_reward` `vecnorm_clip_obs` where a
+train script *builds* one, `vecnorm_path` where an eval script *loads* the
+saved stats (§9.5). Naming it in a comment owes nothing — a domain that
+implements its own normalization and mentions `VecNormalize` only to say what
+it is an analog of would otherwise ship three knobs that control nothing, and
+an args log recording a normalization the run never had is a worse artifact
+than the warning it silences. Everything else is owed unconditionally. A
+script that does not exist yet is not a violation — a
 domain still in Phase A owes no `{domain}_ppo_eval.py`, and the check reads the
 parsers it finds and skips the rest, so a Phase-B-stage-0 gate never reports a
 stage the campaign has not claimed.

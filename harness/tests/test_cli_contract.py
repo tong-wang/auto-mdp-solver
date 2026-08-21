@@ -8,6 +8,11 @@ misses — a name the spec used but nothing checked, a name owed only where it
 applies, and a script that does not exist yet — plus the dest rule itself,
 since a check that misreads `dest=` would report flags that are right there.
 
+The same failure in reverse gets its own coverage: a reader that stops at one
+file, or that reads prose as code, reports names a domain already offers and
+knobs it could not honour. Both cost the report its signal, since a warning
+that cannot be cleared honestly is one nobody reads.
+
 Synthetic scripts only: the check must not learn the shape of any shipped
 domain.
 """
@@ -129,12 +134,75 @@ def test_vecnormalize_names_are_owed_only_where_the_wrapper_is_built(tmp_path):
     assert "norm_obs" in result.detail and "vecnorm_clip_obs" in result.detail
 
 
+def test_naming_the_wrapper_in_prose_owes_nothing(tmp_path):
+    """A domain that implements its own reward scaling and mentions the wrapper
+    only to say what it is an analog OF builds none: the three knobs would
+    control nothing, and an args log recording a normalization the run never had
+    is a worse artifact than the warning it silences."""
+    prose = ('\n# Reward scale: the VecNormalize analog (gamma = 1)\n'
+             '"""Own RunningReturnScale, not VecNormalize."""\n')
+    h = domain(tmp_path, train=parser(TRAIN) + prose)
+    assert check_script_cli_contract(h).status == "PASS"
+
+
+def test_an_import_alone_does_not_oblige_the_eval(tmp_path):
+    h = domain(tmp_path, train=parser(TRAIN),
+               eval="from stable_baselines3.common.vec_env import VecNormalize\n"
+                    + parser(EVAL))
+    assert check_script_cli_contract(h).status == "PASS"
+
+
 def test_the_eval_owes_vecnorm_path_when_it_loads_the_stats(tmp_path):
     h = domain(tmp_path, train=parser(TRAIN),
                eval=parser(EVAL) + "\nvenv = VecNormalize.load(p, venv)\n")
     result = check_script_cli_contract(h)
     assert result.status == "WARN"
     assert "d_ppo_eval.py: missing vecnorm_path" in result.detail
+
+
+# --- a parser assembled elsewhere in the folder ---------------------------
+
+def test_a_shared_builder_in_the_folder_offers_its_names(tmp_path):
+    """The table is a contract over the names the eval surface offers. A domain
+    that factors the common surface into one builder offers them from every
+    script that calls it; a one-file reader would report flags in daily use as
+    missing, clearable only by duplicating the builder into each script."""
+    (tmp_path / "d_benchmark_common.py").write_text(parser(EVAL))
+    h = domain(tmp_path, train=parser(TRAIN),
+               eval="from d_benchmark_common import build_arg_parser\n\n"
+                    "def _build_arg_parser():\n    return build_arg_parser()\n")
+    result = check_script_cli_contract(h)
+    assert result.status == "PASS", result.detail
+
+
+def test_the_shared_reader_follows_the_chain_but_leaves_the_folder(tmp_path):
+    """Transitive within the domain directory — and only there, so `argparse`
+    and SB3 resolve to nothing and no training stack is ever imported."""
+    (tmp_path / "d_cli_base.py").write_text(parser(["first_seed"]))
+    (tmp_path / "d_benchmark_common.py").write_text(
+        "import argparse\nfrom d_cli_base import add_protocol\n"
+        + parser([d for d in EVAL if d != "first_seed"]))
+    h = domain(tmp_path, train=parser(TRAIN),
+               eval="from d_benchmark_common import build_arg_parser\n")
+    assert check_script_cli_contract(h).status == "PASS"
+
+
+def test_a_name_missing_from_the_whole_surface_is_still_reported(tmp_path):
+    """Following imports widens where the check looks, not what it forgives."""
+    (tmp_path / "d_benchmark_common.py").write_text(
+        parser([d for d in EVAL if d != "n_seeds"]))
+    h = domain(tmp_path, train=parser(TRAIN),
+               eval="from d_benchmark_common import build_arg_parser\n")
+    result = check_script_cli_contract(h)
+    assert result.status == "WARN"
+    assert "d_ppo_eval.py: missing n_seeds" in result.detail
+
+
+def test_a_schedule_half_declared_in_a_shared_builder_is_not_a_half_pair(tmp_path):
+    (tmp_path / "d_cli_base.py").write_text(parser(["lr_final"]))
+    h = domain(tmp_path, train="from d_cli_base import add_schedule\n"
+                               + parser(["learning_rate"]))
+    assert check_schedule_pairs(h).status == "PASS"
 
 
 # --- §8.2 schedule pairs --------------------------------------------------

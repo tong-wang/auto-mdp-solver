@@ -1538,7 +1538,8 @@ _TIER1_EVAL = ("scenario_name", "model_path", "outfile", "n_seeds", "first_seed"
 # Owed only where they apply, read from the domain rather than from prose: a
 # rendering mode when the env's __init__ accepts it — one legal value still owes
 # the flag, since the name is what other arms join on — and the VecNormalize
-# names when the script actually builds the wrapper (§8.3).
+# names when the script actually reaches for the wrapper in code (§8.3): built
+# on the train side, loaded on the eval side (§9.5).
 _TIER1_RENDER = ("observation_mode", "action_mode", "reward_mode")
 _TIER1_VECNORM_TRAIN = ("norm_obs", "norm_reward", "vecnorm_clip_obs")
 _TIER1_VECNORM_EVAL = ("vecnorm_path",)
@@ -1589,6 +1590,99 @@ def _add_argument_dests(source: str) -> set[str]:
     return dests
 
 
+def _local_imports(source: str, directory: Path) -> list[Path]:
+    """The same-directory modules a script imports, as paths.
+
+    Only the domain folder is searched, so `argparse` and SB3 resolve to
+    nothing: the reader never leaves the folder it was handed.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            names.add(node.module.split(".")[0])
+        elif isinstance(node, ast.Import):
+            names.update(a.name.split(".")[0] for a in node.names)
+    return [d for n in sorted(names) if (d := directory / f"{n}.py").exists()]
+
+
+def _cli_dests(path: Path, directory: Path) -> set[str]:
+    """Every dest the script's CLI surface offers, shared builders included.
+
+    A domain that factors the common eval surface into one
+    `{domain}_benchmark_common.build_arg_parser` offers those names from every
+    script that calls it, and §8.2's table is a contract over the names the
+    surface offers. Reading one file at a time would report them missing, and
+    the only way to clear that is to copy the builder's flags into each script
+    — a second source of truth for the very surface the tier exists to
+    standardize. So the reader follows imports, transitively, within the domain
+    folder. Nothing is imported for real, so the no-training-stack property of
+    `_add_argument_dests` survives.
+
+    Deliberately loose in one direction: it unions the dests of every local
+    module the script imports, not only the one whose builder it calls. A name
+    credited to a script that imports the module without calling its builder is
+    a far cheaper error than a warning a domain can only clear by duplicating
+    the builder.
+    """
+    dests: set[str] = set()
+    seen = {path.resolve()}
+    queue = [path]
+    while queue:
+        try:
+            source = queue.pop().read_text()
+        except OSError:
+            continue
+        dests |= _add_argument_dests(source)
+        for dep in _local_imports(source, directory):
+            if dep.resolve() not in seen:
+                seen.add(dep.resolve())
+                queue.append(dep)
+    return dests
+
+
+def _vecnormalize_refs(source: str) -> tuple[bool, bool]:
+    """``(builds, uses)`` the wrapper — read from the code, never from prose.
+
+    §8.2 states the condition as a construction, so a substring search over the
+    file is the wrong instrument: it fires on the comment in a script that
+    implements its *own* normalization and mentions VecNormalize only to say
+    what it is an analog of. Owing three knobs that control nothing is worse
+    than the warning it would silence — an args log recording a normalization
+    the run never had is a false record.
+
+    Two answers, because the two sides use the wrapper differently: a train
+    script **builds** one (`VecNormalize(env, ...)`), while an eval script
+    loads the saved stats (`VecNormalize.load(...)`) and tests for them
+    (`isinstance(env, VecNormalize)`) — §9.5 — and still owes `vecnorm_path`
+    for the file it reads. An import alone obliges nothing.
+
+    The known blind spot of reading the symbol: an evaluator that unpickles the
+    saved stats itself, never touching the name, is invisible here. That is the
+    cheap direction to be wrong in — the flag goes unasked-for rather than a
+    working script being told to add knobs it cannot honour.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False, False
+
+    def _is_vecnorm(node) -> bool:
+        return ((isinstance(node, ast.Name) and node.id == "VecNormalize")
+                or (isinstance(node, ast.Attribute) and node.attr == "VecNormalize"))
+
+    builds = uses = False
+    for node in ast.walk(tree):
+        if _is_vecnorm(node):
+            uses = True
+        if isinstance(node, ast.Call) and _is_vecnorm(node.func):
+            builds = True
+    return builds, uses
+
+
 def _env_accepts(env_cls, name: str) -> bool:
     try:
         return name in inspect.signature(env_cls.__init__).parameters
@@ -1596,8 +1690,8 @@ def _env_accepts(env_cls, name: str) -> bool:
         return False
 
 
-def _cli_findings(path: Path, owed: list[str]) -> str | None:
-    missing = sorted(set(owed) - _add_argument_dests(path.read_text()))
+def _cli_findings(path: Path, owed: list[str], directory: Path) -> str | None:
+    missing = sorted(set(owed) - _cli_dests(path, directory))
     return f"{path.name}: missing {', '.join(missing)}" if missing else None
 
 
@@ -1629,18 +1723,18 @@ def check_script_cli_contract(h: DomainHandle) -> CheckResult:
         algo = train.name[len(h.name) + 1: -len("_train.py")]
         n_read += 1
         owed = list(_TIER1_TRAIN) + render
-        if "VecNormalize" in train.read_text():
+        if _vecnormalize_refs(train.read_text())[0]:
             owed += list(_TIER1_VECNORM_TRAIN)
-        findings.append(_cli_findings(train, owed))
+        findings.append(_cli_findings(train, owed, h.directory))
         ev = h.directory / f"{h.name}_{algo}_eval.py"
         if not ev.exists():
             absent.append(ev.name)
             continue
         n_read += 1
         owed = list(_TIER1_EVAL) + render
-        if "VecNormalize" in ev.read_text():
+        if _vecnormalize_refs(ev.read_text())[1]:
             owed += list(_TIER1_VECNORM_EVAL)
-        findings.append(_cli_findings(ev, owed))
+        findings.append(_cli_findings(ev, owed, h.directory))
     findings = [f for f in findings if f]
     tail = f"; no {', '.join(absent)} yet (not a violation)" if absent else ""
     if findings:
@@ -1676,7 +1770,7 @@ def check_schedule_pairs(h: DomainHandle) -> CheckResult:
         return CheckResult("scripts.schedule_pairs", "SKIP", "no train script yet")
     findings = []
     for train in trains:
-        dests = _add_argument_dests(train.read_text())
+        dests = _cli_dests(train, h.directory)
         for init, final in _SCHEDULE_PAIRS:
             if init in dests and final not in dests:
                 findings.append(f"{train.name}: --{init} without --{final} "
