@@ -345,6 +345,37 @@ def build_schedule(start: float, end: float) -> float | Callable[[float], float]
     return linear_schedule(start, end) if start != end else float(start)
 
 
+# The §8.6 L1 derivation, as data. The table comment above states what each
+# value was derived FROM; this dict is what it derived. §8.4 diffs the run
+# name's hyperparameter tier against THIS rather than against the parser
+# defaults, so a value later promoted into a default still shows as the
+# deviation it is — and editing an entry here is a re-derivation, with a logged
+# basis and an escalation-log entry, not a default edit. Two absences are
+# deliberate: knobs the L1 table does not derive (vf_coef, max_grad_norm) have
+# no derived value to diff against and keep diffing their defaults, and
+# `norm_obs` is derived at RUNTIME from the observation mode, so its centre is
+# `_derived_norm_obs(mode)` and build_run_name supplies it per run.
+_L1_DERIVED: dict[str, object] = {
+    'total_timesteps': 20000000,
+    'gamma': 1.0,
+    'gae_lambda': 0.98,
+    'n_envs': 4,
+    'n_steps': 2560,
+    'batch_size': 512,
+    'learning_rate': 0.0001,
+    'lr_final': 1e-05,
+    'clip_init': 0.2,
+    'clip_final': 0.05,
+    'ent_coef': 0.01,
+    'n_epochs': 10,
+    'target_kl': 0.02,
+    'norm_reward': True,
+    'normalize_advantage': True,
+    'net_arch': [64, 64],
+    'checkpoint_every_frac': 0.05,
+}
+
+
 _SHORT_KEYS: dict[str, str] = {
     "observation_mode": "obs",
     "action_mode":      "act",
@@ -431,8 +462,10 @@ def build_run_name(args: argparse.Namespace) -> str:
     parts = [f"PPO_obs{args.observation_mode}", args.level.upper()]
     if args.level != "l0":      # L0 is definitional — nothing to encode
         defaults = vars(_build_arg_parser().parse_args([]))
-        # norm_obs's default is derived from the observation mode, so the
-        # baseline must be too — otherwise every run encodes it as a diff
+        defaults.update(_L1_DERIVED)      # the derivation wins where it speaks
+        # norm_obs is derived at runtime from the observation mode, which is
+        # why it is not in _L1_DERIVED — the baseline must be the derivation
+        # here too, or every run encodes it as a diff
         defaults["norm_obs"] = _derived_norm_obs(args.observation_mode)
 
         def encode(keys) -> None:

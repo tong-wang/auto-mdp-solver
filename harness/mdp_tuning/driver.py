@@ -22,7 +22,7 @@ import importlib
 import os
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from mdp_conformance.loader import discover_prefix
@@ -64,6 +64,12 @@ class DomainScripts:
     eval_script: Path
     train_args: dict[str, ArgSpec]
     eval_args: dict[str, ArgSpec]
+    # The train script's `_L1_DERIVED` (spec §8.4), empty for a script that
+    # predates it. A parser default is what a knob is *set* to; this is what
+    # the §8.6 derivation *produced*. The two part company the moment a
+    # campaign promotes a discovered value into a default, and it is this one
+    # that "trial 0 = the L1 centre" is a claim about.
+    l1_derived: dict[str, object] = field(default_factory=dict)
 
 
 def _parser_args(parser) -> dict[str, ArgSpec]:
@@ -120,10 +126,13 @@ def load_domain(domain_dir: Path, algo: str = "ppo") -> DomainScripts:
         raise ValueError(
             f"{eval_script.name} must expose --model-path and --outfile (spec §9.1)")
 
+    derived = getattr(train_mod, "_L1_DERIVED", None) or {}
     return DomainScripts(
         prefix=prefix, directory=directory, algo=algo,
         train_script=train_script, eval_script=eval_script,
         train_args=train_args, eval_args=eval_args,
+        l1_derived={k: tuple(v) if isinstance(v, list) else v
+                    for k, v in dict(derived).items()},
     )
 
 

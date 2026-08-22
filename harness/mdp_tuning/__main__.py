@@ -134,19 +134,57 @@ def _resolve_domain_dir(name: str) -> Path:
 
 
 def l1_defaults(scripts: DomainScripts, tunable: set[str]) -> dict[str, object]:
-    """The train script's own default for each tunable knob — the L1 centre.
+    """The L1-**derived** value of each tunable knob — the centre trial 0 claims.
 
-    A ``None`` default is **kept**, not dropped. It means the script derives
-    that knob's L1 value at runtime (mab's ``norm_obs`` reads the observation
-    mode inside ``parse_args``), so there is no single centre for the warm
-    start to enqueue — and dropping it here made that indistinguishable from a
-    knob the space encoded successfully: trial 0 silently sampled it. Passing
-    it on lets ``encode`` refuse it, which is what the launch banner reports.
+    Read from the script's ``_L1_DERIVED`` (spec §8.4) where it declares one,
+    and from the parser default otherwise. The two differ only after a
+    promotion: §8.6 says the script's defaults *are* the L1 centre, which stops
+    being true the moment a campaign adopts a discovered value as a default —
+    and a warm start reading defaults would then enqueue the promoted value
+    while calling it L1, so every Δ(L2−L1) the study reports would be measured
+    from the wrong place. A script with no ``_L1_DERIVED`` is pre-convention,
+    and for it the two are the same thing by §8.6's own statement.
+
+    A ``None`` value is **kept**, not dropped. It means the script derives that
+    knob at runtime (mab's ``norm_obs`` reads the observation mode inside
+    ``parse_args``), so there is no single centre for the warm start to enqueue
+    — and dropping it made that indistinguishable from a knob the space encoded
+    successfully: trial 0 silently sampled it. Passing it on lets ``encode``
+    refuse it, which is what the launch banner reports.
     """
     out: dict[str, object] = {}
     for k in tunable:
+        if k in scripts.l1_derived:
+            out[k] = scripts.l1_derived[k]
+            continue
         v = scripts.train_args[k].default
         out[k] = tuple(v) if isinstance(v, list) else v
+    return out
+
+
+def promoted_knobs(scripts: DomainScripts) -> dict[str, tuple]:
+    """Knobs whose parser default has moved off the derived value — ``(derived,
+    default)`` each.
+
+    That is a *promotion*: a campaign adopting a discovered value, which §8.4
+    makes safe for run names (they diff the derivation, so the tag survives).
+    A study is where the promotion still bites, and the reason is the whole
+    tier system: a trial only carries a flag for a knob the study **searches**.
+    So a promoted knob inside the tier is corrected — trial 0 gets the derived
+    value explicitly — while one *outside* it is held at the promoted default
+    in every trial including trial 0, and the study's Δ(L2−L1) is then measured
+    from a centre that is not L1 in a knob nobody asked it to move. That second
+    case is the one worth a banner, so this scans every derived knob rather
+    than only the searched ones; the caller marks which is which.
+    """
+    out: dict[str, tuple] = {}
+    for k, derived in sorted(scripts.l1_derived.items()):
+        spec = scripts.train_args.get(k)
+        if spec is None:
+            continue                      # conformance reports this one
+        default = tuple(spec.default) if isinstance(spec.default, list) else spec.default
+        if default is not None and default != derived:
+            out[k] = (derived, default)
     return out
 
 
@@ -218,6 +256,15 @@ def report_readiness(scripts: DomainScripts, args: argparse.Namespace) -> None:
     if space.encode is None:
         return
     tunable = resolve_tunable(scripts, args, {})
+    promoted = promoted_knobs(scripts)
+    if promoted:
+        detail = "; ".join(
+            f"{k}: derived {d!r}, default {f!r}"
+            + ("" if k in tunable else " (outside this tier — every trial "
+                                       "runs at the default)")
+            for k, (d, f) in promoted.items())
+        print(f"promoted   : {len(promoted)} knob(s) whose default has moved "
+              f"off the derivation — {detail}")
     enq, skipped, snapped = space.encode(l1_defaults(scripts, tunable),
                                          **sample_kwargs_for(scripts, args))
     if not skipped and not snapped:
@@ -474,17 +521,28 @@ def main() -> None:
     if args.warm_start and space.encode is not None and not study.trials:
         tunable = resolve_tunable(scripts, args, fixed_train)
         sample_kw = sample_kwargs_for(scripts, args)
-        defaults = {}
-        for k in tunable:
-            v = scripts.train_args[k].default
-            if isinstance(v, list):
-                v = tuple(v)
-            if v is not None:
-                defaults[k] = v
+        # one reader for the centre, shared with --show-space: a readiness
+        # report that answers a different question from the launch it predicts
+        # is worse than no report
+        defaults = l1_defaults(scripts, tunable)
+        promoted = promoted_knobs(scripts)
+        if promoted:
+            print(f"warm start: {len(promoted)} knob(s) PROMOTED — the script "
+                  f"default has moved off the derived value (§8.4):")
+            for dest, (derived, default) in promoted.items():
+                mark = ("trial 0 restores the derivation" if dest in tunable
+                        else "OUTSIDE the searched tier, so every trial runs at "
+                             "the default and trial 0 is not L1 in this knob")
+                print(f"         {dest}: derived {derived!r}, "
+                      f"default {default!r} — {mark}")
+            study.set_user_attr("l1_promoted",
+                                {k: [repr(d), repr(f)] for k, (d, f) in promoted.items()})
         enq, skipped, snapped = space.encode(defaults, **sample_kw)
         if enq:
+            source = ("_L1_DERIVED" if scripts.l1_derived
+                      else "train-script defaults")
             study.enqueue_trial(enq)
-            print(f"warm start: enqueued trial 0 = train-script defaults "
+            print(f"warm start: enqueued trial 0 = the L1 centre from {source} "
                   f"({', '.join(sorted(enq))})")
         # trial 0 is supposed to BE the L1 centre, which is what makes Δ(L2−L1)
         # readable off the study — so any distance from it is stated, and

@@ -1577,8 +1577,10 @@ Two tiers of keys:
 - **Always-shown** (experiment design axes — define what problem is being solved):
   `observation_mode` → `obs`, `action_mode` → `act`, `reward_mode` → `rew`.
   Add these to `_SKIP_KEYS` and prepend them unconditionally before the defaults loop.
-- **Only when non-default** (hyperparameters — tuning knobs):
-  `lr`, `n_steps`, `batch_size`, `n_epochs`, `gamma`, `ent_coef`, `total_timesteps`, etc.
+- **Only when it deviates from the derivation** (hyperparameters — tuning
+  knobs): `lr`, `n_steps`, `batch_size`, `n_epochs`, `gamma`, `ent_coef`,
+  `total_timesteps`, etc. The baseline is `_L1_DERIVED`, **not** the parser
+  default — see "the hyperparameter tier diffs against the derivation" below.
 - **Always skipped**: `outdir`, `scenario_name`, `progress_bar`, `gym_log`
   (diagnostic toggles are not design axes — §11).
 
@@ -1590,8 +1592,12 @@ _SHORT_KEYS: dict[str, str] = {
 _SKIP_KEYS = {"outdir", "scenario_name", "progress_bar", "gym_log",
               "observation_mode", "action_mode", "reward_mode"}
 
+# The §8.6 L1 derivation, as data: what the table comment says was derived.
+_L1_DERIVED: dict[str, object] = {"gamma": 0.99, "gae_lambda": 0.95, ...}
+
 def build_run_name(args: argparse.Namespace) -> str:
     defaults = vars(_build_arg_parser().parse_args([]))
+    defaults.update(_L1_DERIVED)          # the derivation wins where it speaks
     parts = [
         f"obs{args.observation_mode}",
         f"act{args.action_mode}",
@@ -1610,6 +1616,49 @@ def build_run_name(args: argparse.Namespace) -> str:
 ```
 
 Result: `PPO_20260630_224416_obssales_actdiscrete_rewprofit` (all defaults) or `PPO_20260630_224416_obstiming_actdiscrete_rewprofit_steps5000000`.
+
+**The hyperparameter tier diffs against the derivation, not against the
+defaults.** Two statements are load-bearing and only jointly true until a
+campaign does what campaigns exist to do — adopt a discovered value. This
+section encodes a knob when it differs from the script's default; §8.6 says
+those defaults *are* the L1 centre. Promote by editing a default and the knob
+stops differing from it, so every later run name drops the tag — and run dirs
+are immutable, so the archive then holds two textually identical names meaning
+different configurations, which is exactly the property the ledger's join key
+relies on. Refusing to promote is the other horn, and a campaign has taken it:
+carrying a discovered value as an explicit flag forever because the naming rule
+made adoption unsafe. Diffing against `_L1_DERIVED` dissolves the dilemma —
+adopt the value as a default for convenience, and the tag survives because the
+*derivation* did not move.
+
+Three consequences, none of which the default-relative rule has:
+
+- **A deviation is visible forever**, whatever the defaults later become. The
+  quieter half of the same gap closes with it: a knob sitting at a default that
+  is wrong for the current scale appears in no run name, no leaderboard row and
+  no ledger citation, recoverable only by reading a train log by hand.
+- **The level stops being authored and becomes derivable.** An empty
+  hyperparameter tier means the run sat at the L1 centre; any tag means the hp
+  layer moved, and which tags appear says how far. An authored `L1_…` token is
+  a claim nothing checks — one campaign carries it in ~90 run dirs of an
+  L2(gym) arm.
+- **Re-deriving is distinguishable from tuning.** §8.6 already mandates
+  re-derivation when "the instance, scale, or measured T̄ moves". That is an
+  edit to `_L1_DERIVED` with a logged basis — a new L1 generation, whose
+  results are not comparable to the old one's — and it is mechanically distinct
+  from an L2 knob search, which is a flag on a command line.
+
+Scope and two carve-outs. `_L1_DERIVED` holds **what the §8.6 L1 table
+derived** and nothing else: a knob the table does not derive (`vf_coef`,
+`max_grad_norm`) has no derived value to diff against and keeps diffing its
+default, so adding one means claiming a derivation, with a basis. And where the
+derived value is computed at **runtime** rather than written down — mab reads
+the observation mode inside `parse_args` — the dict omits that key and
+`build_run_name` supplies the computed centre for the run in hand.
+
+`mdp_tuning` reads the same dict: the warm start enqueues the derivation, so
+"trial 0 = the L1 centre" survives a promotion too, and the launch banner names
+any knob whose default has moved off its derived value (§8.6).
 
 **File naming rules**:
 - Model: `{scenario_name}_{algo}.zip` (e.g. `simple_ppo.zip`)
@@ -1731,7 +1780,8 @@ episodes did not collapse), which is why it is a warning.
 Diagnosis at the L1 gate: L1 ≤ random → suspect the build, don't escalate;
 L1 < L0 → the derivation misfired; L1 competitive vs baselines → done; gap →
 open L2. Tuning (`mdp_tuning`) is the escalation the hp layer is searched from:
-it warm-starts from the train script's defaults (= the L1 center), searches the
+it warm-starts from the script's `_L1_DERIVED` (§8.4) — the parser defaults
+where a script declares none — searches the
 `core` knob tier by default, and derives schedule finals — see its `--knobs`,
 `--fix`, `--beta`, `--episode-len` flags. A script that does not expose an
 in-tier knob makes the study search a smaller space than it reports, so naming
@@ -1755,7 +1805,7 @@ and `--fix` holds a knob at its derived value, so a study that means to stay
 inside one layer can say so (`--fix norm_obs`, `--fix embed_dim`).
 
 **Trial 0 is the L1 centre only as far as the space can represent it.** The
-warm start enqueues the script's defaults, and the space is a grid: `n_steps`
+warm start enqueues the derived values, and the space is a grid: `n_steps`
 and `batch_size` are powers of two, `net_arch` is uniform width on a power of
 two, `learning_rate` and `ent_coef` live inside log ranges. A derived value off
 that grid — a rollout floor derived to 2560, an `ent_coef` of exactly 0 — is

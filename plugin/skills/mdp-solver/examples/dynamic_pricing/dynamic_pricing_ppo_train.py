@@ -83,6 +83,32 @@ def parse_args() -> argparse.Namespace:
 # Helpers
 # ---------------------------------------------------------------------------
 
+# The §8.6 L1 derivation, as data. The table comment above states what each
+# value was derived FROM; this dict is what it derived. §8.4 diffs the run
+# name's hyperparameter tier against THIS rather than against the parser
+# defaults, so a value later promoted into a default still shows as the
+# deviation it is — and editing an entry here is a re-derivation, with a logged
+# basis and an escalation-log entry, not a default edit. Knobs the L1 table
+# does not derive are absent on purpose: with no derived value to diff against,
+# they keep diffing their defaults.
+_L1_DERIVED: dict[str, object] = {
+    'total_timesteps': 500000,
+    'gamma': 1.0,
+    'gae_lambda': 0.95,
+    'n_envs': 1,
+    'n_steps': 2048,
+    'batch_size': 512,
+    'learning_rate': 0.0003,
+    'ent_coef': 0.0,
+    'n_epochs': 10,
+    'norm_obs': True,
+    'norm_reward': True,
+    'normalize_advantage': True,
+    'net_arch': [64, 64],
+    'checkpoint_every_frac': 0.05,
+}
+
+
 _SHORT_KEYS: dict[str, str] = {
     "total_timesteps":  "steps",
     "seed":             "seed",
@@ -109,6 +135,7 @@ _SKIP_KEYS = {"outdir", "scenario_name", "progress_bar", "gym_log",
 
 def build_run_name(args: argparse.Namespace) -> str:
     defaults = vars(_build_arg_parser().parse_args([]))
+    defaults.update(_L1_DERIVED)          # the derivation wins where it speaks
     parts = [
         f"obs{args.observation_mode}",
         f"act{args.action_mode}",

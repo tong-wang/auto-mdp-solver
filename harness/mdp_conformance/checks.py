@@ -1842,6 +1842,86 @@ def check_schedule_pairs(h: DomainHandle) -> CheckResult:
                        f"init has its final")
 
 
+def _l1_derived(source: str) -> tuple[list[str] | None, bool]:
+    """``(keys, is_read)`` for a module-level ``_L1_DERIVED``; keys is None when
+    the script declares none.
+
+    Read from the AST rather than by importing: conformance runs on a folder
+    whose train script imports SB3, and the check must work in the torch-free
+    install like every other one here.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None, False
+    keys: list[str] | None = None
+    for node in tree.body:
+        names = ([t.id for t in node.targets if isinstance(t, ast.Name)]
+                 if isinstance(node, ast.Assign)
+                 else [node.target.id] if isinstance(node, ast.AnnAssign)
+                 and isinstance(node.target, ast.Name) else [])
+        if "_L1_DERIVED" not in names:
+            continue
+        value = node.value
+        keys = ([k.value for k in value.keys
+                 if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+                if isinstance(value, ast.Dict) else [])
+    read = any(isinstance(n, ast.Name) and n.id == "_L1_DERIVED"
+               and isinstance(n.ctx, ast.Load) for n in ast.walk(tree))
+    return keys, read
+
+
+def check_l1_derived(h: DomainHandle) -> CheckResult:
+    """The L1 derivation is data, and the run name diffs against it (spec §8.4).
+
+    The rule it enforces exists because two spec statements are only jointly
+    true until a campaign promotes a discovered value: §8.4 encodes a
+    hyperparameter when it differs from the script default, and §8.6 says those
+    defaults *are* the L1 centre. Edit a default to adopt a finding and the tag
+    disappears from every later run name, leaving an archive of textually
+    identical names meaning different configurations — so `_L1_DERIVED` is what
+    the name is measured against, and a default is free to move.
+
+    Two failures are worth separating from "not adopted yet". A key that is not
+    a CLI dest is a knob the diff can never fire on — a typo, or a dest renamed
+    out from under the dict. A dict nothing reads is worse: the script looks
+    adopted and its run names still diff the defaults, which is the silent
+    no-op this check exists to make loud.
+    """
+    trains = sorted(h.directory.glob(f"{h.name}_*_train.py"))
+    if not trains:
+        return CheckResult("scripts.l1_derived", "SKIP",
+                           "no train script yet — a domain mid-formalization owes none")
+    legacy, findings, sizes = [], [], []
+    for train in trains:
+        keys, read = _l1_derived(train.read_text())
+        if keys is None:
+            legacy.append(train.name)
+            continue
+        sizes.append(f"{train.name}: {len(keys)} derived value(s)")
+        if not keys:
+            findings.append(f"{train.name}: _L1_DERIVED is empty — a derivation "
+                            f"that states nothing is not one")
+            continue
+        unknown = sorted(set(keys) - _cli_dests(train, h.directory))
+        if unknown:
+            findings.append(f"{train.name}: _L1_DERIVED names {unknown}, which "
+                            f"the CLI has no dest for — the run name can never "
+                            f"diff them")
+        if not read:
+            findings.append(f"{train.name}: _L1_DERIVED is declared but never "
+                            f"read — build_run_name still diffs the parser "
+                            f"defaults, so a promoted value would go untagged")
+    if findings:
+        return CheckResult("scripts.l1_derived", "FAIL", "; ".join(findings))
+    if legacy:
+        return CheckResult("scripts.l1_derived", "WARN",
+                           f"{', '.join(legacy)}: no _L1_DERIVED — pre-convention, "
+                           f"so the run name diffs mutable defaults and a promoted "
+                           f"value would go untagged (§8.4)")
+    return CheckResult("scripts.l1_derived", "PASS", "; ".join(sizes))
+
+
 REGISTRY = [
     check_file_layout,
     check_layering,
@@ -1863,6 +1943,7 @@ REGISTRY = [
     check_restatement_current,
     check_script_cli_contract,
     check_schedule_pairs,
+    check_l1_derived,
     check_init_state,
     check_gym_contract,
     check_determinism,

@@ -229,6 +229,66 @@ def test_a_none_default_reaches_the_space_as_a_refusal(tmp_path):
     assert encode_ppo(defaults)[1] == ["norm_obs"]
 
 
+def test_the_warm_start_centre_is_the_derivation_not_the_default(tmp_path):
+    """After a promotion the two part company, and every Δ(L2−L1) the study
+    reports is measured from whichever one the warm start believed."""
+    from mdp_tuning.__main__ import l1_defaults, promoted_knobs
+    from mdp_tuning.driver import ArgSpec, DomainScripts
+
+    scripts = DomainScripts(
+        prefix="d", directory=tmp_path, algo="ppo",
+        train_script=tmp_path / "d_ppo_train.py",
+        eval_script=tmp_path / "d_ppo_eval.py",
+        # gae_lambda has been promoted: the script now defaults to the
+        # discovered 0.9, while the §8.6 derivation still says 0.95
+        train_args={"gae_lambda": ArgSpec(flag="--gae-lambda", multi=False,
+                                          default=0.9),
+                    "ent_coef": ArgSpec(flag="--ent-coef", multi=False,
+                                        default=0.005)},
+        eval_args={},
+        l1_derived={"gae_lambda": 0.95, "ent_coef": 0.005})
+    assert l1_defaults(scripts, {"gae_lambda", "ent_coef"}) == {
+        "gae_lambda": 0.95, "ent_coef": 0.005}
+    assert promoted_knobs(scripts) == {"gae_lambda": (0.95, 0.9)}
+
+
+def test_a_promotion_outside_the_searched_tier_is_still_reported(tmp_path):
+    """The case that actually costs something. A trial only carries a flag for
+    a knob the study searches, so a promoted knob OUTSIDE the tier is held at
+    the promoted default in every trial — trial 0 included — and Δ(L2−L1) is
+    measured from a centre that is not L1 in a knob nobody asked it to move.
+    Scanning only the searched knobs would miss exactly this one."""
+    from mdp_tuning.__main__ import promoted_knobs
+    from mdp_tuning.driver import ArgSpec, DomainScripts
+
+    scripts = DomainScripts(
+        prefix="d", directory=tmp_path, algo="ppo",
+        train_script=tmp_path / "d_ppo_train.py",
+        eval_script=tmp_path / "d_ppo_eval.py",
+        train_args={"max_grad_norm": ArgSpec(flag="--max-grad-norm",
+                                             multi=False, default=1.0)},
+        eval_args={},
+        l1_derived={"max_grad_norm": 0.5})
+    assert promoted_knobs(scripts) == {"max_grad_norm": (0.5, 1.0)}
+
+
+def test_a_script_without_a_derivation_still_warm_starts_from_defaults(tmp_path):
+    """§8.6's own statement — for a pre-convention script the defaults ARE the
+    L1 centre — so nothing changes for it, and nothing is reported as promoted."""
+    from mdp_tuning.__main__ import l1_defaults, promoted_knobs
+    from mdp_tuning.driver import ArgSpec, DomainScripts
+
+    scripts = DomainScripts(
+        prefix="d", directory=tmp_path, algo="ppo",
+        train_script=tmp_path / "d_ppo_train.py",
+        eval_script=tmp_path / "d_ppo_eval.py",
+        train_args={"gae_lambda": ArgSpec(flag="--gae-lambda", multi=False,
+                                          default=0.9)},
+        eval_args={})
+    assert l1_defaults(scripts, {"gae_lambda"}) == {"gae_lambda": 0.9}
+    assert promoted_knobs(scripts) == {}
+
+
 def test_value_taking_args_are_unaffected(tmp_path):
     args_map = _args_of(
         lambda p: p.add_argument("--learning_rate", type=float, default=3e-4),

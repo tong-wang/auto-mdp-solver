@@ -170,6 +170,13 @@ same day**, citing the finding (#E…) that paid for it.
 - **Compute sites/venues are cited by alias, never hostname** — venue
   config lives at the repo root; a venue change is a confound to record,
   not a detail.
+- **Editing `_L1_DERIVED` is a re-derivation, not a default edit** (spec
+  §8.4). The parser default is what a knob is *set* to and may be promoted
+  freely; that dict is what the §8.6 derivation *produced*, it is what the
+  run name and `mdp_tuning`'s trial 0 are measured against, and moving an
+  entry re-bases every Δ(L2−L1) above it — so it takes a logged basis and a
+  ledger entry, the way §8.6's "re-derive when the instance, scale, or
+  measured T̄ moves" intends.
 - **Never use `param`, `params`, or `param_*`** anywhere (conformance
   fails).
 ````

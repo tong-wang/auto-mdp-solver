@@ -107,6 +107,36 @@ def build_schedule(start: float, end: float) -> float | Callable[[float], float]
     return linear_schedule(start, end) if start != end else float(start)
 
 
+# The §8.6 L1 derivation, as data. The table comment above states what each
+# value was derived FROM; this dict is what it derived. §8.4 diffs the run
+# name's hyperparameter tier against THIS rather than against the parser
+# defaults, so a value later promoted into a default still shows as the
+# deviation it is — and editing an entry here is a re-derivation, with a logged
+# basis and an escalation-log entry, not a default edit. Knobs the L1 table
+# does not derive are absent on purpose: with no derived value to diff against,
+# they keep diffing their defaults.
+_L1_DERIVED: dict[str, object] = {
+    'total_timesteps': 2000000,
+    'gamma': 0.99,
+    'gae_lambda': 0.95,
+    'n_envs': 1,
+    'n_steps': 2048,
+    'batch_size': 512,
+    'learning_rate': 0.0003,
+    'lr_final': 3e-05,
+    'clip_init': 0.2,
+    'clip_final': 0.05,
+    'ent_coef': 0.005,
+    'n_epochs': 10,
+    'target_kl': 0.02,
+    'norm_obs': True,
+    'norm_reward': True,
+    'normalize_advantage': True,
+    'net_arch': [64, 64],
+    'checkpoint_every_frac': 0.05,
+}
+
+
 _SHORT_KEYS: dict[str, str] = {
     "observation_mode":        "obs",
     "action_mode":     "act",
@@ -141,6 +171,7 @@ _SKIP_KEYS = {"outdir", "scenario_name", "progress_bar",
 
 def build_run_name(args: argparse.Namespace) -> str:
     defaults = vars(_build_arg_parser().parse_args([]))
+    defaults.update(_L1_DERIVED)          # the derivation wins where it speaks
     parts = []
     for key, default_val in defaults.items():
         if key in _SKIP_KEYS:
