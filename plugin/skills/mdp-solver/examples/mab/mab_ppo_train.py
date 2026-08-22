@@ -38,6 +38,7 @@ from typing import Callable
 
 import numpy as np
 import stable_baselines3
+from mdp_conformance.launch import assert_l1_current
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
@@ -374,6 +375,15 @@ _L1_DERIVED: dict[str, object] = {
     'net_arch': [64, 64],
     'checkpoint_every_frac': 0.05,
 }
+
+
+# What the derivation above was measured ON (spec §8.6: "a derivation whose
+# basis moved is stale even though every number in it is unchanged"). Read at
+# launch by `assert_l1_current`: a moved instance or T̄ warns, and the run is
+# refused only where the derivation's own rollout row held at the T̄ it was
+# measured on and does not hold here — the script asserting a rule it breaks.
+# The remedy there is a re-derivation, not a flag.
+_L1_BASIS: dict[str, object] = {"scenario_name": "gauss_K10_T1000", "episode_len": 1000, "beta": 1.0}
 
 
 _SHORT_KEYS: dict[str, str] = {
@@ -834,6 +844,11 @@ def evaluate(
 def main() -> None:
     args = parse_args()
     scenario = resolve_target(args)
+    # spec §8.6: the derivation is CHECKED against the resolved args, not
+    # printed at them — a stale basis or a rule this run breaks refuses the
+    # launch, before any artifact exists to be misread later.
+    assert_l1_current(args, derived=_L1_DERIVED, basis=_L1_BASIS,
+                      episode_len=scenario.horizon)
 
     run_name = build_run_name(args)
     outdir, ckpt_dir = resolve_paths(

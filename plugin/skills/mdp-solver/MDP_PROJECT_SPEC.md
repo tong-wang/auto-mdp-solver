@@ -1308,6 +1308,10 @@ def main():
     args = parse_args()
 
     scenario = SCENARIOS[args.scenario_name]
+    # train scripts only (§8.6): check the derivation against what this run
+    # actually resolved to, before any artifact exists
+    assert_l1_current(args, derived=_L1_DERIVED, basis=_L1_BASIS,
+                      episode_len=scenario.horizon)
     print(scenario)
 
     env = {Domain}Env(
@@ -1765,17 +1769,57 @@ question from *which layer implements the knob* — so a tier spans layers, and
 the paragraph below the diagnosis rules says how to read a winner's level. Schedule *finals* are in no tier — §8.2's
 one-degree-of-freedom rule derives them from the tuned inits.
 
-**The derivation records its basis.** The train script's L1 table comment
-states what each derived value was derived *from* — the measured T̄ (and at
-which scale/instance, under roughly what policy strength, since episode
-length drifts as the agent improves in open-ended domains). A derivation
-whose basis moved is stale even though every number in it is unchanged: the
-one campaign that recorded its basis (`T~48`, game2048) is the one that
-caught its own violation when the campaign changed scale; re-derive when the
-instance, scale, or measured T̄ moves. The train script also **warns** (never
-errors) at start when the rollout holds fewer than the ≥10-episode floor —
-measured as a co-factor, not a cliff (game2048: r = +0.31, flat arms at 2.4
-episodes did not collapse), which is why it is a warning.
+**The derivation records its basis, as data.** The train script's L1 table
+comment states what each derived value was derived *from* — the measured T̄
+(and at which scale/instance, under roughly what policy strength, since episode
+length drifts as the agent improves in open-ended domains) — and `_L1_BASIS`
+carries the machine-readable part of it beside `_L1_DERIVED` (§8.4):
+
+```python
+_L1_BASIS: dict[str, object] = {"scenario_name": "simple", "episode_len": 30,
+                                "beta": 0.99}
+```
+
+β belongs here rather than among the derived values: it is a property of the
+problem the derivation was made *against*, and reading it off the derived γ
+instead would make the γ ≤ β rule tautological on a domain that derives γ = β
+and wrong on one that derives γ = 1 − 1/T̄.
+
+A derivation whose basis moved is stale even though every number in it is
+unchanged: the one campaign that recorded its basis (`T~48`, game2048) is the
+one that caught its own violation when the campaign changed scale; re-derive
+when the instance, scale, or measured T̄ moves.
+
+**The derivation is checked at launch, not printed at it.** `mdp_conformance`
+asks *is this code spec-shaped?* before anything runs and `mdp_gates` asks
+*does this number clear its baselines?* after everything has; the launch — *is
+this experiment well-posed?* — is between them, and a banner is not a check. A
+campaign printed `rollout=512x4=2048: >=2048 and >=10 episodes` unconditionally
+at a scale where its runs held 2–6, for the whole campaign, at the scale
+carrying every headline number. So `main()` calls
+`assert_l1_current(args, derived=_L1_DERIVED, basis=_L1_BASIS,
+episode_len=...)` (from `mdp_conformance.launch`) once the args are resolved,
+which prints the derivation's rows as *checked*, lists this run's deviations
+from them, and **refuses** three things §8.6 calls never:
+
+- a **stale derivation**, in the one form that is machine-decidable — the
+  derived rollout satisfied the ≥10-episode row at the T̄ it was measured on
+  and does not at this run's. The remedy is a re-derivation, never an override:
+  patching it with a flag records a broken derivation as an ordinary L2(hp)
+  escalation and leaves the campaign citing a ruler it has replaced. A basis
+  measured on a *different instance* only warns — a sibling scenario at the
+  same scale leaves every row valid, and refusing it would make the check
+  something to work around;
+- **γ > β**;
+- an **inverted schedule** (a final above its init, §8.2).
+
+Everything else reports rather than refuses, and two exclusions are load-
+bearing. The rollout floors stay **warnings** — measured as a co-factor, not a
+cliff (game2048: r = +0.31, flat arms at 2.4 episodes did not collapse) — and
+the **prior** rows (`norm_obs`, `normalize_advantage`) are never asserted at
+all: their rows above state a prior only a run can settle, so deviating there
+is the experiment the row asks for. An L0 run skips the check entirely, since
+L0 is defined as the library's defaults and the L1 rows are not in force.
 
 Diagnosis at the L1 gate: L1 ≤ random → suspect the build, don't escalate;
 L1 < L0 → the derivation misfired; L1 competitive vs baselines → done; gap →

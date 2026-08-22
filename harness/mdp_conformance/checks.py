@@ -1871,6 +1871,24 @@ def _l1_derived(source: str) -> tuple[list[str] | None, bool]:
     return keys, read
 
 
+def _l1_basis(source: str) -> tuple[dict, bool]:
+    """``(basis, declared)`` for a module-level ``_L1_BASIS`` of constants."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None, False
+    for node in tree.body:
+        names = ([t.id for t in node.targets if isinstance(t, ast.Name)]
+                 if isinstance(node, ast.Assign)
+                 else [node.target.id] if isinstance(node, ast.AnnAssign)
+                 and isinstance(node.target, ast.Name) else [])
+        if "_L1_BASIS" in names and isinstance(node.value, ast.Dict):
+            return {k.value: (v.value if isinstance(v, ast.Constant) else None)
+                    for k, v in zip(node.value.keys, node.value.values)
+                    if isinstance(k, ast.Constant)}, True
+    return None, False
+
+
 def check_l1_derived(h: DomainHandle) -> CheckResult:
     """The L1 derivation is data, and the run name diffs against it (spec §8.4).
 
@@ -1922,6 +1940,134 @@ def check_l1_derived(h: DomainHandle) -> CheckResult:
     return CheckResult("scripts.l1_derived", "PASS", "; ".join(sizes))
 
 
+def _argument_default(source: str, dest: str) -> tuple[bool, object]:
+    """``(declared, default)`` for one dest's ``add_argument`` call.
+
+    A dest can exist and still be unusable: §8.2 requires
+    `--checkpoint-every-frac` and §8.6 wants ~20 checkpoints from it, but a
+    script that declares the flag with ``default=None`` saves none unless every
+    launch remembers to pass it. Reading the dest alone cannot see that, which
+    is the difference between forcing a capability and forcing its use.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False, None
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "add_argument"):
+            continue
+        if dest not in _dests_in(node):
+            continue
+        for kw in node.keywords:
+            if kw.arg == "default":
+                return True, (kw.value.value
+                              if isinstance(kw.value, ast.Constant) else "?")
+        return True, None
+    return False, None
+
+
+def _calls_named(source: str, predicate) -> set[str]:
+    """Names of the classes/functions this script CONSTRUCTS, filtered."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = (node.func.id if isinstance(node.func, ast.Name)
+                else node.func.attr if isinstance(node.func, ast.Attribute)
+                else None)
+        if name and predicate(name):
+            out.add(name)
+    return out
+
+
+def check_launch_check(h: DomainHandle) -> CheckResult:
+    """The train script checks its own derivation at launch (spec §8.6).
+
+    Conformance runs before anything is launched and the eval gate runs after
+    everything has, so the launch — *is this experiment well-posed?* — had no
+    gate at all, and that is where the expensive mistakes are made. §8.6 already
+    asks the script to state what it derived and from what; `assert_l1_current`
+    turns the statement into a check, and this reports whether the script makes
+    it. A basis naming a scenario the registry does not have is worse than none:
+    the staleness comparison silently never fires.
+    """
+    trains = sorted(h.directory.glob(f"{h.name}_*_train.py"))
+    if not trains:
+        return CheckResult("scripts.launch_check", "SKIP",
+                           "no train script yet — a domain mid-formalization owes none")
+    silent, findings = [], []
+    for train in trains:
+        source = train.read_text()
+        if "assert_l1_current" not in source:
+            silent.append(train.name)
+        basis, _ = _l1_basis(source)
+        if basis is None:
+            continue
+        scen = basis.get("scenario_name")
+        if scen is not None and h.SCENARIOS and scen not in h.SCENARIOS:
+            findings.append(f"{train.name}: _L1_BASIS names scenario {scen!r}, "
+                            f"which SCENARIOS does not have — the staleness "
+                            f"comparison can never fire")
+    if findings:
+        return CheckResult("scripts.launch_check", "FAIL", "; ".join(findings))
+    if silent:
+        return CheckResult("scripts.launch_check", "WARN",
+                           f"{', '.join(silent)}: no assert_l1_current call — the "
+                           f"L1 derivation is printed, not checked, so a run at "
+                           f"an instance it was not derived for is launched "
+                           f"silently (§8.6)")
+    return CheckResult("scripts.launch_check", "PASS",
+                       f"{len(trains)} train script(s) check the derivation at launch")
+
+
+def check_selection_protocol(h: DomainHandle) -> CheckResult:
+    """Selection is the post-hoc screen, not a live callback (spec §8.6/§9.7).
+
+    §9.7 has specified post-hoc checkpoint selection since v0.7.0, in terms that
+    exclude the alternative outright — "no `EvalCallback`, no live selection
+    env". Neither existing gate can see a violation: the code is conformant, and
+    the numbers clear their baselines. The cost is not hypothetical — one
+    campaign selected among ~400 callback candidates instead of ~20 checkpoints,
+    paying roughly a 5x selection-noise multiplier on every arm for *more*
+    compute than the mandated protocol costs.
+
+    A warning rather than a failure, deliberately: a domain generated before the
+    rule produced every number it reports with the machinery it has, and
+    rewriting that would leave its leaderboard describing code that did not
+    generate it (`examples/mab` is exactly this case, and says so in its own
+    caveat). What the campaign owes is the knowledge, at the moment of use.
+    """
+    trains = sorted(h.directory.glob(f"{h.name}_*_train.py"))
+    if not trains:
+        return CheckResult("scripts.selection_protocol", "SKIP",
+                           "no train script yet — a domain mid-formalization owes none")
+    findings = []
+    for train in trains:
+        source = train.read_text()
+        live = sorted(_calls_named(source, lambda n: n.endswith("EvalCallback")))
+        if live:
+            findings.append(f"{train.name}: constructs {', '.join(live)} — §9.7 "
+                            f"selects post-hoc from checkpoints, with no live "
+                            f"selection env")
+        declared, default = _argument_default(source, "checkpoint_every_frac")
+        if declared and (default is None or default == 0):
+            findings.append(f"{train.name}: checkpoint_every_frac defaults to "
+                            f"{default!r}, so a run that does not pass it saves "
+                            f"no checkpoints and §9.7's screen cannot run "
+                            f"(§8.2 defaults it to 0.05)")
+    if findings:
+        return CheckResult("scripts.selection_protocol", "WARN", "; ".join(findings))
+    return CheckResult("scripts.selection_protocol", "PASS",
+                       f"{len(trains)} train script(s): checkpoints saved by "
+                       f"default, no live selection callback")
+
+
 REGISTRY = [
     check_file_layout,
     check_layering,
@@ -1944,6 +2090,8 @@ REGISTRY = [
     check_script_cli_contract,
     check_schedule_pairs,
     check_l1_derived,
+    check_launch_check,
+    check_selection_protocol,
     check_init_state,
     check_gym_contract,
     check_determinism,

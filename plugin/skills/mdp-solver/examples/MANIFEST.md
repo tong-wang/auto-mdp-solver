@@ -28,7 +28,9 @@ Current caveats:
   the shapes listed below; take the selection pattern from the spec, not from
   this script. The code stays as it is because every number in the folder was
   produced by it (see its `CLAUDE.md` Traps and `README`); `mab_selection_probe.py`
-  is the post-hoc screen the campaign ran by hand.
+  is the post-hoc screen the campaign ran by hand. As of v0.9.23 the
+  `scripts.selection_protocol` check names this in the report — a **WARN**, so
+  the gates stay green and the caveat is no longer prose alone.
 - `inv_single` and `dynamic_pricing` **declare no `research_questions` stance**,
   and that is correct rather than an omission: neither ships a
   `{domain}_policy_probe.py` or an `INTERPRET.md`, so neither makes a tier-2
