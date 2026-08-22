@@ -42,6 +42,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .completion import Harvest, harvest_verdict, read_provenance
+
 
 @dataclass
 class EvalStats:
@@ -74,10 +76,15 @@ class GateReport:
     # spec §9.9 violations: a feasible arm (the candidate) strictly beating an
     # exact or relaxed one. Not a lost comparison — a bug report
     role_violations: list[str] = field(default_factory=list)
+    # §8.6's "a training run runs to its budget" as a precondition: a number
+    # from a run that stopped early is not a worse result, it is not a result
+    harvest: Harvest | None = None
 
     @property
     def ok(self) -> bool:
-        return all(c.passed for c in self.comparisons) and not self.role_violations
+        return (all(c.passed for c in self.comparisons)
+                and not self.role_violations
+                and not (self.harvest is not None and self.harvest.blocks))
 
     def render(self) -> str:
         c = self.candidate
@@ -87,6 +94,10 @@ class GateReport:
             f"candidate  {c.label}: {c.metric} = {c.mean:.4f} ± {se_c:.4f} "
             f"(SE, n={self.n_seeds}; sense={self.sense}, {better} is better)"
         ]
+        if self.harvest is not None:
+            tag = {"complete": "run ", "declared": "run ",
+                   "unknown": "WARN", "short": "STOP"}[self.harvest.status]
+            lines.append(f"  [{tag}] {self.harvest.detail}")
         lines += [f"  [WARN] {w}" for w in self.warnings]
         lines += [f"  [BUG ] {v}" for v in self.role_violations]
         for cmp in self.comparisons:
@@ -186,12 +197,20 @@ def compare_evals(
     roles: dict[str, str] | None = None,
     tolerances: dict[str, float] | None = None,
     z_role: float = 2.0,
+    short_ok: str | None = None,
+    budget_tolerance: float = 0.05,
 ) -> GateReport:
     if sense not in ("maximize", "minimize"):
         raise ValueError(f"sense must be 'maximize' or 'minimize', got {sense!r}")
     sense_sign = 1.0 if sense == "maximize" else -1.0
     cand = _read_eval_tsv(candidate, metric)
     report = GateReport(candidate=cand, n_seeds=n_seeds, z_min=z_min, sense=sense)
+    # the precondition, before any comparison: a short run and a bad arm produce
+    # the same low mean, and the gate would report the second correctly and the
+    # first as a finding
+    report.harvest = harvest_verdict(read_provenance(candidate),
+                                     tolerance=budget_tolerance,
+                                     declared=short_ok)
     if metric is None:
         # the metric was auto-picked (first *_mean column); the wrong pick
         # gates on the wrong quantity, and its sense may not match --sense.
@@ -295,6 +314,17 @@ def main(argv: list[str]) -> int:
                          "ahead of an exact/relaxed arm by less than "
                          "max(declared tolerance, z*SE) is reported, not failed "
                          "(default 2.0)")
+    ap.add_argument("--short-ok", default=None, metavar="REASON",
+                    help="record that the candidate's run was stopped "
+                         "deliberately, with the reason. A killed run and a "
+                         "silently dead one leave identical artifacts, so this "
+                         "is the one input no file can carry — and stating it "
+                         "here puts it in the gate output the ledger quotes.")
+    ap.add_argument("--budget-tolerance", type=float, default=0.05,
+                    help="how far short of its declared budget a run may end "
+                         "and still read as complete (default 0.05 — one §8.6 "
+                         "checkpoint cadence, so a completed run whose last "
+                         "artifact predates its final step still passes)")
     ap.add_argument("--ir", default=None, type=Path,
                     help="domain schema declaring benchmark roles (spec §9.9). With it, "
                          "--baseline on an exact/relaxed arm is refused, and a candidate "
@@ -325,6 +355,8 @@ def main(argv: list[str]) -> int:
             roles=roles,
             tolerances=tolerances,
             z_role=args.z_role,
+            short_ok=args.short_ok,
+            budget_tolerance=args.budget_tolerance,
         )
     except IllTypedBaseline as e:
         print(f"GATE REFUSED: {e}", file=sys.stderr)

@@ -18,6 +18,7 @@ import argparse
 from pathlib import Path
 
 import numpy as np
+from mdp_gates.completion import provenance_lines
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
@@ -143,6 +144,11 @@ def main() -> None:
 
     outfile.parent.mkdir(parents=True, exist_ok=True)
     with open(outfile, "w") as f:
+        # §9.3 provenance: the step counts this number was produced at, so the
+        # eval gate can answer "did the run that made it reach its budget?"
+        # without the run directory still being beside the TSV (§13)
+        for line in provenance_lines(model_path):
+            f.write(line + "\n")
         f.write(header + "\n")
         f.flush()
 

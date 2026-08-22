@@ -24,6 +24,16 @@ python -m mdp_gates \
   `mdp_tuning`'s `--minimize`.
 - `--reference` files (e.g. the DP optimum) are reported — gap and % of
   reference — but never gate.
+- **The harvest precondition** (spec §13): before comparing anything, the gate
+  reads the candidate TSV's `steps_run` / `steps_budget` provenance (§9.3) and
+  asks whether the step count is known and declared. Reaching budget passes;
+  a short run **FAILs** with its fraction; a short run declared with
+  `--short-ok "<reason>"` passes and the reason is printed; a TSV with no such
+  provenance **WARNs** and still gates. `--budget-tolerance` (default 0.05, one
+  §8.6 checkpoint cadence) is how far short still reads as complete. The
+  reading is the *run's* terminus, never the scored model's step count — §9.7
+  makes the deliverable a mid-run checkpoint, so a winner below budget is the
+  healthy case.
 - When `--metric` is omitted the gate **auto-picks the first `*_mean` column**
   and prints a `[WARN]` naming it (and listing any other `*_mean` columns).
   Auto-picking the wrong column gates on the wrong quantity — and its sense may

@@ -20,6 +20,7 @@ import argparse
 from pathlib import Path
 
 import numpy as np
+from mdp_gates.completion import provenance_lines
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
@@ -146,7 +147,11 @@ def main() -> None:
     # derived path stays the human/ledger artifact and keeps its provenance.
     provenance = (f"# ppo obs={obs_mode} "
                   f"policy={'stochastic' if args.stochastic else 'deterministic'} "
-                  f"| n_seeds={args.n_seeds} from {args.first_seed}\n")
+                  f"| n_seeds={args.n_seeds} from {args.first_seed}\n"
+                  # §9.3: the step counts this number was produced at, which is
+                  # what lets §13's gate ask whether the run reached its budget
+                  + "".join(f"{line}\n"
+                            for line in provenance_lines(model_path)))
     out.write_text(f"{'' if args.outfile else provenance}{header}\n{row}\n")
 
     print(f"\n{'─' * 56}")

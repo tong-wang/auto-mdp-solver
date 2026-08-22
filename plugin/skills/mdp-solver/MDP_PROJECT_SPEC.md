@@ -1982,6 +1982,22 @@ seed block, scenario — and every §9 reader (`mdp_gates`, `mdp_tuning`) skips
 them. Stamp them liberally: a TSV that states its own block is what makes a
 cross-study comparison auditable.
 
+**Three of them are a contract**, written by every eval script that scores a
+trained artifact, because §13's harvest precondition reads them and the run
+directory may not still be beside the TSV when it does:
+
+```
+# steps_scored: 8375000     <- num_timesteps of the model that produced this number
+# steps_run: 10000000       <- the furthest step count any artifact in its run dir reached
+# steps_budget: 10000000    <- the budget that run declared (_total_timesteps)
+```
+
+`mdp_gates.completion.provenance_lines(model_path)` renders them, reading SB3
+zips with `zipfile` + `json` so the torch-free install keeps working. The budget
+comes from inside the archive rather than from the args log on purpose: a copied
+or stale log can disagree with the model it claims to describe, and the artifact
+cannot.
+
 A cost-minimizing domain would instead lead with `cost_total_mean` /
 `cost_total_var` and be gated with `--sense minimize`.
 
@@ -2325,6 +2341,35 @@ python -m mdp_gates \
   explicitly. (This mirrors `mdp_tuning`'s `--minimize`.)
 - All TSVs must come from the same seed protocol (seeds `0..n-1`, §9.2).
   Shared seeds make the unpaired SE conservative, so a PASS is trustworthy.
+- **The harvest precondition: the run that produced the candidate reached the
+  budget it declared.** §8.6 says a training run runs to its budget and nothing
+  checked it, at any stage — a run that stopped at 6% of budget leaves a valid
+  `best_model.zip`, feeds a well-formed TSV with correct standard errors, and is
+  indistinguishable from a bad arm in the output, so the gate reports the second
+  correctly and the first as a finding. The check reads the `steps_run` /
+  `steps_budget` provenance the eval stamped (§9.3) and asks whether the step
+  count is **known and declared**, not whether the run finished:
+
+  | state | verdict |
+  |---|---|
+  | reached budget (within one checkpoint cadence, `--budget-tolerance`) | pass |
+  | short, and declared with `--short-ok "<reason>"` | pass — the reason lands in the gate output the ledger quotes |
+  | undeterminable — no provenance | WARN, and the comparison still runs |
+  | short, with nothing declaring it | **FAIL**, reporting the fraction instead of a verdict |
+
+  Two states look exactly like truncation from outside and are legitimate, which
+  is why the question is not "did it finish": a run directory that is a **partial
+  mirror** of a completed one (the copy stops wherever it stopped, so
+  `checkpoints/` ends early), and a run the operator **killed on purpose**. A
+  killed run and a silently dead one leave identical artifacts, so the
+  declaration is the one input no file can carry — hence a flag rather than a
+  marker file. And a scored model below the budget is *not* the signal: §9.7
+  makes the deliverable a mid-run checkpoint chosen post-hoc, so the reading is
+  the **run's** terminus, taken as the furthest step count any artifact in the
+  run dir reached.
+- **Trial-layer numbers are out of scope.** A tuning trial may legitimately stop
+  early on its CRN eval curve (§8.6), and §9.7 already forbids quoting a trial
+  score as a result — the precondition applies to a campaign candidate.
 - **Post-tuning rule**: a tuning study's winner was *selected* on its tuning
   eval seeds, so its selection score is optimistic. Always re-evaluate the
   winning artifact with the full protocol (more seeds than the tuning eval)

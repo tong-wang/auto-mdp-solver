@@ -607,8 +607,10 @@ applies here. An entry's `#E` citations resolve in that example's
 
 **GATE:** `python -m mdp_gates --candidate <ppo_eval.tsv>
 --baseline <random.tsv> --baseline <myopic.tsv> [--reference <dp.tsv>]
---n-seeds <N>` must exit 0 (beats every baseline by ≥ 2 SE). Report the
-gap to the DP reference. If a design axis (an action/obs mode) fails after
+--n-seeds <N>` must exit 0 (beats every baseline by ≥ 2 SE). It also refuses
+a candidate whose run stopped short of its declared budget (§13's harvest
+precondition) — re-run it, or `--short-ok "<reason>"` if the stop was
+deliberate. Report the gap to the DP reference. If a design axis (an action/obs mode) fails after
 its one repair attempt, ship the best passing axis and record the failure.
 
 **GATE (layout):** the produced tree matches spec §8.4 exactly — run dirs
