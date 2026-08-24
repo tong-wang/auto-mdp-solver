@@ -56,11 +56,25 @@ they exist for the public GitHub repo.
 
 ## Rules
 
-- `plugin/skills/mdp-solver/examples/` is frozen in its code, schemas, and
-  tests: those change only when pipeline/spec work requires it, never as
-  research. Campaign-record docs (`PLAYBOOK.md`, `ESCALATION.md`,
-  `INTERPRET.md`) are maintainer-curated instead (see the manifest). Each
-  entry must keep the manifest gates green.
+- **`cases/` and `plugin/skills/mdp-solver/examples/` are author-owned — spec,
+  doc and harness work here does not edit them.** A change to the spec, the
+  guide, a schema or the harness lands *without* touching anything inside those
+  folders — their code, schemas, tests, `README.md`, `CLAUDE.md` and
+  campaign-record docs alike — and instead **names in its commit body which
+  statements it invalidated**, so the contributing author moves the folder
+  forward on their own clock. The reason is divergence, not etiquette: these
+  folders are mirrored in the authors' research repos, and an upstream edit
+  drifts from the downstream copy *silently*, which is a worse failure than the
+  stale line it was trying to fix — a stale line is visible. If a change cannot
+  be expressed without touching contributed material, stop and ask.
+  `DOMAIN_CLAUDE_TEMPLATE.md` is the source template and is maintained here;
+  the per-domain `CLAUDE.md` files emitted from it into cases/examples are not.
+- `plugin/skills/mdp-solver/examples/` is additionally frozen in its code,
+  schemas, and tests: those change only when pipeline/spec work requires it,
+  never as research — and then through the entry's author, per the rule above.
+  Campaign-record docs (`PLAYBOOK.md`, `ESCALATION.md`, `INTERPRET.md`) are
+  maintainer-curated instead (see the manifest). Each entry must keep the
+  manifest gates green.
 - Adding an example (promoting a finished domain from a research repo, or a
   `cases/` folder per the criteria in `cases/README.md` — deliverable-
   competitive incl. §14 readback, coverage, debt paid): move the **whole**
