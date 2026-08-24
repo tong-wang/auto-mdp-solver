@@ -38,7 +38,15 @@ design axes are write-once (§3.1). **Issue #60** — `§CONFIG-REGISTRY` gradua
 from guidance to a rule and moves to §13, with its four open points settled or
 stated; §2's spine is five sections, §7 rule 1 asks for a base as well as an
 address, and §11 gains the section. Section numbers below §12 are unchanged on
-purpose: existing logs cite them.*
+purpose: existing logs cite them.
+2026-08-24 (eighth revision): **issue #66** — a design tree's nodes showed a
+score and never said under which configuration, because §3.1's two-line node
+contract (#19, v0.8.2) predates §13's ids by five releases. Nodes now carry a
+third row, the config address, where a campaign has a §CONFIG-REGISTRY — with
+the vocabulary for the nodes that have no tuple (`{sc}/L0`, `unregistered
+cell`, `id withdrawn`, `no id — {item} mints it`, and no row at all for an
+analytic reference), since a row obliged to show something is a phantom-base
+generator.*
 
 ## 1. Why this format
 
@@ -314,11 +322,12 @@ above — was a tree all along.)
   reason + tripwire) · `∅` structurally void (*cannot* exist — say why) · `▶`
   in flight · `★` the crowned path. **Marks ride on the edge**, where the
   selection they judge happened.
-- **A node carries two lines, fixed.** The shape is
+- **A node carries two lines, fixed — three where §13 is adopted.** The shape is
 
   ```
   {axis}={option}
   {score}{ (Δ)} · {#E ids}
+  {config address}            ← only where a §CONFIG-REGISTRY exists (§13)
   ```
 
   with the **axis name read from the code** — the gym kwarg, the registry key,
@@ -336,6 +345,14 @@ above — was a tree all along.)
   disposes of config bundles (`--extractor small --channels 64 128
   --features_dim 256`) with no naming machinery: the bundle lives in the entry,
   one hop away.
+
+  **The address row passes that test rather than bending it.** `sc0/g2/a0/h2`
+  *names* a registry row; it does not reproduce one, which makes it more
+  index-like than the score above it — a value rather than a pointer. What the
+  rule forbids is what it always forbade: the **contents** of a configuration on
+  a node. The third row exists because the second one has been asserting a
+  number under an unnamed configuration since v0.8.2, and until §13 the log had
+  no vocabulary to name one.
 - **A node's score and its Δ must come from the same configuration.** If the
   delta was measured elsewhere, either the node moves to where it was measured
   or the Δ leaves the node; a Δ against the node's own *parent* belongs on the
@@ -344,7 +361,42 @@ above — was a tree all along.)
   a leaf reading `992.54 (Δ −183.58)` whose Δ was measured at the
   zero-knowledge start asserts that the derivation was worth 183 units *at the
   crowned configuration*, which was never measured. Checkable by eye once the
-  `#E` id is on the node.
+  `#E` id is on the node — and where §13 is adopted, checkable without the
+  ledger hop at all, since the address row names the configuration outright.
+- **The third row is the address of the configuration whose score the node
+  displays.** It sits *below* the score because it says under which knobs that
+  score was obtained, and **a parent's address is the address of the descendant
+  its number came from** — the companion of the rule that makes a parent's
+  score the best in its subtree. Adoption is inherited, not new: a campaign
+  with no §CONFIG-REGISTRY has no address to write and draws two rows.
+
+  The substance is the vocabulary for the nodes that have **no tuple**. Without
+  it a row obliged to display something becomes a phantom-base generator —
+  precisely the defect §13 exists to prevent:
+
+  | node | last row |
+  |---|---|
+  | a scenario node | its `sc` id |
+  | a run-backed cell | the cited tuple, `sc0/g2/a0/h2`; ` + {deviation}` where the run declared one |
+  | a spec-§8.6 `L0` floor | `{sc}/L0` — the level refuses a tuple by definition (faithful defaults) |
+  | a probe cell never promoted | `unregistered cell` — ledger-addressed; no id was ever minted |
+  | an arm whose id was withdrawn | `id withdrawn` |
+  | a node with no base yet (active or queued) | `no id — {item} mints it` |
+  | an analytic reference (`method=dp`/`ap`/`rule`) | **no row at all** — it holds no `g`/`a`/`h` and is addressed by its method |
+
+  One campaign minted `sc3` for an unrun board as "reserved for A1" and then
+  withdrew it, because an id for a base nothing ran is the phantom base itself.
+  That node reads `no sc id — A1 mints it`: a true statement about an unrun
+  board, and one that costs nothing to keep true.
+
+  **The address is not the level, and neither implies the other.**
+  `{sc}/g1/a0/h0` is a `vec_mip` arm at **L1**, not an L2 escalation — `g`
+  carries the design axes as well as the wrapper stack, so a non-origin id is
+  not automatically a layer move (§13.4). The score row carries the level; the
+  address row carries the cell. Two boards can be drawn with identical shape,
+  identical axis labels, both crowned and both with an exact bar, while one has
+  two layers open beneath it and the other one; the addresses say so in nine
+  characters and nothing else on the diagram does.
 - **Layers are named by axis and cited by ledger id — never numbered.**
   "`gym.action_mode` (#E6)", not "T1" or "level 3". A numbered scheme collides
   with spec §8.6's `L0/L1/L2`, whose contents are the *training-signal layer* —
@@ -753,15 +805,16 @@ stale.
 ​```mermaid
 graph TD
     ROOT["IR {domain} v{n}<br/>mdp {fingerprint} · structural {fingerprint}"]
-    ROOT ==>|"cases · scenario · S1 · required ▶"| SC1["scenario={registry key}<br/>{score} · #E{n}"]
+    ROOT ==>|"cases · scenario · S1 · required ▶"| SC1["scenario={registry key}<br/>{score} · #E{n}<br/>sc0"]
     ROOT -->|"cases · scenario · S2 · required ⏸"| SC2["scenario={next}<br/>coverage debt; return: {when}"]
     SC1 ==>|"design-axes · solver · S1 · role=exact · tier=1 ★"| M1["method=dp<br/>{score} · #E{n}"]
-    SC1 ==>|"design-axes · solver · S2 · role=feasible · tier=1 ★"| M2["method=ppo<br/>{score} · #E{n}"]
-    M2 ==>|"L0→L1 escalation (Δ {x})"| L1["level=L1<br/>{score} (Δ {x}) · #E{n}"]
-    L1 ==>|"escalations · gym.{axis} · P1 · tier=3 ★"| C1["{axis}={option}<br/>{score} (Δ {x}) · #E{n}"]
-    L1 -->|"escalations · gym.{axis} · P2 ⏸"| C2["{axis}={option}<br/>{score} · #E{n}"]
+    SC1 ==>|"design-axes · solver · S2 · role=feasible · tier=1 ★"| M2["method=ppo<br/>{score} · #E{n}<br/>sc0/L0"]
+    M2 ==>|"L0→L1 escalation (Δ {x})"| L1["level=L1<br/>{score} (Δ {x}) · #E{n}<br/>sc0/g0/a0/h0"]
+    L1 ==>|"escalations · gym.{axis} · P1 · tier=3 ★"| C1["{axis}={option}<br/>{score} (Δ {x}) · #E{n}<br/>sc0/g1/a0/h0"]
+    L1 -->|"escalations · gym.{axis} · P2 ⏸"| C2["{axis}={option}<br/>{score} · #E{n}<br/>unregistered cell"]
     L1 -.->|"∅"| C3["{axis}={option}<br/>{why it cannot exist}"]
-    C1 ==>|"escalations · arch+hp.{axis} · P1 · tier=3 ▶"| C4["{axis}={option}<br/>{score} · #E{n}"]
+    C1 ==>|"escalations · arch+hp.{axis} · P1 · tier=3 ▶"| C4["{axis}={option}<br/>{score} · #E{n}<br/>no id — A1 mints it"]
+    %% M1 (method=dp) carries no third row: an analytic reference holds no g/a/h (§3.1)
 ​```
 
 ### Layers and node readings   (one table — kind, attributes, tier, reading, entry)
@@ -778,6 +831,8 @@ graph TD
 
 ### Current best bundle
 {the ★ path + jointly-validated edges + headline @ standard eval}
+{one line per crowned cell: its config address (§13) — a bundle named in prose
+ and a cell left unnamed is the omission the node's third row makes visible}
 
 ### Slice view  (only while a cross-branch interaction is under test)
 |              | {axis-B v1}   | {axis-B v2}   |
@@ -1072,6 +1127,17 @@ to avoid. So a new base is registered in both places, with the overlap
 |---|---|---|
 | `{domain}_configs.py` | the id definitions as data — parent, delta, cross-axis constraints | **authoritative for what a config is**; it is what a run resolves against |
 | §CONFIG-REGISTRY | the same ids as a reader-facing table, plus the reasons: why an id exists, what promoted it, what it supersedes | **authoritative for why**; the rendering a human reads beside the verdicts that cite it |
+
+**A third artifact displays them, and is authoritative for neither.** §MAP's
+design tree carries a config **address** on each node (§3.1) — the tuple whose
+score that node shows, or the declared reason it has none. It is a pointer into
+this section, never a definition: the module stays authoritative for what a
+config is, the table for why it exists, and the tree is an index, exactly as it
+is for the ledger. Without it, the one artifact a reader looks at *first* is the
+only place in the log that displays scores and cannot say which configuration
+produced them — and prose in §Current best bundle is not a substitute, as one
+campaign showed by naming one board's configurations and leaving the other's
+blank for a week while the registry held both the whole time.
 
 **The module registers axis components, never whole configs.** There is no
 "config" object: a run cites a *tuple* (`sc3 g1 a3 h1`) plus its deviations, and
