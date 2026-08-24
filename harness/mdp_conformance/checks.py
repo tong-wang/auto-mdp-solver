@@ -1274,6 +1274,99 @@ def _enumeration_findings(doc: dict) -> tuple[list[str], int]:
     return problems, len(consts)
 
 
+def _flat(doc: dict) -> dict:
+    """The mdp block, grouped or flat — the same shape both readers see."""
+    mdp = doc.get("mdp", doc)
+    if isinstance(mdp.get("model"), dict) or isinstance(mdp.get("rendering"), dict):
+        out = dict(mdp.get("rendering") or {})
+        for k, v in mdp.items():
+            if k not in ("model", "design", "rendering"):
+                out.setdefault(k, v)
+        return out
+    return mdp
+
+
+def _hardcode_findings(doc: dict) -> tuple[list[str], int]:
+    """Non-identity literals at design-bearing value sites, and the site count.
+
+    An **identity** is a number nothing could vary: `1.0` for a discount (the
+    undiscounted problem) and `0` for a tolerance (no declared slack). Naming
+    those buys no degree of freedom, which is the half of §5.0's rule that
+    keeps it from becoming "name every numeral".
+
+    A model-layer declaration **aggravates** a finding rather than making one.
+    `examples/mab` declares `discount_factor` in its theory and renders it
+    `1.0`: model-declared, literal, and entirely correct — an undiscounted
+    bandit has no second discount to render.
+    """
+    findings: list[str] = []
+    sites = 0
+    flat = _flat(doc)
+    declared = set(((doc.get("mdp", doc)).get("model") or {}).get("quantities") or {})
+
+    beta = (flat.get("objective") or {}).get("discount_factor")
+    if beta is not None:
+        sites += 1
+        if (isinstance(beta, (int, float)) and not isinstance(beta, bool)
+                and float(beta) != 1.0):
+            note = (" — and mdp.model declares the quantity, so the rendering "
+                    "is stating a choice in the one place that reads as a model "
+                    "claim" if "discount_factor" in declared else "")
+            findings.append(
+                f"objective.discount_factor is the literal {beta}{note}; name a "
+                f"scenario constant so an instance can render this model at "
+                f"another discount (§5.0)")
+
+    for b in doc.get("benchmarks", []) or []:
+        tol = b.get("tolerance")
+        if tol is None:
+            continue
+        sites += 1
+        if (isinstance(tol, (int, float)) and not isinstance(tol, bool)
+                and float(tol) != 0.0):
+            findings.append(
+                f"benchmarks[{b.get('name')!r}].tolerance is the literal {tol}; "
+                f"one entry may serve renderings whose numerical error differs, "
+                f"so name a constant and resolve it per instance (§5.0/§9.9)")
+    return findings, sites
+
+
+def check_no_hardcode(h: DomainHandle) -> CheckResult:
+    """The IR holds no bare design value (spec §5.0).
+
+    §5.0's width-site rule generalizes: a value site that can hold a number an
+    instance could legitimately need to differ on takes a symbol, because a
+    literal there is both a design choice wearing a model claim's clothes *and*
+    — the cost the width rule does not state — **immobile**. A value with no
+    name cannot be overridden by an instance, so the second rendering can only
+    be had by re-basing the first.
+
+    The line is identity vs choice, not literal vs symbol: `0` and `1` stay
+    literal (the undiscounted β, the no-slack tolerance), and so do bounds of
+    zero, indices and stream ids, which this check does not look at.
+
+    WARN, not FAIL, in the shape `schema.no_enumeration` established: the sites
+    named here only became expressible as symbols in the release that added
+    this check, so shipped domains are all mid-migration by construction. It
+    promotes to FAIL once the example set carries no non-identity literal here.
+    """
+    schemas = sorted(h.directory.glob("*_schema.json"))
+    if len(schemas) != 1:
+        return CheckResult("schema.no_hardcode", "SKIP", "no single *_schema.json")
+    try:
+        import json
+        doc = json.loads(schemas[0].read_text())
+        findings, sites = _hardcode_findings(doc)
+    except Exception as e:
+        return CheckResult("schema.no_hardcode", "SKIP",
+                           f"schema not readable ({type(e).__name__}: {e})")
+    if findings:
+        return CheckResult("schema.no_hardcode", "WARN", "; ".join(findings)[:400])
+    return CheckResult("schema.no_hardcode", "PASS",
+                       f"{sites} design-bearing value site(s) declared; each is "
+                       f"a symbol or an identity")
+
+
 def check_no_enumeration(h: DomainHandle) -> CheckResult:
     """The IR is a model definition, not a rendering transcript (spec §5.0).
 
@@ -2085,6 +2178,7 @@ REGISTRY = [
     check_run_provenance,
     check_model_boundary,
     check_no_enumeration,
+    check_no_hardcode,
     check_bound_rationale,
     check_restatement_current,
     check_script_cli_contract,

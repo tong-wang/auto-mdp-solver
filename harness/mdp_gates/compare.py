@@ -174,12 +174,26 @@ def roles_from_ir(schema_path: Path) -> dict[str, str]:
     return {b.name: b.role.value for b in getattr(ir, "benchmarks", [])}
 
 
-def tolerances_from_ir(schema_path: Path) -> dict[str, float]:
-    """{method: tolerance} — declared implementation slack, in metric units."""
+def tolerances_from_ir(schema_path: Path,
+                       instance: str | None = None) -> dict[str, float]:
+    """{method: tolerance} — declared implementation slack, in metric units.
+
+    Resolved under `instance`, because an entry's slack may name a scenario
+    constant (§5.0): one solver file can serve two renderings whose numerical
+    error differs, and the band this gate takes is a claim about the rendering
+    being judged, not about the entry.
+    """
     from mdp_ir.schema import load_ir
     ir = load_ir(schema_path)
-    return {b.name: b.tolerance for b in getattr(ir, "benchmarks", [])
-            if getattr(b, "tolerance", 0.0)}
+    out: dict[str, float] = {}
+    for b in getattr(ir, "benchmarks", []):
+        try:
+            t = ir.benchmark_tolerance(b.name, instance)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"benchmark {b.name!r}: {exc}") from exc
+        if t:
+            out[b.name] = t
+    return out
 
 
 class IllTypedBaseline(ValueError):
@@ -325,6 +339,10 @@ def main(argv: list[str]) -> int:
                          "and still read as complete (default 0.05 — one §8.6 "
                          "checkpoint cadence, so a completed run whose last "
                          "artifact predates its final step still passes)")
+    ap.add_argument("--instance", default=None,
+                    help="IR instance the candidate was produced under; a "
+                         "benchmark tolerance naming a scenario constant "
+                         "resolves against it (§5.0). Only read with --ir")
     ap.add_argument("--ir", default=None, type=Path,
                     help="domain schema declaring benchmark roles (spec §9.9). With it, "
                          "--baseline on an exact/relaxed arm is refused, and a candidate "
@@ -339,7 +357,7 @@ def main(argv: list[str]) -> int:
     if args.ir is not None:
         try:
             roles = roles_from_ir(args.ir)
-            tolerances = tolerances_from_ir(args.ir)
+            tolerances = tolerances_from_ir(args.ir, args.instance)
         except Exception as e:
             ap.error(f"--ir {args.ir}: {type(e).__name__}: {e}")
 

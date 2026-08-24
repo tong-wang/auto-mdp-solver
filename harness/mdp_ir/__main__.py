@@ -57,6 +57,19 @@ def _rendering_hash(raw: dict) -> str | None:
     return layering.structural_fingerprint(raw) if layering.is_catalog(raw) else None
 
 
+def _beta(ir, m) -> str:
+    """β as the CLI should show it: the number where the IR pins one, and
+    `name->value` where it names a scenario constant (§5.0). An unresolvable
+    symbol prints as `name->?` rather than raising — validation reports it."""
+    raw = m.objective.discount_factor
+    if not isinstance(raw, str):
+        return str(raw)
+    try:
+        return f"{raw}->{m.discount_factor()}"
+    except (KeyError, TypeError, ValueError):
+        return f"{raw}->?"
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__)
@@ -93,7 +106,7 @@ def main(argv: list[str]) -> int:
             f"      mdp: states={len(m.state_variables)} info={len(m.info_fields)} "
             f"decisions={len(m.decisions)} sources={len(m.uncertainty_sources)} "
             f"constants={len(m.scenario.constants)} instances={len(m.scenario.instances)} "
-            f"beta={m.objective.discount_factor} fingerprint={ir.mdp_fingerprint()}\n"
+            f"beta={_beta(ir, m)} fingerprint={ir.mdp_fingerprint()}\n"
             f"      gym: obs_modes={len(g.observation_modes)} act_modes={len(g.action_modes)} "
             f"reward_modes={len(g.reward_modes)} horizon_end={g.termination.horizon_end.value}\n"
             f"      rl : algo={r.algo.value} requires_memory={r.requires_memory.value}"

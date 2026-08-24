@@ -36,7 +36,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from mdp_ir import exprs
 
@@ -776,8 +776,32 @@ class Objective(_Base):
     # SOLVE_LEVELS_PLAN §2). Never pre-discount env rewards: β enters at
     # eval time and as the solver's gamma, keeping per-step rewards
     # stationary and the differential contract intact. 1.0 = undiscounted.
-    discount_factor: float = Field(default=1.0, gt=0.0, le=1.0)
+    # A scenario constant name is legal here and is the recommended form
+    # wherever the choice could differ by instance (§5.0: the IR holds no bare
+    # design value). β is frame-defining, never tuned — but frame-defining in
+    # the same way `n_echelons` or `leadtime` are, and a rendering that pins it
+    # as a literal cannot open the second frame beside the first. Read it
+    # through `MdpBlock.discount_factor(instance=)`, which resolves and applies
+    # the (0, 1] bound; a bare float keeps that bound at schema time.
+    discount_factor: float | str = Field(default=1.0)
     per_step_components: list[ObjectiveComponent] = Field(min_length=1)
+
+    @field_validator("discount_factor")
+    @classmethod
+    def _check_beta(cls, v: float | str) -> float | str:
+        """A literal keeps the (0, 1] bound it always had. A symbol cannot be
+        checked here — it has no value until an instance selects one — so the
+        bound moves to `MdpBlock.discount_factor`, which is where the resolved
+        value first exists."""
+        if isinstance(v, str):
+            if not _IDENT.fullmatch(v):
+                raise ValueError(
+                    f"objective discount_factor {v!r} is neither a number nor a "
+                    f"scenario-constant name")
+            return v
+        if not 0.0 < v <= 1.0:
+            raise ValueError(f"objective discount_factor {v} is not in (0, 1]")
+        return v
 
     @property
     def total_expr(self) -> str:
@@ -949,7 +973,12 @@ class Benchmark(_Base):
     # implementation slack, in metric units: how far a feasible arm may sit
     # past this benchmark before the §9.9 ordering gate calls it a defect. The
     # gate takes max(tolerance, z·SE), so 0 leaves the statistical term alone
-    tolerance: float = 0.0
+    # A scenario constant name is legal here for the same reason (§5.0). One
+    # entry's slack is a claim about how wrong ITS rendering may be, and one
+    # solver file can serve two renderings with different error — a lattice
+    # decomposition that is exact and a binned density that is not — so the
+    # number belongs to the instance, not to the entry.
+    tolerance: float | str = 0.0
     source: str = ""             # provenance, as on EvalMetric
 
     @model_validator(mode="after")
@@ -1253,6 +1282,37 @@ class MdpBlock(_Base):
     def builtin_names(self) -> set[str]:
         """Names of the domain-owned builtins this IR declares."""
         return {b.name for b in self.expr_builtins}
+
+    def discount_factor(self, instance: str | None = None) -> float:
+        """β for this instance: a literal, or a scenario constant overridable
+        per instance (like `horizon_T` and `decision_dim`).
+
+        The bound lives here rather than on the field because a symbol has no
+        value until an instance selects one — so a literal is checked at parse
+        time and an override is checked at the moment it resolves, which is the
+        first point either can be wrong.
+        """
+        raw = self.objective.discount_factor
+        if not isinstance(raw, str):
+            return float(raw)
+        consts = {c.name: c.value for c in self.scenario.constants}
+        if instance is not None:
+            consts.update(self.scenario.instances[instance])
+        if raw not in consts:
+            raise KeyError(
+                f"objective discount_factor names {raw!r}, which is not a "
+                f"scenario constant"
+                + (f" under instance {instance!r}" if instance else ""))
+        v = consts[raw]
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise TypeError(
+                f"objective discount_factor {raw!r} resolved to non-numeric {v!r}")
+        if not 0.0 < float(v) <= 1.0:
+            raise ValueError(
+                f"objective discount_factor {raw!r} resolved to {v}, which is "
+                f"not in (0, 1]"
+                + (f" under instance {instance!r}" if instance else ""))
+        return float(v)
 
     def decision_dim(self, name: str, instance: str | None = None) -> int:
         """Effective width of a decision: a literal, or a scenario constant
@@ -2185,6 +2245,38 @@ class MdpIR(_Base):
 
         walk(self, "")
         return out
+
+    def benchmark_tolerance(self, name: str, instance: str | None = None) -> float:
+        """One entry's declared implementation slack for this instance.
+
+        A literal, or a scenario constant overridable per instance. The
+        per-instance form is what lets one solver file serve two renderings
+        with different numerical error — a decomposition that is exact on a
+        lattice and approximate on a binned density — without either rendering
+        borrowing the other's band at the §9.9 ordering gate.
+        """
+        b = next((bb for bb in self.benchmarks if bb.name == name), None)
+        if b is None:
+            raise KeyError(f"no benchmark named {name!r}")
+        raw = b.tolerance
+        if not isinstance(raw, str):
+            return float(raw)
+        consts = {c.name: c.value for c in self.mdp.scenario.constants}
+        if instance is not None:
+            consts.update(self.mdp.scenario.instances[instance])
+        if raw not in consts:
+            raise KeyError(
+                f"benchmark {name!r} tolerance names {raw!r}, which is not a "
+                f"scenario constant"
+                + (f" under instance {instance!r}" if instance else ""))
+        v = consts[raw]
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise TypeError(
+                f"benchmark {name!r} tolerance {raw!r} resolved to non-numeric {v!r}")
+        if float(v) < 0.0:
+            raise ValueError(
+                f"benchmark {name!r} tolerance {raw!r} resolved to {v} < 0")
+        return float(v)
 
     def mdp_fingerprint(self) -> str:
         """Stable hash of the mdp block — the freeze token. Phase B records it;
