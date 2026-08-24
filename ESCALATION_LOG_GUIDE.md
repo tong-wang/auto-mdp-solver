@@ -46,7 +46,14 @@ third row, the config address, where a campaign has a §CONFIG-REGISTRY — with
 the vocabulary for the nodes that have no tuple (`{sc}/L0`, `unregistered
 cell`, `id withdrawn`, `no id — {item} mints it`, and no row at all for an
 analytic reference), since a row obliged to show something is a phantom-base
-generator.*
+generator.
+2026-08-24 (ninth revision): three corrections from the first campaign to apply
+the eighth revision (`cases/fnv`, PR #67). §3.1 states which test decides a
+split's kind when the IR-citation test and the frame question disagree — the
+declaration wins and `own frame` rides as a caveat on the numbers; the address
+grammar gains a row for a node that **pools** several configurations on purpose;
+and §13.1's `sc` may alias `GRIDS` as well as `SCENARIOS`, since a study base
+may be a `{Domain}ScenarioGrid` with no `SCENARIOS` key to point at.*
 
 ## 1. Why this format
 
@@ -241,6 +248,18 @@ above — was a tree all along.)
   thing — an escalation that *moves* a design axis whose value its own address
   fixes, which the write-once rule above refuses.
 
+  **This test decides the kind; the frame is a property of the numbers on the
+  edge, not of the split.** The two can disagree — an IR-declared sibling
+  scored on a *subset* of the cells its siblings cover is `design-axes` by
+  declaration and own-frame by arithmetic — and when they do, **the
+  declaration wins** and the edge carries `own frame` as a caveat on its
+  numbers. Nothing is lost by that: the frame rule already says a cross-frame
+  number may be *reported*, labeled as such, and never selects, and both
+  crown-forks kinds are postponable-never-prunable, so the caveat is the whole
+  practical difference. Read the 2×2's frame column as the typical case rather
+  than as a gate. (`cases/fnv` draws `design-axes · … · own frame` on
+  `method=fitted`, scored on 209 of its 540 cells.)
+
   **The cost of getting this wrong is measured.** One campaign drew `vec` vs
   `vec_mip` — a research question's declared instrument — as an `escalations`
   split, under which "crown one, prune the rest" licensed pruning the claim
@@ -382,6 +401,7 @@ above — was a tree all along.)
   | a probe cell never promoted | `unregistered cell` — ledger-addressed; no id was ever minted |
   | an arm whose id was withdrawn | `id withdrawn` |
   | a node with no base yet (active or queued) | `no id — {item} mints it` |
+  | a node **pooling** several configurations on purpose | `{sc}/pooled — {the tuples}, all {n}` — a claim about the *artifact* rather than one config (a readback fitted across every confirmed checkpoint). Not `unregistered cell`: the ids exist and are named. Spell them out; the pool is the finding |
   | an analytic reference (`method=dp`/`ap`/`rule`) | **no row at all** — it holds no `g`/`a`/`h` and is addressed by its method |
 
   One campaign minted `sc3` for an unrun board as "reserved for A1" and then
@@ -853,7 +873,7 @@ rule: {trigger-first generalization}
 
 ## CONFIG-REGISTRY   (living — ids append-only; §13)
 ### scenario
-| id | key in SCENARIOS | note |
+| id | key in SCENARIOS (or GRIDS) | note |
 |---|---|---|
 | <a id="sc0"></a>`sc0` | `{registry key}` | {what this base is} |
 
@@ -954,7 +974,7 @@ by what it feels like. Spec §1.1's layering is already the arbiter.
 
 | axis | scope | the test — *which layer implements it* |
 |---|---|---|
-| `sc` | the study base | an alias for one key in the domain's `SCENARIOS` registry (spec §5.4); it **references**, never defines |
+| `sc` | the study base | an alias for one key in the domain's `SCENARIOS` registry (spec §5.4) — or in `GRIDS` where the base is a `{Domain}ScenarioGrid` (spec §5.6), which is the generality target a generalist is trained against. Either way it **references**, never defines, which is the property this axis asks for; record which registry it aliases |
 | `g` | the env as presented to the algorithm: `observation_mode`, `action_mode`, `reward_mode`, and the §8.3 vec-env wrapper stack | something between the MDP and the algorithm implements it — `{domain}_gym.py` or a vec-env wrapper |
 | `a` | policy family, feature extractor, critic form, value routing. **Not** loss weights | the policy/extractor code implements it — a custom class, not a constructor argument |
 | `h` | optimizer, schedules, rollout geometry, loss weights, epochs | it is an argument to the algorithm constructor, consumed by the learner |
@@ -1157,7 +1177,8 @@ changes only on a deliberate act, and disagreement fails a launch.
 
 **What the module checks at import**, as run in the adopting campaign: one knob
 one home (§13.1); ids dense per generation; every `sc` alias live in
-`SCENARIOS`; every design-axis value a `g` delta sets validated against the IR;
+`SCENARIOS` or `GRIDS`, whichever it aliases; every design-axis value a `g`
+delta sets validated against the IR;
 and, in the campaign's audit, every id present in both module and table with the
 same parent.
 
