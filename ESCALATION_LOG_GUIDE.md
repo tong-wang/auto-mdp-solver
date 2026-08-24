@@ -28,7 +28,17 @@ runs, and two ledger corrections traced to transcription from prose.
 2026-08-21 (sixth revision): §12 added — local extensions, and the one under
 evaluation (`§CONFIG-REGISTRY`, upstream issue #60, proposed from `game2048`).
 Guidance only: written down so two campaigns trying it produce comparable
-artifacts rather than two dialects, with its open points recorded beside it.*
+artifacts rather than two dialects, with its open points recorded beside it.
+2026-08-24 (seventh revision): two proposals from `adi_flex`, the second
+campaign to run §12's axis test. **Issue #65** — the shared-frame split kinds
+are renamed to upstream's own words, `means` → `design-axes` and `designs` →
+`escalations` (the old `designs` was the near-opposite of spec §8.4's "design
+axes"); a `design-axes` split must now cite the IR declaration it draws, and
+design axes are write-once (§3.1). **Issue #60** — `§CONFIG-REGISTRY` graduates
+from guidance to a rule and moves to §13, with its four open points settled or
+stated; §2's spine is five sections, §7 rule 1 asks for a base as well as an
+address, and §11 gains the section. Section numbers below §12 are unchanged on
+purpose: existing logs cite them.*
 
 ## 1. Why this format
 
@@ -53,7 +63,7 @@ Everything else in the research folder stays free-form. Deep-dive notes in
 thinking-voice (EQUINET-style) are encouraged — they just hang off the log via
 links, they don't replace it.
 
-## 2. The log — one file, four sections
+## 2. The log — one file, five sections
 
 One `ESCALATION.md` per project/case, git-tracked:
 
@@ -62,24 +72,31 @@ ESCALATION.md
 ├── §MAP              current frame — revised in place, dated
 ├── §FRAME-CHANGELOG  append-only, one line per re-framing
 ├── §IR-CHANGELOG     append-only, one entry per formalization reversal
+├── §CONFIG-REGISTRY  living — the bases runs cite; ids append-only (§13)
 └── §LEDGER           append-only, hypothesis → runs → verdict
 ```
 
-Four sections is the **spine**, not a ceiling: a campaign that needs more adds
+Five sections are the **spine**, not a ceiling: a campaign that needs more adds
 a *local extension* and labels it as one, so a reader can tell campaign-local
 structure from format (§12).
 
-Cross-references use **four id spaces, one prefix each** — `F{n}` is reserved
+The four narrative sections answer *what question does this run answer*;
+§CONFIG-REGISTRY answers *what was this run configured from*. It is the one
+**living** section besides §MAP, and unlike §MAP it is not a rendering of
+anything on disk — it is authored design state, the input to runs (§13).
+
+Cross-references use **five id spaces, one prefix each** — `F{n}` is reserved
 by §IR-CHANGELOG (the first trial's frontier briefly squatted on F and
 collided with it):
 
 | prefix | space | lifecycle |
 |---|---|---|
-| `P{n}` | **P = priority**: orders competing siblings at a `designs` split (§3.1) | standing; revised by tree surgery |
-| `S{n}` | **S = schedule**: orders coverage at a `cases` or `means` split (§3.1) | standing; children postponable, never prunable |
+| `P{n}` | **P = priority**: orders competing siblings at an `escalations` split (§3.1) | standing; revised by tree surgery |
+| `S{n}` | **S = schedule**: orders coverage at a `cases` or `design-axes` split (§3.1) | standing; children postponable, never prunable |
 | `A{n}` | frontier agenda item (§3.5) | consumed → becomes a ledger entry |
 | `#E{n}` | ledger entry | append-only |
 | `F{n}` | IR-changelog reversal | append-only, sparse |
+| `sc`/`g`/`a`/`h`+`{n}` | config-registry axis id (§13) | append-only, dense from the L1 origin at 0 |
 
 ## 3. §MAP — the current frame
 
@@ -131,8 +148,23 @@ above — was a tree all along.)
 
   | | **own frame** (scores incomparable) | **shared frame** (scores comparable) |
   |---|---|---|
-  | **crown forks** | **`cases`** — target scales (3×3 → 4×4), scenario families (Gaussian vs Bernoulli), specialist vs generalist | **`means`** — an exact solver, heuristics, the RL artifact; `masked` vs `free`; `echelon` vs `raw` |
-  | **crown passes one** | *empty, necessarily* | **`designs`** — competing encodings, architectures, HP |
+  | **crown forks** | **`cases`** — target scales (3×3 → 4×4), scenario families (Gaussian vs Bernoulli), specialist vs generalist | **`design-axes`** — an exact solver, heuristics, the RL artifact; `masked` vs `free`; `echelon` vs `raw` |
+  | **crown passes one** | *empty, necessarily* | **`escalations`** — competing encodings, architectures, HP |
+
+  The two shared-frame kinds take their names from vocabulary upstream already
+  owns: spec §8.4's **experiment design axes** ("define what problem is being
+  solved") and §8.6's **L2+ — escalations**. That is also the table's
+  structural reading: the root region (`cases` × `design-axes`) is the
+  **question space**, fixed by the IR at Phase A; the leaf region
+  (`escalations`) is the **search**; the L1 origin is the boundary between
+  them.
+
+  *(Named `means`/`designs` from v0.8.3 to v0.9.24. The old `designs` was the
+  near-opposite of the spec's own "design axes" — one names a prunable
+  candidate answer, the other the fixed question — and a real tree contained
+  the sentence "a `designs` split on a design axis", which reads as either a
+  tautology or a contradiction and is neither. Append-only ledger text keeps
+  the old spelling wherever it was written; grep for both.)*
 
   The empty cell is the point, and it generalizes into the rule the older
   `S`/`P` typing left implicit:
@@ -147,26 +179,74 @@ above — was a tree all along.)
   never a basis for selection, unless the general branch is re-scored on the
   restricted branch's own frame (same scenario, same seed block, paired).
 
-  **`cases` and `means` children are postponable, never prunable** (`✗`/`∅`
+  **Design axes are address-forming, and therefore write-once.** A
+  `design-axes` value names a **cell**, exactly as the scenario above it does:
+  fixed where it is drawn, never moved below it.
+
+  > **No escalation may overwrite a design axis.** An arm below a fixed
+  > design-axis value that sets that axis to something else claims one cell's
+  > address while producing another cell's number. It is a *different cell* —
+  > refused rather than recorded, and reached by drawing it where it belongs.
+
+  The same shape as the frame rule one layer down: that one forbids crowning
+  across a scenario boundary, this one forbids a run drifting across a
+  design-axis boundary its own address cites. Where §13's config registry is
+  adopted, a declared deviation on a design axis is refused for the same
+  reason — the deviation grammar spells escalations, never cells.
+
+  **`cases` and `design-axes` children are postponable, never prunable** (`✗`/`∅`
   are illegal on their edges; a child is ✓ covered, ▶ active, or ⏸ postponed
   with a *scheduled return*) — that, not disjointness, is what makes coverage
-  coverage. `designs` siblings are rows on one shared leaderboard: crown one,
-  prune the rest. **The litmus is redundancy at crowning**: a `designs`
-  sibling becomes redundant the moment one is crowned; a `cases` or `means`
+  coverage. `escalations` siblings are rows on one shared leaderboard: crown one,
+  prune the rest. **The litmus is redundancy at crowning**: an `escalations`
+  sibling becomes redundant the moment one is crowned; a `cases` or `design-axes`
   sibling never does (game2048: crowning the masked interface did not make the
   free interface redundant — its value is less machinery, and that survives
   the win). A `cases` split can sometimes be **collapsed by a generalist** —
   one policy covering all cells — where the axis permits (game2048: `prob_4`
-  could, `grid_size` cannot: the obs shape changes); `designs` has no
+  could, `grid_size` cannot: the obs shape changes); `escalations` has no
   analogue. The typing is the Phase-A **mode stance** carried onto the tree:
   modes declared "independent branches, reported separately" arrive as
-  `cases`, "competing designs to compare head-to-head" as `designs`.
+  `cases`, "competing designs to compare head-to-head" as `escalations`.
+
+  **Where a `design-axes` split comes from is derivable, not judgment.** The
+  paragraph above states the consequence (never prunable) and the litmus
+  (redundancy at crowning), and neither says where such a split *originates*,
+  which leaves the typing unlintable. It need not be: a `design-axes` edge is
+  the **drawing of an IR declaration**, and must cite one.
+
+  | `design-axes` split | the IR declaration behind it |
+  |---|---|
+  | `dp` / `ap` / `rule` / `ppo` | the `benchmarks` block + the artifact's `rl.algo` (spec §9.9 roles) |
+  | `echelon` vs `raw` | `gym.observation_modes` + the research question's declared instrument |
+  | `masked` ⊂ `free` | `gym.action_modes` |
+  | algo families | `rl.algos` — spec §8.6 gives each family its own L0 line and L1 table |
+
+  That is the derivable statement of "never prunable": the IR said the
+  comparison is the deliverable, so crowning one side cannot make the other
+  redundant. An `escalations` edge is campaign-invented by contrast, and must
+  **not** be the declared instrument of a research question — which is the
+  check, in both directions. **Kind and axis stay orthogonal**: an
+  `escalations` split *on* a design axis is legal, and means the campaign
+  escalated by minting new points on that axis (probe encodings, which enter
+  the IR by a logged F-entry and are prunable). What is illegal is the third
+  thing — an escalation that *moves* a design axis whose value its own address
+  fixes, which the write-once rule above refuses.
+
+  **The cost of getting this wrong is measured.** One campaign drew `vec` vs
+  `vec_mip` — a research question's declared instrument — as an `escalations`
+  split, under which "crown one, prune the rest" licensed pruning the claim
+  arm. Round 1 ended with `vec_mip` losing by 74.6 points at seed sd 887, a
+  textbook prune. Coverage-required — the IR declaration — is what forced
+  round 2, which found the gap was a VecNormalize artifact and that the arms
+  tie at 0.02 ± 1.12: the campaign's headline. Under the mistyping, that
+  finding does not exist.
 
   *(This replaces the `S`/`P` split typing. Two things the old text got wrong:
   it called a coverage split a partition of the problem while its own second
   shape — the extension chain — was nested rather than disjoint; and it left
   sibling sets that are neither, such as an exact DP beside heuristics beside
-  the RL artifact, with no legal type. The extension chain is now a `means`
+  the RL artifact, with no legal type. The extension chain is now a `design-axes`
   split with `order: by generality`, which is what licenses its cross-link
   delta as the price of generality. Two shipped campaigns show what the old
   typing cost, one per failure mode. **Mis-typing**: `game2048`'s root splits
@@ -221,8 +301,8 @@ above — was a tree all along.)
   effect is not its claim — layer order encodes conditioning, and tier encodes
   what the campaign is *for*, without reordering anything.
 - **Siblings carry ranks** — local and standing: **P = priority**, P1 > P2 > …
-  orders competitors at a `designs` split; **S = schedule**, S1 > S2 > …
-  schedules coverage at a `cases` or `means` split. The letters rank the
+  orders competitors at an `escalations` split; **S = schedule**, S1 > S2 > …
+  schedules coverage at a `cases` or `design-axes` split. The letters rank the
   siblings; the **kind on the edge** says what the split is. Both revise via
   REPRIORITIZED lines, but they license different things: a low-P child may
   never run at all (a crowned winner prunes it); a low-S child runs *later*,
@@ -294,7 +374,7 @@ virtue, mechanical generation of the cell nobody thought of:
   crowned branch's children must include the controls that decompose its win —
   when the control *competes* on the same leaderboard (game2048: onehot's +64%
   stayed confounded with the CNN until an MLP-on-onehot sibling existed). That
-  is a `designs` sibling, and a control is precisely a tier-3 sibling of a
+  is an `escalations` sibling, and a control is precisely a tier-3 sibling of a
   tier-2 claim, which marks it as a control with no new mark. It is the wrong
   shape for a **floor** control: spec §8.6's `L0` is reporting-only and "never
   a gate", so it is never eligible for the crown, and drawn as a sibling it
@@ -342,8 +422,8 @@ a score against its bar.  Semantics:
   subsumes "open questions, ranked" — parked items live as `⏸` nodes.
 - **The frontier cites the diagnosis that last reordered it** (§6): "frontier
   as of #E{n}" — every queue order traces to a dated reasoning record.
-- **Split kinds bind the queue**: an agenda item that crowns a `designs` child
-  licenses pruning its siblings; completing a `cases` or `means` child never
+- **Split kinds bind the queue**: an agenda item that crowns an `escalations` child
+  licenses pruning its siblings; completing a `cases` or `design-axes` child never
   reduces its siblings' obligation — postponed children are coverage *debt*, and a
   campaign does not close while one is outstanding (a deliberate scope cut
   is a re-framing of the root, changelog line owed, not a prune).
@@ -491,10 +571,15 @@ right or wrong in place.
 
 ## 7. Binding rules
 
-1. **No run without an address.** Every launched run cites a map bucket + grid
-   cell. Can't place it → either the map is stale (re-frame first) or the run is
-   unmotivated (don't launch). In agent form this is the budget-allocation
-   invariant: allocating compute *is* coloring the map.
+1. **No run without an address, and no run without a base.** Every launched
+   run cites a map bucket + grid cell. Can't place it → either the map is stale
+   (re-frame first) or the run is unmotivated (don't launch). In agent form this
+   is the budget-allocation invariant: allocating compute *is* coloring the map.
+   The address says which *question* the run answers, and two arms can share one
+   exactly while differing on four knobs — so a campaign carrying a
+   §CONFIG-REGISTRY also cites a config tuple plus its declared deviations
+   (§13). A design axis in that tuple is part of the address, not part of the
+   configuration: it is write-once (§3.1), so a deviation may never spell one.
 2. **Bidirectional citation.** Map revisions cite the ledger IDs that forced them;
    frame changes get a changelog line; ledger entries carry their address. An
    *address* is a link, not prose — "under the crowned interface" is
@@ -574,6 +659,13 @@ right or wrong in place.
   forward join needs no grep at all.
 - **Spec/playbook content** — conventions live in the spec; the log records what
   *happened*, cites the rest.
+- **Renderings of what is on disk** — run tables, step counts, headline metrics
+  spliced back into the log. Those are generated views (§9), and the issue-#11
+  disposition rejected a maintained one. §CONFIG-REGISTRY is not an exception
+  to this: it runs the other way, holding *authored design state* that runs are
+  configured **from**, with the same lifecycle as §MAP and nothing generating
+  it. The tell is direction — a rendering can be rebuilt from the archive, a
+  base cannot be recovered from it at all.
 
 ## 9. History and rendering
 
@@ -663,19 +755,19 @@ graph TD
     ROOT["IR {domain} v{n}<br/>mdp {fingerprint} · structural {fingerprint}"]
     ROOT ==>|"cases · scenario · S1 · required ▶"| SC1["scenario={registry key}<br/>{score} · #E{n}"]
     ROOT -->|"cases · scenario · S2 · required ⏸"| SC2["scenario={next}<br/>coverage debt; return: {when}"]
-    SC1 ==>|"means · solver · S1 · role=exact · tier=1 ★"| M1["method=dp<br/>{score} · #E{n}"]
-    SC1 ==>|"means · solver · S2 · role=feasible · tier=1 ★"| M2["method=ppo<br/>{score} · #E{n}"]
+    SC1 ==>|"design-axes · solver · S1 · role=exact · tier=1 ★"| M1["method=dp<br/>{score} · #E{n}"]
+    SC1 ==>|"design-axes · solver · S2 · role=feasible · tier=1 ★"| M2["method=ppo<br/>{score} · #E{n}"]
     M2 ==>|"L0→L1 escalation (Δ {x})"| L1["level=L1<br/>{score} (Δ {x}) · #E{n}"]
-    L1 ==>|"designs · gym.{axis} · P1 · tier=3 ★"| C1["{axis}={option}<br/>{score} (Δ {x}) · #E{n}"]
-    L1 -->|"designs · gym.{axis} · P2 ⏸"| C2["{axis}={option}<br/>{score} · #E{n}"]
+    L1 ==>|"escalations · gym.{axis} · P1 · tier=3 ★"| C1["{axis}={option}<br/>{score} (Δ {x}) · #E{n}"]
+    L1 -->|"escalations · gym.{axis} · P2 ⏸"| C2["{axis}={option}<br/>{score} · #E{n}"]
     L1 -.->|"∅"| C3["{axis}={option}<br/>{why it cannot exist}"]
-    C1 ==>|"designs · arch+hp.{axis} · P1 · tier=3 ▶"| C4["{axis}={option}<br/>{score} · #E{n}"]
+    C1 ==>|"escalations · arch+hp.{axis} · P1 · tier=3 ▶"| C4["{axis}={option}<br/>{score} · #E{n}"]
 ​```
 
 ### Layers and node readings   (one table — kind, attributes, tier, reading, entry)
 | node | kind · attributes · tier | reading | entry |
 |---|---|---|---|
-| `{axis}={option}` | designs · tier=3 | {what it established, with scope} | [#E{n}](#E{n}) |
+| `{axis}={option}` | escalations · tier=3 | {what it established, with scope} | [#E{n}](#E{n}) |
 
 ### Frontier
 1. **A1 — {action} @ {tree path}**  {▶|queued} — {evidence; cost}
@@ -704,6 +796,28 @@ symptom: {observable}
 fix: {corrected shape}
 rule: {trigger-first generalization}
 
+## CONFIG-REGISTRY   (living — ids append-only; §13)
+### scenario
+| id | key in SCENARIOS | note |
+|---|---|---|
+| <a id="sc0"></a>`sc0` | `{registry key}` | {what this base is} |
+
+### gym · `g`   |   arch · `a`   |   hp · `h`   (one table each, same shape)
+| id | parent | delta | why it exists / what promoted it | cell tuned in |
+|---|---|---|---|---|
+| <a id="g0"></a>`g0` | — (L1 origin) | {the §8.6 derivation's gym output} | the derivation; reserved | — |
+| <a id="g1"></a>`g1` | `g0` | `{knob}={value}` | {#E{n} — what promoted it} | — |
+
+### Constraints   (R1c — declared on the constraining id, refused at launch)
+| id | requires |
+|---|---|
+| `a2` | `g.norm_reward = false` — {why the force exists} |
+
+### Current bases
+| axis | current | since |
+|---|---|---|
+| `sc` / `g` / `a` / `h` | `{id}` | {#E{n}} |
+
 ## LEDGER
 <a id="E{n}"></a>
 ### #{id} {date} — {one-line hypothesis}
@@ -730,10 +844,9 @@ observed: {established, scope attached}
 missing:  {named gaps → tree nodes}
 plan:     {A items + arbiters + pre-decided branches}
 ```
+## 12. Local extensions
 
-## 12. Local extensions, and the one under evaluation
-
-§2's four sections are the spine. A campaign that needs more structure adds a
+§2's five sections are the spine. A campaign that needs more structure adds a
 **local extension** and marks it as one — `examples/mab` carries two, a
 `### Deviation register` and a `## RUNS` table, each labelled *(local extension
 — not a guide §11 section)*. That label is the whole convention: it tells the
@@ -741,39 +854,48 @@ next reader which parts of the log are format and which are one campaign's
 apparatus, and it keeps an extension from being copied as though it were
 mandated.
 
-What follows is one extension **under evaluation across campaigns**. It is
-written down here, rather than left in the campaign that invented it, for one
-reason: ids from it land in run-directory names, and run dirs are immutable
-(§8). Two campaigns inventing two spellings produce two archives that can never
-be reconciled. So adopt the shape below verbatim or not at all.
+`§CONFIG-REGISTRY` entered the guide here (v0.9.21) as an extension under
+evaluation, written down rather than left in its inventing campaign because its
+ids land in archives that must be reconcilable. It graduated to a rule on
+2026-08-24 and is now §13.
 
-### §CONFIG-REGISTRY — guidance, not a rule
+## 13. §CONFIG-REGISTRY — the bases runs cite
 
-**Status.** Proposed upstream as **issue #60**, from `game2048` (2026-08-21),
-where it has run since. Deliberately not a binding rule: §10's graduation bar
-asks for confirmation across ≥2 campaigns, the data half (`{domain}_configs.py`)
-is not built anywhere yet, and the four open points below are unsettled. Adopt
-it if the problem is yours; do not cite it as format.
+**Status: rule** (2026-08-24, upstream issue #60). Promoted under §10 rule 3 on
+two campaigns: `game2048`, which invented it (2026-08-21), and `adi_flex`, a
+structurally unlike one — tuning-heavy inventory control, 583 trials across two
+studies, five observation encodings, an exact DP reference — which adopted the
+shape verbatim and ran the axis test to the end of its archive without bending
+it. The graduation bar asked for exactly that second campaign, plus the data
+half (`{domain}_configs.py`) built and run; both are met, with one residue
+stated at the end.
 
-**The problem.** The log answers *what question does this run answer* — §7
-rule 1's address — and nothing answers *what was this run configured from*.
-Two arms can share an address exactly and differ on four knobs. The map holds
-the **crowned** bundle (§3.4), so an arm's base is not there at launch time,
-when it is by definition not crowned; and the run name is a diff against the
-train script's *current* defaults (spec §8.4), so a knob sitting at its default
-leaves no trace in the join key. An inherited base is therefore invisible in
-both directions. `game2048` reports nine incidents of one shape — a knob nobody
-chose — including ~15 arms sharing a `gae_lambda` derived at a different board
-scale, and a declared base that had never actually been run.
+**The problem.** The log answers *what question does this run answer* — §7 rule
+1's address — and until this section, nothing answered *what was this run
+configured from*. Two arms can share an address exactly and differ on four
+knobs. The map holds the **crowned** bundle (§3.4), so an arm's base is not
+there at launch time, when it is by definition not crowned; and the run name is
+a diff against the derivation (spec §8.4), so a knob sitting at the derived
+value leaves no trace in the join key. An inherited base is therefore invisible
+in both directions. `game2048` reports nine incidents of one shape — a knob
+nobody chose — including ~15 arms sharing a `gae_lambda` derived at a different
+board scale, and a declared base that had never actually been run.
 
 **The shape.** A **living** section (edited in place, like §MAP; unlike the
 three append-only ones), holding one table per axis, with per-id anchors so a
-ledger entry can link to a definition.
+ledger entry links straight to a definition (`[a8](#a8)`), matching §7 rule 2's
+anchor discipline.
 
-**Three independently versioned axes, plus the scenario.** They are the spec's
-own L2 sub-layers (`L2(gym)` / `L2(arch)` / `L2(hp)`), not a new taxonomy, and
-they move on different clocks — a tuning sweep moves `h` and leaves `a` alone,
-so one bundled id would churn on every run and hide which axis moved.
+### 13.1 Three independently versioned axes, plus the scenario
+
+They are the spec's own L2 sub-layers (`L2(gym)` / `L2(arch)` / `L2(hp)`), not
+a new taxonomy, and they move on different clocks — a tuning sweep moves `h`
+and leaves `a` alone, so one bundled id would churn on every run and hide which
+axis moved. *Independently versioned*, deliberately, rather than *orthogonal*:
+§13.3 records real cases where one axis forces a value on another.
+
+**The axis a knob belongs to is decided by the layer that implements it**, not
+by what it feels like. Spec §1.1's layering is already the arbiter.
 
 | axis | scope | the test — *which layer implements it* |
 |---|---|---|
@@ -804,46 +926,200 @@ Six boundary calls, each of which has been got wrong somewhere:
 - **Rollout geometry is `h`**, including `n_envs`. Being *locked* as a
   structural forced move does not make a knob its own axis.
 
-**Ids.** `{axis}{integer}`, dense and append-only from the L1 origin at 0 —
-`g0`, `g1`, … — with a generation letter for a re-derivation (`g0b`). The
-integer is an **identity, not a description**: nothing about the config may be
-encoded in it, or the id becomes a rename waiting to happen. Each row records
-its parent and its delta from that parent, so a full expansion is recoverable
-by walking to the origin. Two further rules make the ids trustworthy:
+**One knob, one home — and it is checkable.** Because the partition is by
+implementing layer, no argument may appear in two axes' deltas; the module
+asserts exactly that at import, and the rule stops being a documented
+convention. **It fired on its first execution and was right.** The naive origin
+— `h0` = the train script's `_L1_DERIVED` wholesale — double-homed `norm_obs`
+and `norm_reward`, because **the §8.6 derivation is not single-axis**: it emits
+the gym origin and the hp origin together, exactly as §13.4's ladder says
+("defines the origin of each axis", plural). Partition the derivation by the
+script's own gym-knob set. A rule violated by its first enforcer inside thirty
+seconds is a rule that needed the enforcer.
 
+### 13.2 Ids
+
+`{axis}{integer}`, dense and append-only from the L1 origin at 0 — `g0`, `g1`,
+… — with a generation letter for a re-derivation (`g0b`). The integer is an
+**identity, not a description**: nothing about the config may be encoded in it,
+or the id becomes a rename waiting to happen. Each row records its parent and
+its delta from that parent, so a full expansion is recoverable by walking to
+the origin.
+
+- **Mint the origin rows first, and read them rather than write them.** The
+  §8.6 derivation's output is `g0`/`a0`/`h0`, reserved, and nothing else may
+  occupy it. The origin is *read* from the train script — derived value where
+  §8.6 speaks, parser default where it does not — so it cannot drift from the
+  derivation it names. `_L1_DERIVED` alone is not enough: it holds only what
+  §8.6 derived, which is right for a run name and wrong for an origin, and a
+  knob no row derives (`vf_coef`) would be silently absent, letting two runs
+  differing only there cite one tuple. The general rule: **a config must be
+  complete; a run name must be a diff.**
 - **Budget and seed are not config.** `total_timesteps` is recoverable from the
   run log and gets extended constantly; a seed is a replicate, not a design
   choice. (A comparison must still *state* its budget — a reporting rule.)
 - **Ids are append-only.** Never edit `a4`; add `a5 = a4 + {delta}`, recording
   parent, delta, and what promoted it. Only the CURRENT-BASE line changes in
   place, so a historical citation of `a8` still means what it meant.
+- **An id is a promotion, not a record that something ran.** Rows are minted
+  for **adopted** bases — crowned, shipped, or parented — never for probes or
+  failed arms, however fully replicated. §LEDGER is what was run;
+  §CONFIG-REGISTRY is what was kept. The deviation count then becomes
+  diagnostic: one adopting archive partitions into 21 runs at `{sc}/L0`, 15
+  probe runs in unregistered cells (ledger-addressed only), and 90 tuple-cited
+  runs of which 60 sit at zero deviations — and the only runs beyond two
+  deviations are the one failed arm.
+- **A delta may only contain knobs someone chose.** A shipped row's delta is
+  exactly what the study searched. A value the tuning driver *rendered* rather
+  than a person selecting it is not a choice and does not belong in a delta —
+  the failure spec §8.6 now prevents at source (upstream #64, v0.9.25), where a
+  trial's rendering of an out-of-tier knob was mistaken for that knob's value
+  and briefly minted as two configurations.
 
-**Four open points.** Recorded so that adopting this is a considered act:
+### 13.3 Constraints across axes
 
-1. **A tuning study is not one axis.** Spec §8.6 calls `mdp_tuning` the L2(hp)
-   layer, but its **default** `core` tier searches `embed_dim` / `features_dim`
-   / `channels` (which §8.6's own `net_arch` row puts at the arch layer), and
-   since v0.9.20 `breadth` searches `norm_obs` and `all` searches `norm_reward`
-   (gym, by the test above). So one study can return a config differing from
-   its parent on all three axes, and how to cite that is unsettled.
-2. **Mint the origin rows first.** `game2048`'s tables are 1-indexed with no id
-   for the L1-derived config every other id is a delta *from* — the same shape
-   as its own phantom-base incident, one level up. The §8.6 derivation's output
-   is `g0`/`a0`/`h0`, reserved, and nothing else may occupy it.
-3. **The duplication is unenforced.** Issue #60 pairs the table with a
-   `{domain}_configs.py` and says a mismatch refuses the next launch; there is
-   no launch gate (proposed separately as **#62**). Until one exists, keeping
-   two artifacts in step is unassisted — and an unchecked second source of
-   truth is what the issue-#11 disposition rejected for `run_status.json`.
-   Carry the table alone, or accept that the module is the authority and the
-   table can lag it.
-4. **The token grammar is the expensive part.** Ids land in run names and run
-   dirs are immutable (§8), so a spelling change orphans an archive.
-   `game2048` writes `s3`; #60 generalizes to `sc3`. Take the grammar from the
-   issue, and if it changes there, the change is a new generation rather than a
-   rename.
+Where one axis forces a value on another, **the constraint is declared on the
+constraining id, and a citation that violates it is refused**. The axes version
+independently; they are not causally independent, and pretending otherwise is
+how a run resolves to something no cited id describes. Selecting a symlog value
+head forces `norm_reward` off, so an `a` id silently sets a `g` knob. Three
+ways to record that, and only the third survives "a knob not in a cited config
+is not in the run":
 
-**What would promote this to a rule** (§10 rule 3): the module built and run;
-one **structurally different** campaign — continuous control or tuning-heavy,
-not a second board game — using the axis test without bending it; and open
-point 3 settled either way.
+1. move the knob to the forcing axis — misfiles it, and the next `a` id that
+   does not force it inherits the wrong home;
+2. leave it implicit — a silently doubled loss coefficient in different clothes;
+3. **declare it**: the `a` row carries `requires: g.norm_reward = false`, and an
+   arm citing that `a` with a `g` whose `norm_reward` is true is refused at
+   launch rather than resolved silently.
+
+**The constraint binds the tuning sampler, not only the launch.** A forced knob
+that enters an `mdp_tuning` tier is drawn freely, overridden silently, and
+recorded at the drawn value — so the study's parameters disagree with the runs'
+resolved args and the trials on the forced side are duplicates. One campaign
+carried `γ = β` this way by passing `--fix gamma` by hand on every launch;
+declaring it on the `sc` id is what makes that mechanical. Wherever the axes
+meet a sampler, this is a constraint on the space, not a note in a table.
+
+This is §7 rule 4 ("bundles stay bundles") and §3.4's pairing constraints one
+level down: the map governs adoption units, the registry governs config
+components.
+
+### 13.4 How this meshes with the L0/L1/L2 ladder
+
+The registry is a taxonomy **of the L2 layer**, and the ladder attaches to it at
+exactly one point — the origin of each axis.
+
+| level | what it is | how a run cites it |
+|---|---|---|
+| **L0** | faithful defaults: the library's defaults plus only what the *problem* forces. Not configured from the registry at all | `{sc}/L0` — the scenario and nothing else. No axis ids, because there is no derived config to name |
+| **L1** | the derivation's output. It **defines** the origin of each axis: `g0`, `a0`, `h0` | `{sc}/{design axes}/L1`, the canonical spelling of the all-origin tuple **within that cell** |
+| **L2+** | every escalation: a non-origin id on a **non-design** knob, or a declared deviation | `sc0/g2/a0/h0`, `sc0/g0/a0/h0_lam0.9` |
+
+**A design axis names a cell, not a level.** The `g` axis carries the design
+axes (`observation_mode`, `action_mode`, `reward_mode`) as well as the wrapper
+stack, and §8.6's ladder is per-cell — *"Δ(L1−L0) measures the configuration
+layer per case"*. So the level is the set of layers moved off the complete
+origin **among non-design knobs**; a non-origin id that differs only in a
+design axis is a different *cell*, whose own ladder starts again at L1.
+
+This was measured. The first faithful implementation read the clause as *any*
+non-origin id, and produced **33 disagreements in 105 runs** against the
+knob-derived level — every `vec_mip` arm reading `L2(gym)`, relabelling half of
+a declared research instrument as an escalation, all in the direction that
+inflates levels. Worked example from that tree: `sc0/g1/a0/h0` — the `vec_mip`
+arm, wrapper and hp at the derivation — is **L1 in its own cell**, spellable
+`sc0/vec_mip/L1`; `sc0/g2/a0/h0`, with `norm_obs` moved, is `L2(gym)`; and an
+explicit `-o vec` against a citation that fixes `vec_mip` is refused at launch
+by §3.1's write-once rule rather than recorded as a deviation.
+
+The quieter half of the same correction: a knob **no** §8.6 row derives
+(`vf_coef`) still makes a level when it moves, per §8.6's own invariant — *more
+than one training configuration was tried*. Derivation coverage decides what
+the origin must contain; it does not decide what counts as an escalation.
+
+Three properties follow:
+
+1. **L1 keeps its status as a derivation rather than a choice.** `g0`/`a0`/`h0`
+   are not entries anyone picked; they are what the derivation emitted. The
+   registry's append-only ids begin *after* it, which is why every row above an
+   origin is L2 permanently, and why the obvious objection — giving L1 a config
+   id makes it look chosen — does not bite.
+2. **The level stops being authored and becomes derivable.** Origin ids on
+   every axis with no deviations is L1; anything else is L2, and which axes
+   moved says which sub-layer. An authored tag is a claim nothing checks: one
+   campaign's `L1_onehot_CNN` names an L2(gym) arm in ~90 run dirs, and another
+   found 66 of 126 training runs carrying a `solve_level` their own knobs
+   contradict — 24 of them "L2(hp)" rounds that had opened the gym layer.
+3. **A wrong derivation has a home, and it is emphatically not a deviation.**
+   A rule L1-derived at one scale and applied at another is a
+   **re-derivation**: a new L1 generation, minting fresh origins on the
+   affected axes and restarting the ladder above them. Its cost is the point —
+   L2 results measured against the old origin are not comparable to those
+   measured against the new one, and Δ(L1−L0) is re-measured. Generations are
+   lettered (`L1b` with `g0b`/`a0b`/`h0b`), never primed: these tokens are
+   grepped, so they stay shell-safe.
+
+### 13.5 Two artifacts, and what stops them drifting
+
+A base change *is* an escalation, so it must leave a mark in the log — §1's own
+argument, one level down. But a launch check has to **resolve** an id, and
+parsing markdown tables to do it would be the fragile thing this section exists
+to avoid. So a new base is registered in both places, with the overlap
+**checked rather than trusted**:
+
+| artifact | holds | authority |
+|---|---|---|
+| `{domain}_configs.py` | the id definitions as data — parent, delta, cross-axis constraints | **authoritative for what a config is**; it is what a run resolves against |
+| §CONFIG-REGISTRY | the same ids as a reader-facing table, plus the reasons: why an id exists, what promoted it, what it supersedes | **authoritative for why**; the rendering a human reads beside the verdicts that cite it |
+
+**The module registers axis components, never whole configs.** There is no
+"config" object: a run cites a *tuple* (`sc3 g1 a3 h1`) plus its deviations, and
+the cross product is implicit. Registering bundles rebuilds the failure the axes
+exist to prevent — two arms were called different *architectures* for two days
+when they were one `a` differing in `h` — because the axis that moved becomes
+recoverable only by diffing two bundle definitions. It is also what makes the
+cross-axis query the operation the registry exists for: *every arm that used
+`a3`* is a grep, not an expansion.
+
+This is deliberate redundancy made safe by a check, a shape the spec already
+uses: §8.4 records `algo_class` in the args log even though it is inferable in
+principle, precisely so the artifact can be checked against the declaration. The
+contrast with the deferred `run_status.json` is the instructive one — that was a
+*mutable, multi-writer, unchecked* sidecar. This pair is single-writer per side,
+changes only on a deliberate act, and disagreement fails a launch.
+
+**What the module checks at import**, as run in the adopting campaign: one knob
+one home (§13.1); ids dense per generation; every `sc` alias live in
+`SCENARIOS`; every design-axis value a `g` delta sets validated against the IR;
+and, in the campaign's audit, every id present in both module and table with the
+same parent.
+
+### 13.6 The run name, and where ids are recorded
+
+**Ids go in the args log, not in run-directory names.** Run dirs are immutable
+(§8), so a spelling change orphans an archive — and this is not hypothetical:
+one adopting archive had already survived a token-grammar change
+(`--no-vecnorm` becoming a split flag pair) in which the *config* survived and
+the directory name did not. Recording `config_ids` and `config_deviations` in
+the args log put 709 pre-existing directories at zero orphaned. The run name
+keeps doing its own job — diffing the derivation, per spec §8.4 — and the two
+readings agree because both are anchored to the same origin.
+
+### 13.7 The residue, stated
+
+**Registry enforcement has no upstream gate.** Upstream #62 (v0.9.23) gates the
+**§8.6 derivation** at launch — `assert_l1_current`, checking that a run's
+resolved args match what the script derived — which is a different check from
+"the run matches the tuple it cited". A campaign adopting this section carries
+its own import-time and launch-time checks, domain-locally. That is the honest
+gap in the graduation: the rule is confirmed across two campaigns and the
+checks exist, but they live in `{domain}_configs.py` rather than in the harness.
+
+Second, smaller: the adopting campaign's module resolves citations for every
+training launch and its rows were verified knob-for-knob against a completed
+study's winners, but it has not yet been the launcher of a *new* tuning study.
+The axes collide most where a study returns a config differing from its parent
+on more than one of them (§8.6's `core` tier reaches the arch layer, `breadth`
+and `all` reach gym), and the rule there is §13.4's: **read the level off the
+knobs that actually moved**, never off the fact that a study produced it.

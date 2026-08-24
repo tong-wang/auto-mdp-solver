@@ -25,7 +25,7 @@ over this file, over the code, and over local habit:**
 |---|---|
 | `MDP_PROJECT_SPEC.md` | architecture, layering, naming, RNG/seed tree, script + eval conventions (§1–§14) |
 | `SKILL.md` | the pipeline stages, their gates, and what each stage must emit |
-| `ESCALATION_LOG_GUIDE.md` | the campaign log (§MAP, §FRAME-CHANGELOG, §IR-CHANGELOG, §LEDGER) and the §10 playbook digest |
+| `ESCALATION_LOG_GUIDE.md` | the campaign log (§MAP, §FRAME-CHANGELOG, §IR-CHANGELOG, §CONFIG-REGISTRY, §LEDGER) and the §10 playbook digest |
 
 Consequences, each already paid for somewhere:
 
