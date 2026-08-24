@@ -648,7 +648,11 @@ the CWD.
   seeds — always re-evaluate the winning artifact with the full protocol
   before comparing or shipping, and expect the score to drop. A config
   tuned at a small budget does not necessarily improve when retrained
-  longer; prefer shipping the tuned artifact itself.
+  longer; prefer shipping the tuned artifact itself. If you do retrain a
+  winner, read its config off the trial's own args log: a trial command is
+  the **derivation plus the delta the study searched** (spec §8.6), so
+  "the script's defaults plus the winning cfg" is a different configuration
+  wherever a default has moved off the derivation.
 
 ### Stage 5 — interpret
 

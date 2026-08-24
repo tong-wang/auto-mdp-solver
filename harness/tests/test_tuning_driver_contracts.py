@@ -253,11 +253,13 @@ def test_the_warm_start_centre_is_the_derivation_not_the_default(tmp_path):
 
 
 def test_a_promotion_outside_the_searched_tier_is_still_reported(tmp_path):
-    """The case that actually costs something. A trial only carries a flag for
-    a knob the study searches, so a promoted knob OUTSIDE the tier is held at
-    the promoted default in every trial — trial 0 included — and Δ(L2−L1) is
+    """The case that actually cost something: a trial used to carry a flag only
+    for the knobs the study searched, so a promoted knob OUTSIDE the tier ran at
+    the promoted default in every trial — trial 0 included — and Δ(L2−L1) was
     measured from a centre that is not L1 in a knob nobody asked it to move.
-    Scanning only the searched knobs would miss exactly this one."""
+    Every trial now carries the derivation, and this stays reported because the
+    study's runs still differ from a hand-run of the script. Scanning only the
+    searched knobs would miss exactly this one."""
     from mdp_tuning.__main__ import promoted_knobs
     from mdp_tuning.driver import ArgSpec, DomainScripts
 
@@ -287,6 +289,150 @@ def test_a_script_without_a_derivation_still_warm_starts_from_defaults(tmp_path)
         eval_args={})
     assert l1_defaults(scripts, {"gae_lambda"}) == {"gae_lambda": 0.9}
     assert promoted_knobs(scripts) == {}
+
+
+# --- what a trial's command actually carries (upstream #64) ---------------
+
+def _train_scripts(tmp_path, train_args: dict, derived: dict):
+    """A domain whose train script exposes `train_args` on top of the three
+    dests §8.2 requires of every train script, and derives `derived`."""
+    from mdp_tuning.driver import ArgSpec, DomainScripts
+
+    required = {
+        "scenario_name": ArgSpec(flag="--scenario_name", multi=False,
+                                 default="simple"),
+        "total_timesteps": ArgSpec(flag="--total-timesteps", multi=False,
+                                   default=1_000_000),
+        "outdir": ArgSpec(flag="--outdir", multi=False, default="results"),
+    }
+    return DomainScripts(
+        prefix="d", directory=tmp_path, algo="ppo",
+        train_script=tmp_path / "d_ppo_train.py",
+        eval_script=tmp_path / "d_ppo_eval.py",
+        train_args={**required, **train_args}, eval_args={},
+        l1_derived=derived)
+
+
+def _adi_flex_like(tmp_path):
+    """The motivating shape: the derivation says 0.02 / 0.05 and the parser
+    defaults are null, because L0 must be able to have no KL valve and a
+    constant schedule — so here the derived value *cannot* be the default."""
+    from mdp_tuning.driver import ArgSpec
+
+    return _train_scripts(
+        tmp_path,
+        {"target_kl": ArgSpec(flag="--target-kl", multi=False, default=None),
+         "clip_final": ArgSpec(flag="--clip-final", multi=False, default=None),
+         "learning_rate": ArgSpec(flag="--learning-rate", multi=False,
+                                  default=3e-4)},
+        {"target_kl": 0.02, "clip_final": 0.05, "learning_rate": 3e-4})
+
+
+def _cmd(scripts, cfg, trial_dir, fixed_train=None, total_timesteps=50_000):
+    from mdp_tuning.__main__ import train_assignment
+
+    args = argparse.Namespace(total_timesteps=total_timesteps, seed=42)
+    assign = train_assignment(scripts, args, "simple", trial_dir,
+                              fixed_train or {}, cfg)
+    return build_cmd(scripts.train_script, scripts.train_args, assign)
+
+
+def test_every_trial_carries_the_derivation(tmp_path):
+    """The defect: a trial's command set the searched knobs and let every other
+    dest fall to the parser default, so a knob whose derived value is not its
+    default ran off-derivation in every trial. The campaign that found this ran
+    583 trials across two studies at target_kl=None against a derived 0.02."""
+    cmd = _cmd(_adi_flex_like(tmp_path), {"learning_rate": 0.001}, tmp_path)
+    assert cmd[cmd.index("--target-kl") + 1] == "0.02"
+    assert cmd[cmd.index("--clip-final") + 1] == "0.05"
+
+
+def test_the_sampler_wins_over_the_derivation(tmp_path):
+    """Leaving the centre is what a searched knob is for."""
+    cmd = _cmd(_adi_flex_like(tmp_path), {"target_kl": 0.05}, tmp_path)
+    assert cmd.count("--target-kl") == 1
+    assert cmd[cmd.index("--target-kl") + 1] == "0.05"
+
+
+def test_a_train_arg_pin_wins_over_the_derivation(tmp_path):
+    cmd = _cmd(_adi_flex_like(tmp_path), {}, tmp_path,
+               fixed_train={"target_kl": "0.1"})
+    assert cmd.count("--target-kl") == 1
+    assert cmd[cmd.index("--target-kl") + 1] == "0.1"
+
+
+def test_the_study_budget_wins_over_a_derived_one(tmp_path):
+    """The three study-level dests stay the study's to set: a trial runs a
+    trial budget into a trial directory, whatever the derivation says."""
+    scripts = _train_scripts(tmp_path, {}, {"total_timesteps": 5_000_000})
+    cmd = _cmd(scripts, {}, tmp_path, total_timesteps=50_000)
+    assert cmd.count("--total-timesteps") == 1
+    assert cmd[cmd.index("--total-timesteps") + 1] == "50000"
+
+
+def test_a_runtime_derived_knob_is_left_off_the_command_line(tmp_path):
+    """§8.4's carve-out: mab computes norm_obs inside parse_args, so there is no
+    value to put on a command line and omitting the flag IS how the derivation
+    is applied."""
+    from mdp_tuning.driver import ArgSpec
+
+    scripts = _train_scripts(
+        tmp_path,
+        {"norm_obs": ArgSpec(flag="--norm-obs", multi=False, default=None,
+                             takes_value=False, flag_const=True,
+                             negative_flag="--no-norm-obs")},
+        {"norm_obs": None})
+    cmd = _cmd(scripts, {}, tmp_path)
+    assert "--norm-obs" not in cmd and "--no-norm-obs" not in cmd
+
+
+def test_fix_holds_a_knob_at_its_derived_value_not_its_default(tmp_path):
+    """Spec §8.6 says --fix "holds a knob at its derived value"; the flag's own
+    help said "at the train script's default" and the code matched the help, so
+    a study told to stay inside one layer left it whenever the two differed."""
+    from mdp_tuning.__main__ import resolve_tunable
+    from mdp_tuning.driver import ArgSpec
+
+    scripts = _train_scripts(
+        tmp_path,
+        {"gae_lambda": ArgSpec(flag="--gae-lambda", multi=False, default=0.9)},
+        {"gae_lambda": 0.95})
+    args = argparse.Namespace(algo="ppo", knobs="core", fix=["gae_lambda"])
+    assert "gae_lambda" not in resolve_tunable(scripts, args, {})
+    # so it never reaches cfg — and what the command carries is the derivation
+    cmd = _cmd(scripts, {}, tmp_path)
+    assert cmd[cmd.index("--gae-lambda") + 1] == "0.95"
+
+
+def test_a_derivation_the_cli_cannot_carry_fails_at_launch(tmp_path):
+    """Seeding the derivation onto every trial makes one new way to fail, and
+    it fails identically on all of them — so it fails once, before the study
+    spends a budget proving it. The shape: a store_true declared default=True,
+    where the bare flag can only store True and the derived False is
+    unreachable."""
+    from mdp_tuning.__main__ import make_objective
+    from mdp_tuning.driver import ArgSpec
+
+    scripts = _train_scripts(
+        tmp_path,
+        {"strict": ArgSpec(flag="--strict", multi=False, default=True,
+                           takes_value=False, flag_const=True)},
+        {"strict": False})
+    args = argparse.Namespace(algo="ppo", knobs="core", fix=[], beta=1.0,
+                              episode_len=None, min_rollout_episodes=10,
+                              total_timesteps=50_000, seed=42)
+    with pytest.raises(SystemExit, match="cannot carry"):
+        make_objective(scripts, args, "simple", tmp_path, {}, {})
+
+
+def test_a_null_default_is_reported_as_promoted(tmp_path):
+    """The guard that hid all of the above: `default is not None` skipped
+    exactly the case _L1_DERIVED exists to express — a derived value that
+    cannot be the default. No banner fired for 583 trials."""
+    from mdp_tuning.__main__ import promoted_knobs
+
+    assert promoted_knobs(_adi_flex_like(tmp_path)) == {
+        "clip_final": (0.05, None), "target_kl": (0.02, None)}
 
 
 def test_value_taking_args_are_unaffected(tmp_path):

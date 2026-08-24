@@ -1661,8 +1661,10 @@ the observation mode inside `parse_args` — the dict omits that key and
 `build_run_name` supplies the computed centre for the run in hand.
 
 `mdp_tuning` reads the same dict: the warm start enqueues the derivation, so
-"trial 0 = the L1 centre" survives a promotion too, and the launch banner names
-any knob whose default has moved off its derived value (§8.6).
+"trial 0 = the L1 centre" survives a promotion too; **every** trial's command is
+seeded from it, so a knob the study does not search runs at its derived value
+rather than at whatever the default has since become; and the launch banner
+names any knob where the two differ, a null default included (§8.6).
 
 **File naming rules**:
 - Model: `{scenario_name}_{algo}.zip` (e.g. `simple_ppo.zip`)
@@ -1847,6 +1849,22 @@ the fact that a study produced it. Two flags make this answerable rather than
 archaeological — `--show-space` prints the resolved tunable set before launch,
 and `--fix` holds a knob at its derived value, so a study that means to stay
 inside one layer can say so (`--fix norm_obs`, `--fix embed_dim`).
+
+**Every trial carries the derivation, not only trial 0.** A trial's command
+sets the knobs the study *searches* and lets every other dest fall to the train
+script's parser default — which was the derivation only while §8.4's identity
+held. So each trial's command is seeded from `_L1_DERIVED` first, in the order
+*derivation → study-level (scenario, budget, outdir, seed) → `--train-arg` →
+sampled*: a trial then **is** the derivation plus the delta the study searched,
+which is what makes Δ(L2−L1) readable off the study at all. A knob whose derived
+value the script computes at runtime is left off the command line, since that is
+how its derivation is applied (§8.4's carve-out). Two things follow. The launch
+banner names every knob whose default has moved off its derived value — a
+**null** default included, which is exactly what a script writes when the
+derivation *cannot* be the default (`target_kl` and `clip_final` left null so L0
+can have no KL valve and a constant schedule). And a hand-run of the train
+script without those flags is a **different configuration** from the trial it
+means to reproduce, which is the failure a stage-2 replication walks into.
 
 **Trial 0 is the L1 centre only as far as the space can represent it.** The
 warm start enqueues the derived values, and the space is a grid: `n_steps`

@@ -56,9 +56,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         "silently getting a subset of it is the failure this "
                         "guards, and it is invisible in the result")
     p.add_argument("--fix", action="append", default=[], metavar="KNOB",
-                   help="lock a knob at the train script's default instead of "
-                        "tuning it (repeatable) — the forced-move lock; use "
-                        "--train-arg KEY=VALUE to pin at a non-default value")
+                   help="hold a knob at its L1-derived value instead of "
+                        "tuning it (repeatable, spec §8.6) — the forced-move "
+                        "lock; use --train-arg KEY=VALUE to pin at some other "
+                        "value")
     p.add_argument("--beta", default=1.0, type=float,
                    help="problem discount factor (objective.discount_factor): "
                         "gamma is searched in (beta-0.05, beta], beta reachable; "
@@ -72,8 +73,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         "--episode-len is given (rollout = n_steps × n_envs)")
     p.add_argument("--no-warm-start", action="store_false", dest="warm_start",
                    default=True,
-                   help="do not enqueue trial 0 = the train script's defaults "
-                        "(the L1-derived center)")
+                   help="do not enqueue trial 0 = the L1-derived centre "
+                        "(the script's _L1_DERIVED, its defaults where it "
+                        "declares none)")
     p.add_argument("--n-trials", default=25, type=int)
     p.add_argument("--total-timesteps", default=200_000, type=int,
                    help="training budget per trial")
@@ -162,20 +164,48 @@ def l1_defaults(scripts: DomainScripts, tunable: set[str]) -> dict[str, object]:
     return out
 
 
+def derived_assignment(scripts: DomainScripts) -> dict[str, object]:
+    """The derivation as train-script assignments — what every trial carries
+    before the study's own deltas go on top.
+
+    A trial's command sets the knobs the study *searches*, and every other dest
+    falls to the parser default. That was harmless while §8.6's identity held —
+    the defaults *were* the L1 centre — and stopped being harmless when §8.4
+    separated the two: a promoted default, or one a script deliberately leaves
+    null so L0 can exist at all, then rides on every trial in a knob nobody
+    asked the study to move. Seeding from ``_L1_DERIVED`` makes a trial *be*
+    the derivation plus the delta that was searched, which is the property
+    Δ(L2−L1) is read off.
+
+    Two omissions. A dest the train script does not expose is skipped —
+    conformance's ``scripts.l1_derived`` check is what reports that. And a
+    ``None`` derived value is skipped because there is nothing to put on a
+    command line: it means the script computes that knob at runtime (§8.4's
+    mab carve-out), so leaving the flag off *is* how the derivation is applied.
+    """
+    return {k: v for k, v in scripts.l1_derived.items()
+            if k in scripts.train_args and v is not None}
+
+
 def promoted_knobs(scripts: DomainScripts) -> dict[str, tuple]:
     """Knobs whose parser default has moved off the derived value — ``(derived,
     default)`` each.
 
     That is a *promotion*: a campaign adopting a discovered value, which §8.4
     makes safe for run names (they diff the derivation, so the tag survives).
-    A study is where the promotion still bites, and the reason is the whole
-    tier system: a trial only carries a flag for a knob the study **searches**.
-    So a promoted knob inside the tier is corrected — trial 0 gets the derived
-    value explicitly — while one *outside* it is held at the promoted default
-    in every trial including trial 0, and the study's Δ(L2−L1) is then measured
-    from a centre that is not L1 in a knob nobody asked it to move. That second
-    case is the one worth a banner, so this scans every derived knob rather
-    than only the searched ones; the caller marks which is which.
+    Every trial carries the derivation explicitly (``derived_assignment``), in
+    the tier and out of it, so what this reports is provenance rather than a
+    defect: on these knobs the study's trials and a hand-run of the train
+    script are different configurations, and the difference appears in no trial
+    run name for exactly the reason §8.4 gives. It scans every derived knob
+    rather than only the searched ones; the caller marks which is which.
+
+    A ``None`` default **counts**. It is what a script writes when the derived
+    value cannot be its default — adi_flex keeps ``target_kl`` and
+    ``clip_final`` null so L0 can have no KL valve and a constant schedule —
+    which is the strongest form of the divergence, not an absent one. Skipping
+    it is what let 583 trials run at ``target_kl=None`` against a derived 0.02
+    with no banner anywhere (upstream #64).
     """
     out: dict[str, tuple] = {}
     for k, derived in sorted(scripts.l1_derived.items()):
@@ -183,7 +213,7 @@ def promoted_knobs(scripts: DomainScripts) -> dict[str, tuple]:
         if spec is None:
             continue                      # conformance reports this one
         default = tuple(spec.default) if isinstance(spec.default, list) else spec.default
-        if default is not None and default != derived:
+        if default != derived:
             out[k] = (derived, default)
     return out
 
@@ -223,7 +253,7 @@ def show_space(scripts: DomainScripts, algo: str, tier: str = "all",
               "(fixed via --train-arg)")
     if locked_shown:
         print(f"locked   ({len(locked_shown)}): {', '.join(locked_shown)} "
-              "(held at script default via --fix)")
+              "(held at the derived value via --fix)")
     if outside:
         opens = "all" if tier == "breadth" else "breadth|all"
         print(f"out-of-tier ({len(outside)}): {', '.join(outside)} "
@@ -260,11 +290,14 @@ def report_readiness(scripts: DomainScripts, args: argparse.Namespace) -> None:
     if promoted:
         detail = "; ".join(
             f"{k}: derived {d!r}, default {f!r}"
-            + ("" if k in tunable else " (outside this tier — every trial "
-                                       "runs at the default)")
+            + ("" if k in tunable else " (outside this tier — held at the "
+                                       "derivation in every trial)")
             for k, (d, f) in promoted.items())
         print(f"promoted   : {len(promoted)} knob(s) whose default has moved "
               f"off the derivation — {detail}")
+        print(f"             every trial command carries the derived value, so "
+              f"a hand-run of {scripts.train_script.name} without those flags "
+              f"is a different configuration (§8.4)")
     enq, skipped, snapped = space.encode(l1_defaults(scripts, tunable),
                                          **sample_kwargs_for(scripts, args))
     if not skipped and not snapped:
@@ -355,12 +388,46 @@ def sample_kwargs_for(scripts: DomainScripts,
             "tier": args.knobs, "net_depth_default": net_depth_default}
 
 
+def train_assignment(scripts: DomainScripts, args: argparse.Namespace,
+                     scenario: str, trial_dir: Path,
+                     fixed_train: dict, cfg: dict) -> dict[str, object]:
+    """One trial's train-script assignment, in precedence order.
+
+    *derivation → study-level → ``--train-arg`` → sampled.* The study level
+    wins over the derivation because its three dests are the study's to set —
+    a trial runs a trial budget, not the derived one — the operator wins over
+    both, and the sampler wins last, since leaving the centre is what a
+    searched knob is for. Trial 0 still sits *at* the centre: the warm start
+    puts the derived values into ``cfg`` itself.
+    """
+    assign: dict[str, object] = dict(derived_assignment(scripts))
+    assign.update({
+        "scenario_name": scenario,
+        "total_timesteps": args.total_timesteps,
+        "outdir": str(trial_dir),
+    })
+    if "seed" in scripts.train_args:
+        assign["seed"] = args.seed
+    assign.update(fixed_train)
+    assign.update(cfg)
+    return assign
+
+
 def make_objective(scripts: DomainScripts, args: argparse.Namespace,
                    scenario: str, study_dir: Path,
                    fixed_train: dict, fixed_eval: dict):
     space = SPACES[args.algo]
     tunable = resolve_tunable(scripts, args, fixed_train)
     sample_kw = sample_kwargs_for(scripts, args)
+    # a derivation the CLI cannot express fails identically on every trial, so
+    # it fails here rather than spending the whole budget proving it
+    try:
+        build_cmd(scripts.train_script, scripts.train_args,
+                  derived_assignment(scripts))
+    except ValueError as err:
+        raise SystemExit(
+            f"FATAL: {scripts.train_script.name} derives a value its own CLI "
+            f"cannot carry, so no trial can run the derivation — {err}")
 
     def _penalty(trial: optuna.Trial, err: Exception) -> float:
         """Value for a crashed trial (e.g. NaN divergence): the worst completed
@@ -385,15 +452,8 @@ def make_objective(scripts: DomainScripts, args: argparse.Namespace,
         trial_dir = study_dir / f"trial_{trial.number:04d}"
         trial_dir.mkdir(parents=True, exist_ok=True)
 
-        train_assign: dict[str, object] = {
-            "scenario_name": scenario,
-            "total_timesteps": args.total_timesteps,
-            "outdir": str(trial_dir),
-        }
-        if "seed" in scripts.train_args:
-            train_assign["seed"] = args.seed
-        train_assign.update(fixed_train)
-        train_assign.update(cfg)
+        train_assign = train_assignment(scripts, args, scenario, trial_dir,
+                                        fixed_train, cfg)
         try:
             run_logged(build_cmd(scripts.train_script, scripts.train_args, train_assign),
                        trial_dir / "train.log", scripts.directory)
@@ -453,8 +513,9 @@ def main() -> None:
     # spec §8.2 tier 2 — before the study directory exists, because a study that
     # searches 7 knobs while its banner says 8 leaves no trace of the
     # discrepancy in any artifact downstream of this launch.
-    # --fix is the operator saying "hold this at the script default", which is
-    # exactly what a missing dest produces — asked-for, so not a silent shrink.
+    # --fix is the operator saying "hold this at its derived value" — a knob
+    # deliberately outside the search, which is what a missing dest produces
+    # too, so it is asked-for rather than a silent shrink.
     rot = [k for k in unmatched_knobs(scripts, args.algo, args.knobs)
            if k not in set(args.fix)]
     if rot and not args.summary_only and (args.knobs_explicit or args.strict_knobs):
@@ -514,9 +575,9 @@ def main() -> None:
     show_space(scripts, args.algo, tier=args.knobs,
                pinned=set(fixed_train), locked=set(args.fix))
 
-    # warm start (SOLVE_LEVELS_PLAN §3.6): trial 0 = the train script's own
-    # defaults for the tunable knobs — the L1-derived center. The study then
-    # directly measures what tuning adds over L1.
+    # warm start (SOLVE_LEVELS_PLAN §3.6): trial 0 = the derived value of every
+    # tunable knob (§8.4's _L1_DERIVED, the script's defaults where it declares
+    # none). The study then directly measures what tuning adds over L1.
     space = SPACES[args.algo]
     if args.warm_start and space.encode is not None and not study.trials:
         tunable = resolve_tunable(scripts, args, fixed_train)
@@ -528,11 +589,13 @@ def main() -> None:
         promoted = promoted_knobs(scripts)
         if promoted:
             print(f"warm start: {len(promoted)} knob(s) PROMOTED — the script "
-                  f"default has moved off the derived value (§8.4):")
+                  f"default has moved off the derived value (§8.4); every trial "
+                  f"command carries the derivation, not the default:")
             for dest, (derived, default) in promoted.items():
-                mark = ("trial 0 restores the derivation" if dest in tunable
-                        else "OUTSIDE the searched tier, so every trial runs at "
-                             "the default and trial 0 is not L1 in this knob")
+                mark = ("searched, and trial 0 sits at the derivation"
+                        if dest in tunable
+                        else "outside the searched tier, held at the derivation "
+                             "in every trial")
                 print(f"         {dest}: derived {derived!r}, "
                       f"default {default!r} — {mark}")
             study.set_user_attr("l1_promoted",
