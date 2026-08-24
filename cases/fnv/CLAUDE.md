@@ -54,9 +54,9 @@ The repo-root `CLAUDE.md` carries the cross-domain rules.
 | doc | what it is |
 |---|---|
 | `README.md` | layout, usage commands, leaderboards |
-| `ESCALATION.md` | the campaign: §MAP, §IR-CHANGELOG (F1, F2), §LEDGER #E1–#E11. **Closed 2026-08-14** |
+| `ESCALATION.md` | the campaign: §MAP, §IR-CHANGELOG (F1, F2), §CONFIG-REGISTRY, §LEDGER #E1–#E11. **Closed 2026-08-14**; §MAP retyped to v0.9.26 and given node config addresses at v0.9.27 |
 | `INTERPRET.md` | policy readback, both branches — the structure IS recovered (§14) |
-| `PLAYBOOK.md` | the case-close digest: LV1–LV7, FM1–FM3, MR1–MR2, envelope verdict |
+| `PLAYBOOK.md` | the case-close digest: LV1–**LV8**, FM1–FM3, MR1–MR2, envelope verdict. LV8 is the one its own header tells you to read first — an equal-weight grid mean over heavy-tailed deltas |
 | `fnv_schema.json` | **the IR — authoritative** for the problem definition |
 | `fnv.restatement.md` | the Phase-A restatement (reverse-engineered — the IR was ported, see Traps) |
 | `UPSTREAM_PROPOSAL_*.md` | drafts against the solver spec, not local decisions |
@@ -167,6 +167,35 @@ same day**, citing the finding (#E…) that paid for it.
   quantity, apply §5.0's tie-breaker — *delete it: does the model change?* —
   and keep benchmark/tractability vocabulary out of the model layer entirely;
   `model.boundary` WARNs on it.
+- **Every node that shows a score must name the configuration that produced
+  it** (v0.9.27, #66), now that this case carries a §CONFIG-REGISTRY: a third
+  node row, `sc0/g0/a0/h0b`, below the score. It **names** a registry row and
+  never reproduces one — the contents of a config still may not go on a node.
+  Use the negative vocabulary rather than inventing a plausible tuple:
+  `{sc}/L0` for the §8.6 floor, `unregistered cell`, `id withdrawn`,
+  `no id — {item} mints it`, and **no row at all** for an analytic reference
+  (`prop2`, `dp`, `myopic`, `fitted` here) or a diagnosis node. A row obliged to
+  show something is a phantom-base generator. What it caught here on its first
+  application: crowned `method=ppo` on a-MMFE displays an **`sc0/L0`** number,
+  not the ship-by-default `h0b` two rungs below it.
+- **The design tree's split kinds were renamed at v0.9.26.** `means` →
+  `design-axes`, `designs` → `escalations` (#65; the old `designs` was the
+  near-opposite of spec §8.4's *design axes*). Only §MAP ever typed a split, so
+  the rename is total in this case — no append-only section and no sibling doc
+  carries the old spelling. Contrast `L1′` below, which four documents cite and
+  which therefore was **not** renamed.
+- **A `design-axes` edge must cite the IR declaration it draws, and design axes
+  are write-once.** Here that is `benchmarks` + `rl.algo` at the solver layer
+  and `research_questions.tier2` at the readback. The failure this catches was
+  live in this folder: `method=fitted` was drawn *under* `method=ppo`, so its
+  own address fixed `method` and then overwrote it — now a different cell,
+  refused rather than recorded. Provenance ("distilled from the readback") goes
+  in the reading, never in the parentage.
+- **`L1′` is a re-derivation, not an escalation** — §13.4's L1 *generation b*,
+  spelled `L1b` where the token is new (§CONFIG-REGISTRY) and `L1′`/`L1'`
+  everywhere it was already cited. It mints a fresh origin (`h0b`) and restarts
+  the ladder; it is not a row on a leaderboard with `L1`, and there is no
+  `escalations` split anywhere on this domain. Grep for **both** apostrophes.
 - **The record eval is the deterministic argmax here** — the action is a
   single continuous order quantity and exploration plays no role at
   inference, so `deterministic=True` is the deployment mode. A stochastic

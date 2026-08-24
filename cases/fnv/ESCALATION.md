@@ -8,14 +8,123 @@ cells × 2048 CRN seeds, seed block 0…2047, identical for every arm; compariso
 are paired per cell.
 
 <a id="MAP"></a>
-## MAP  (as of 2026-08-17 — both branches run and closed; the tree was **redrawn
-to the guide §3.1 contract** on 2026-08-17, numbers unchanged)
+## MAP  (as of 2026-08-24 — both branches run and closed; the tree was **redrawn
+to the guide §3.1 contract** on 2026-08-17, **retyped to solver v0.9.26** and
+then **given node config addresses at v0.9.27**, both on 2026-08-24; numbers
+unchanged throughout)
 
 ### Design tree
 
+**Node config addresses added 2026-08-24 (solver v0.9.27, guide §3.1 + §13.5,
+upstream #66 — an added row; no number, no verdict, no crown and no edge
+moved).** A node shows a score and, until this release, could not say under
+which configuration. Now that this log carries a §CONFIG-REGISTRY, every node
+that displays a score carries a third row naming the tuple that produced it —
+`sc0/g0/a0/h0b` — or the declared reason it has none. It **names** a registry
+row rather than reproducing one, so §3.1's index rule is satisfied, not bent.
+
+**It paid for itself on the first node it was applied to.** `method=ppo` on
+a-MMFE reads `0.886428 best of 9`, and #19's rule makes a parent's score the
+best in its subtree — so the address is the address of the descendant the
+number came from, and that descendant is **`sc0/L0`**: the crowned arm's
+headline number was produced by the *faithful-defaults floor*, not by the
+ship-by-default `h0b` two rungs below it. Nothing was wrong — README has said
+"L0 seed2, step 1.4M" all along — but the diagram asserted a number under an
+unnamed configuration for eleven days, and it is the one artifact a reader opens
+first. The m-MMFE twin reads `sc1/g0/a0/h0b` (L1′ seed3 @ 1.7M), so the two
+boards differ in *which rung produced the headline* while drawing identically —
+which is the difference #66 says nothing else on a diagram can show.
+
+Three nodes take the negative vocabulary, and one needed a word the guide does
+not yet have:
+
+- **`method=prop2`, `method=dp`, `method=myopic`, `method=fitted` carry no row
+  at all.** Each is an analytic reference — a recursion, a value-function
+  solver, a myopic safety stock, a distilled rule — holding no `g`/`a`/`h` and
+  addressed by its method (§3.1's last table row). `method=fitted` is the one
+  worth pausing on: it was *distilled from* a specific checkpoint, and that
+  checkpoint's tuple is provenance, not the configuration its own score was
+  obtained under. It stays in the reading.
+- **`level=L0` reads `{sc}/L0`** on both branches — the level refuses a tuple
+  by definition.
+- **The diagnosis nodes and `∅`-style nodes carry no row** because they display
+  no score: `ordering_opportunity=middle_unused` and `grid_mean=sign_flip` hold
+  prose, and a row obliged to show something is the phantom-base generator §13
+  exists to prevent.
+- **`readback=linear_offsets` has no word in the guide.** Its 36 fits pool all
+  nine confirmed checkpoints — `L0`, `h0` and `h0b` × 3 seeds — *deliberately*,
+  because #E5's claim is about the artifact and not about one config. That is
+  neither a probe cell (`unregistered cell`), nor a withdrawal, nor a node
+  awaiting a base. It is written here as **`sc0/pooled — L0+h0+h0b, all 9`**,
+  spelled out rather than forced into a negative that would say something false.
+  Its m-MMFE twin needs none of this: `readback=loglinear_offsets` *was*
+  measured at one config and reads `sc1/g0/a0/h0b`. Worth an issue against the
+  guide — the vocabulary covers nodes with no tuple, and has no word for the
+  node that carries *every* tuple on purpose.
+
+**Retyped 2026-08-24 (solver v0.9.26, guide §3.1 + §13 — a retype and one
+reparent; no number, no verdict and no crown moved).** Five changes, each forced
+by the release:
+
+1. **The shared-frame kind names changed** (upstream #65): `means` →
+   **`design-axes`**, `designs` → **`escalations`**. The old `designs` was the
+   near-opposite of spec §8.4's *experiment design axes*. Renamed throughout
+   this section and the readings table. **The rename is total in this case** —
+   checked, not assumed: the old names appear in no other section and in no
+   sibling doc, because only §MAP ever typed a split. So there is nothing here
+   to grep for under the old spelling; that spelling survives only in the
+   guide's own "formerly" note and in git history.
+2. **A `design-axes` edge must now cite the IR declaration it draws**, which is
+   what makes the typing derivable instead of a judgment call. The `solver`
+   layer draws the root `benchmarks` block (`prop2`/`dp` = `exact`,
+   `myopic`/`fitted` = `feasible`) plus `rl.algo = "ppo"` — the guide's first
+   row verbatim. The citation now rides on every solver-layer edge.
+3. **The readback split was mistyped and is a `design-axes` split.**
+   `research_questions.tier2` declares its `instrument` as *"Stage-5 readback on
+   the policy's own trajectories … plus the fitted offsets scored as a policy …
+   under §14.2"*, and an `escalations` edge may **not** be the declared
+   instrument of a research question. So the readback was coverage-required and
+   never prunable — which is what the campaign did with it in fact, and now says
+   in type.
+4. **`method=fitted` overwrote a design axis and is reparented.** It was drawn
+   under `readback=…` under `method=ppo`, so its own address fixed
+   `method=ppo` and then set `method=fitted` — the write-once violation §3.1
+   now refuses outright (*"a different cell — refused rather than recorded, and
+   reached by drawing it where it belongs"*). It moves to the `solver` layer,
+   beside the arms `benchmarks` declares it beside. That it was **distilled
+   from** the readback is provenance, and provenance lives in the reading, not
+   in the topology. The ledger had it right all along and the tree did not:
+   #E9's own `address:` line reads `scenario=FNV-aMMFE + FNV-mMMFE /
+   method=fitted`, never through a readback node, so this reparent makes the two
+   agree rather than moving anything.
+5. **The L0 → L1 → L1′ ladder is a chain of derivations, not a leaderboard.**
+   §13.4 gives a corrected derivation a home and says it is *emphatically not a
+   deviation*: it is a **re-derivation** — a new L1 *generation*, minting fresh
+   origins and restarting the ladder above them. #E3 already described L1′ in
+   exactly those words ("a re-application of the L1 rules and not a tuned
+   escalation"), so drawing L1 and L1′ as `P1`/`P2` competitors on one
+   `escalations` leaderboard mis-stated both. Both edges are now chain rungs
+   from the L0 floor, each carrying its own re-measured Δ(L1−L0); L1 is
+   **superseded**, not out-competed. The `P{n}` ids go with them.
+
+Two consequences worth stating rather than leaving to be noticed:
+
+- **This tree now carries no `escalations` split at all** — and therefore no
+  `P{n}` ids. That is a true statement about the campaign, not a change to it:
+  `gym.observation_modes` and `gym.action_modes` each declare exactly one mode
+  (`vec`, `order`), so there is no design axis below the solver layer to mint
+  points on, and the only thing that varied was the derivation. fnv spent its
+  budget on the **question space** and the derivation ladder, never on a search.
+- **The frame caveat on `method=fitted` is unchanged and still binds.** 209/540
+  and 508/540 cells are its own frame, so moving it up beside its siblings does
+  not license subtracting it from them: its number is *reported* there, labelled,
+  and never selects (§3.1 — a score may be subtracted only within a frame).
+
 **Redrawn 2026-08-17 (guide §3.1/§3.2, retype only — no number and no verdict
 moved).** The previous tree predated the `cases`/`means`/`designs` taxonomy and
-carried five defects, four of which the guide names in its own text:
+carried five defects, four of which the guide names in its own text (kinds
+below are given in the v0.9.26 spelling; they read `means`/`designs` when the
+redraw was written):
 
 1. **The root was not the IR.** It read "root: FNV generalist over the aMMFE
    grid" — a prose description of one branch, which cannot be the root of a
@@ -25,7 +134,9 @@ carried five defects, four of which the guide names in its own text:
    defect the guide cites `cases/fnv` by name for. Spec §8.6 makes L0
    reporting-only and never a gate, so a sibling edge asserts a selection that
    never happened, and two co-ranked `P1 ★` children cannot both be crowned at
-   a `designs` split. The ladder now draws as a **chain** (§3.2).
+   an `escalations` split. The ladder now draws as a **chain** (§3.2) — and
+   since the v0.9.26 retype, as a chain of *derivations* rather than of
+   competitors.
 3. **`∅` was used for refutation.** `∅` means *structurally void — cannot
    exist*; `L1` exists and lost. Both `∅` edges are now `✗`.
 4. **The scenario and solver layers were missing.** §3.1 fixes the first two
@@ -44,11 +155,27 @@ leaderboards") carried onto the tree, and it is why the crown **forks** here and
 why neither branch is prunable. One scenario split covers the branch choice
 because each branch *is* one `GRIDS` registry object — an extra `mmfe_mode`
 layer above it would be phantom depth. Below each case sits the **`solver`
-layer**, a `means` split grouped by role: `prop2` and `dp` are `exact = opt`,
-`myopic`, `fitted` and `ppo` are `feasible ≼ opt`. `means` children share the
-case's frame, which is what licenses every "% of bar" here; none is prunable.
-Everything below is **`designs`** — one shared leaderboard, crown one, prune the
-rest.
+layer**, a `design-axes` split grouped by role: `prop2` and `dp` are
+`exact = opt`, `myopic`, `fitted` and `ppo` are `feasible ≼ opt`. It draws the
+IR's own `benchmarks` block plus `rl.algo = "ppo"`, which under v0.9.26 is what
+makes the typing derivable rather than asserted — and is the derivable statement
+of *never prunable*: the IR said the comparison is the deliverable, so crowning
+one arm cannot make another redundant. `design-axes` children share the case's
+frame, which is what licenses every "% of bar" here.
+
+Below the solver layer there is **no design axis left to split on** — one
+declared observation mode, one action mode — so the only `design-axes` split
+below it is the **readback**, which draws `research_questions.tier2`'s declared
+`instrument` (§14 / §14.2) and is coverage-required for the same reason. What
+remains is the **derivation ladder**, drawn as chain rungs off the L0 floor
+(§3.2, §13.4), not as an `escalations` leaderboard. No `escalations` split was
+ever opened on this domain.
+
+**No S-ranks are minted on the `design-axes` splits.** S orders *scheduling*,
+and the two `cases` children carry the `S1`/`S2` they were scheduled in — both
+now `✓` covered. Below them every child is covered too and the campaign is
+closed, so there is nothing left to schedule and a retrospective S-order would
+be a fiction.
 
 **The root re-rooted at F2** (2026-08-17): `mdp` `40110193eba5` →
 `d415b34e8c33`. Every number below carries over unchanged, and the reason is
@@ -60,34 +187,39 @@ re-rendered byte-identical on both instances.
 graph TD
     ROOT["<b>IR fnv v0.4</b><br/>mdp d415b34e8c33 · structural 36f5c3aaf7a6"]
 
-    ROOT ==>|"cases · scenario · S1 · required ✓"| SA["scenario=FNV-aMMFE<br/>540 cells × 2048 CRN · bar 0.888334"]
-    ROOT ==>|"cases · scenario · S2 · required ✓"| SM["scenario=FNV-mMMFE<br/>540 cells × 2048 CRN · bar 2.291618"]
+    ROOT ==>|"cases · scenario · S1 · required ✓"| SA["scenario=FNV-aMMFE<br/>540 cells × 2048 CRN · bar 0.888334<br/>sc0"]
+    ROOT ==>|"cases · scenario · S2 · required ✓"| SM["scenario=FNV-mMMFE<br/>540 cells × 2048 CRN · bar 2.291618<br/>sc1"]
 
-    SA -->|"means · solver · role=exact · tier=1"| PA["method=prop2<br/>0.888334 · README"]
-    SA -->|"means · solver · role=exact · tier=1"| DA["method=dp<br/>0.888334 · README"]
-    SA -->|"means · solver · role=feasible · tier=1"| YA["method=myopic<br/>0.878686 · README"]
-    SA ==>|"means · solver · role=feasible · tier=1 ★"| RA["method=ppo<br/>0.886428 best of 9 · #E1, #E3"]
+    SA -->|"design-axes · solver · role=exact · tier=1 · IR benchmarks"| PA["method=prop2<br/>0.888334 · README"]
+    SA -->|"design-axes · solver · role=exact · tier=1 · IR benchmarks"| DA["method=dp<br/>0.888334 · README"]
+    SA -->|"design-axes · solver · role=feasible · tier=1 · IR benchmarks"| YA["method=myopic<br/>0.878686 · README"]
+    SA ==>|"design-axes · solver · role=feasible · tier=1 · IR rl.algo ★"| RA["method=ppo<br/>0.886428 best of 9 · #E1, #E3<br/>sc0/L0"]
+    SA -->|"design-axes · solver · role=feasible · tier=2 · IR benchmarks · own frame"| FA["method=fitted<br/>0.869086, 209/540 cells · #E9"]
 
-    RA ==>|"chain · level · L0 floor, §8.6 reporting-only"| L0A["level=L0<br/>0.885610, spread 0.000822 · #E1"]
-    L0A -->|"designs · hp · P2 · tier=3 ✗ (Δ −0.002673 ± 0.000106)"| L1A["level=L1<br/>0.883127 · #E1, #E2"]
-    L0A ==>|"designs · hp · P1 · tier=3 ★ (Δ −0.000784 ± 0.000073, ties)"| L1PA["level=L1'<br/>0.885487, spread 0.000138 · #E3"]
+    RA ==>|"chain · level · L0 floor, §8.6 reporting-only"| L0A["level=L0<br/>0.885610, spread 0.000822 · #E1<br/>sc0/L0"]
+    L0A -->|"chain · level · L1 gen a · tier=3 ✗ superseded (Δ −0.002673 ± 0.000106)"| L1A["level=L1<br/>0.883127 · #E1, #E2<br/>sc0/g0/a0/h0"]
+    L0A ==>|"chain · level · L1 gen b · tier=3 ★ (Δ −0.000784 ± 0.000073, ties)"| L1PA["level=L1'<br/>0.885487, spread 0.000138 · #E3<br/>sc0/g0/a0/h0b"]
 
-    RA ==>|"§14 readback · tier=2 ★ (all 9 models, not one config)"| RBA["readback=linear_offsets<br/>slope 1.109 ± 0.122, r² 0.966 · #E5"]
-    RBA ==>|"means · solver · role=feasible · tier=2"| FA["method=fitted<br/>0.869086, 209/540 cells · #E9"]
+    RA ==>|"design-axes · readback · tier=2 ★ · IR research_questions.tier2"| RBA["readback=linear_offsets<br/>slope 1.109 ± 0.122, r² 0.966 · #E5<br/>sc0/pooled — L0+h0+h0b, all 9"]
+    RBA -.->|"provenance · distilled into method=fitted · #E9"| FA
     RBA -.->|"diagnosis · tier=2 ⏸ un-parked #E8"| GAP["ordering_opportunity=middle_unused<br/>the middle order is abandoned · #E4, #E8"]
 
-    SM -->|"means · solver · role=exact · tier=1"| PM["method=prop2<br/>2.291618 · README"]
-    SM -->|"means · solver · role=exact · tier=1"| DM["method=dp<br/>2.291616 · README"]
-    SM -->|"means · solver · role=feasible · tier=1"| YM["method=myopic<br/>2.240843 · README"]
-    SM ==>|"means · solver · role=feasible · tier=1 ★"| RM["method=ppo<br/>2.279888 best of 9 · #E6"]
+    SM -->|"design-axes · solver · role=exact · tier=1 · IR benchmarks"| PM["method=prop2<br/>2.291618 · README"]
+    SM -->|"design-axes · solver · role=exact · tier=1 · IR benchmarks"| DM["method=dp<br/>2.291616 · README"]
+    SM -->|"design-axes · solver · role=feasible · tier=1 · IR benchmarks"| YM["method=myopic<br/>2.240843 · README"]
+    SM ==>|"design-axes · solver · role=feasible · tier=1 · IR rl.algo ★"| RM["method=ppo<br/>2.279888 best of 9 · #E6<br/>sc1/g0/a0/h0b"]
+    SM -->|"design-axes · solver · role=feasible · tier=2 · IR benchmarks · own frame"| FM["method=fitted<br/>2.275206, 508/540 cells · #E9"]
 
-    RM ==>|"chain · level · L0 floor, §8.6 reporting-only"| L0M["level=L0<br/>2.274743, spread 0.001343 · #E6"]
-    L0M -->|"designs · hp · P2 · tier=3 ✗ (Δ −0.001771 ± 0.000301)"| L1M["level=L1<br/>2.272065 · #E6"]
-    L0M ==>|"designs · hp · P1 · tier=3 ★ (Δ +0.003651 ± 0.000365)"| L1PM["level=L1'<br/>2.277242, spread 0.002299 · #E6"]
+    RM ==>|"chain · level · L0 floor, §8.6 reporting-only"| L0M["level=L0<br/>2.274743, spread 0.001343 · #E6<br/>sc1/L0"]
+    L0M -->|"chain · level · L1 gen a · tier=3 ✗ superseded (Δ −0.001771 ± 0.000301)"| L1M["level=L1<br/>2.272065 · #E6<br/>sc1/g0/a0/h0"]
+    L0M ==>|"chain · level · L1 gen b · tier=3 ★ (Δ +0.003651 ± 0.000365)"| L1PM["level=L1'<br/>2.277242, spread 0.002299 · #E6<br/>sc1/g0/a0/h0b"]
 
-    L1PM ==>|"§14 readback · tier=2 ★"| RBM["readback=loglinear_offsets<br/>r² 0.976–0.999 every cell · #E7"]
-    RBM ==>|"means · solver · role=feasible · tier=2"| FM["method=fitted<br/>2.275206, 508/540 cells · #E9"]
+    L1PM ==>|"design-axes · readback · tier=2 ★ · IR research_questions.tier2"| RBM["readback=loglinear_offsets<br/>r² 0.976–0.999 every cell · #E7<br/>sc1/g0/a0/h0b"]
+    RBM -.->|"provenance · distilled into method=fitted · #E9"| FM
     FM -.->|"diagnosis · tier=3"| SIGN["grid_mean=sign_flip<br/>the +0.002426 win withdrawn · #E11"]
+
+    %% prop2 / dp / myopic / fitted carry no third row: an analytic reference holds no g/a/h (§3.1)
+    %% GAP and SIGN carry none either: a diagnosis node displays no score
 ```
 
 ### Layers and node readings
@@ -100,18 +232,18 @@ campaign opened, whose record is the leaderboard rather than a ledger entry.
 |---|---|---|---|
 | `scenario=FNV-aMMFE` | cases · required · tier=1 | additive branch, `D = mu + I`; the 540-cell grid a generalist is trained over. Protocol and bar are annotated here, not on the campaign | [#E1](#E1) |
 | `scenario=FNV-mMMFE` | cases · required · tier=1 | multiplicative branch, `D = exp(mu + I)`. A separate board — its profits are never comparable with the additive ones | [#E6](#E6) |
-| `method=prop2` | means · role=exact · tier=1 | the paper's Proposition 2 recursion; **the bar**. Exact as an algorithm, so no feasible arm may pass it | README |
-| `method=dp` | means · role=exact · tier=1 | the same optimum from an independent value-function solver. Its *agreement* with `prop2` is the §1.2 second-implementation gate; the calibration itself is off-tree | README |
-| `method=myopic` | means · role=feasible · tier=1 | safety stocks that ignore the option to order again. Corollary 1 guarantees `b_n ≤ b̂_n`, so it over-orders by construction — a floor check, not a contender | README |
-| `method=ppo` (a) | means · role=feasible · tier=1 ★ | the trained artifact, best of 9 confirmed checkpoints; −0.21% of bar. Crowned within its own frame, read against the exact arms rather than gated on them | [#E3](#E3) |
-| `method=ppo` (m) | means · role=feasible · tier=1 ★ | as above on the multiplicative board; −0.51% of bar | [#E6](#E6) |
+| `method=prop2` | design-axes · solver · role=exact · tier=1 | the paper's Proposition 2 recursion; **the bar**. Exact as an algorithm, so no feasible arm may pass it | README |
+| `method=dp` | design-axes · solver · role=exact · tier=1 | the same optimum from an independent value-function solver. Its *agreement* with `prop2` is the §1.2 second-implementation gate; the calibration itself is off-tree | README |
+| `method=myopic` | design-axes · solver · role=feasible · tier=1 | safety stocks that ignore the option to order again. Corollary 1 guarantees `b_n ≤ b̂_n`, so it over-orders by construction — a floor check, not a contender | README |
+| `method=ppo` (a) | design-axes · solver · role=feasible · tier=1 ★ | the trained artifact, best of 9 confirmed checkpoints; −0.21% of bar. Crowned within its own frame, read against the exact arms rather than gated on them | [#E3](#E3) |
+| `method=ppo` (m) | design-axes · solver · role=feasible · tier=1 ★ | as above on the multiplicative board; −0.51% of bar | [#E6](#E6) |
 | `level=L0` (both) | chain rung · tier=3 | faithful defaults, **reporting-only and never crown-eligible** (§8.6). It is the ruler the configuration layer is measured against, which is why it is a chain parent and not a sibling | [#E1](#E1), [#E6](#E6) |
-| `level=L1` (both) | designs · hp · tier=3 ✗ | the derivation as first read: LR 1e-4→1e-5, batch 256. Loses to L0 on **both** branches — 2 campaigns, none opposed. #E2 shows why: ~40× less total policy movement at equal budget, i.e. under-training, not instability | [#E1](#E1), [#E2](#E2), [#E6](#E6) |
-| `level=L1'` (both) | designs · hp · tier=3 ★ | the corrected derivation (LR 3e-4→3e-5, batch 64 — both inside the spec's own ranges, so a re-application of the L1 rules and not a tuned escalation). Ties L0 on a-MMFE with 6× tighter spread; **beats** it on m-MMFE. Ship-by-default on both | [#E3](#E3), [#E6](#E6) |
-| `readback=linear_offsets` | designs · tier=2 ★ | §14 anchored readback: post-order inventory against cumulative information at the final order recovers the predicted slope of 1, and `b̂₃` lands 0.026 from the exact `b₃`. **Hangs off `method=ppo`, not off `level=L1'`, on purpose** — the 36 fits pool all 9 confirmed checkpoints (L0/L1/L1′ × 3 seeds), so it is a claim about the artifact, not about one config. Structural fidelity tracks the config error: L1, refuted on score, is also worst on structure (slope 1.20–1.26 against L1′'s 1.05–1.07). The design that produced it is not incidental — three earlier probe designs each returned a different wrong verdict on the same policy (#E10) | [#E5](#E5), [#E10](#E10) |
-| `readback=loglinear_offsets` | designs · tier=2 ★ | the same claim in logs on the multiplicative branch, `log S = mu + I + b`. Hangs off `level=L1'` because it *was* measured there — the best confirmed checkpoint on this branch is an L1′ model. Slope approaches 1 as a cell carries more information; the middle order is well sampled here (408–566 acting episodes of 1500) where a-MMFE could barely reach it | [#E7](#E7) |
-| `method=fitted` (a) | means · role=feasible · tier=2 | the readback scored as a policy (§14.2), distilled from the branch's best confirmed checkpoint — which here is an **L0 seed2** model, not the ship-by-default L1′. **Scored on 209/540 cells, so its number is a different frame** — never subtract it from a full-grid arm above. Within its own subset it ties the net it came from (reference 0.871613, rule 0.869086, net 0.869212; Δ −0.000126 ± 0.000049). **The coverage split is the finding**: the full-horizon assertion drops 331 cells because the policy never orders at period 2 there, so `b̂₂` is unidentifiable and the rule cannot be completed at all — a policy that abandons an ordering opportunity cannot be distilled into a rule over it, however well it scores | [#E9](#E9) |
-| `method=fitted` (m) | means · role=feasible · tier=2 | as above on 508/540 cells — again its own frame (reference 2.285018, rule 2.275206, net 2.272780). Ties the net once #E11's correction lands; the apparent +0.002426 win was an artifact | [#E9](#E9), [#E11](#E11) |
+| `level=L1` (both) | chain rung · L1 generation a · tier=3 ✗ superseded | the derivation as first read: LR 1e-4→1e-5, batch 256. **Superseded, not out-competed** — v0.9.26 §13.4 makes a corrected derivation a *re-derivation* rather than an escalation, so this rung is a retired L1 generation and never was a leaderboard row. Loses to L0 on **both** branches — 2 campaigns, none opposed. #E2 shows why: ~40× less total policy movement at equal budget, i.e. under-training, not instability | [#E1](#E1), [#E2](#E2), [#E6](#E6) |
+| `level=L1'` (both) | chain rung · L1 generation b · tier=3 ★ | the corrected derivation (LR 3e-4→3e-5, batch 64 — both inside the spec's own ranges, so a re-application of the L1 rules and not a tuned escalation), i.e. §13.4's **generation b**, spelled `L1b` in §CONFIG-REGISTRY where the token is new; the primed spelling is kept here and below because four documents cite it. Ties L0 on a-MMFE with 6× tighter spread; **beats** it on m-MMFE. Ship-by-default on both | [#E3](#E3), [#E6](#E6) |
+| `readback=linear_offsets` | design-axes · readback · tier=2 ★ · IR `research_questions.tier2` | §14 anchored readback: post-order inventory against cumulative information at the final order recovers the predicted slope of 1, and `b̂₃` lands 0.026 from the exact `b₃`. **Hangs off `method=ppo`, not off `level=L1'`, on purpose** — the 36 fits pool all 9 confirmed checkpoints (L0/L1/L1′ × 3 seeds), so it is a claim about the artifact, not about one config. Structural fidelity tracks the config error: L1, refuted on score, is also worst on structure (slope 1.20–1.26 against L1′'s 1.05–1.07). The design that produced it is not incidental — three earlier probe designs each returned a different wrong verdict on the same policy (#E10) | [#E5](#E5), [#E10](#E10) |
+| `readback=loglinear_offsets` | design-axes · readback · tier=2 ★ · IR `research_questions.tier2` | the same claim in logs on the multiplicative branch, `log S = mu + I + b`. Hangs off `level=L1'` because it *was* measured there — the best confirmed checkpoint on this branch is an L1′ model. Slope approaches 1 as a cell carries more information; the middle order is well sampled here (408–566 acting episodes of 1500) where a-MMFE could barely reach it | [#E7](#E7) |
+| `method=fitted` (a) | design-axes · solver · role=feasible · tier=2 · own frame | the readback scored as a policy (§14.2), distilled from the branch's best confirmed checkpoint — which here is an **L0 seed2** model, not the ship-by-default L1′. **Scored on 209/540 cells, so its number is a different frame** — never subtract it from a full-grid arm above. Within its own subset it ties the net it came from (reference 0.871613, rule 0.869086, net 0.869212; Δ −0.000126 ± 0.000049). **The coverage split is the finding**: the full-horizon assertion drops 331 cells because the policy never orders at period 2 there, so `b̂₂` is unidentifiable and the rule cannot be completed at all — a policy that abandons an ordering opportunity cannot be distilled into a rule over it, however well it scores. **Reparented 2026-08-24** from under `readback=linear_offsets` to the `solver` layer: sitting below `method=ppo` it overwrote the `method` design axis its own address fixed, which §3.1 now refuses. Its distillation from the readback is drawn as a dotted **provenance** edge, not as parentage — the same fact, in the place that does not claim a wrong address | [#E9](#E9) |
+| `method=fitted` (m) | design-axes · solver · role=feasible · tier=2 · own frame | as above on 508/540 cells — again its own frame (reference 2.285018, rule 2.275206, net 2.272780). Ties the net once #E11's correction lands; the apparent +0.002426 win was an artifact | [#E9](#E9), [#E11](#E11) |
 | `ordering_opportunity=middle_unused` | diagnosis · tier=2 | the a-MMFE policy abandons one of its three ordering opportunities entirely, and the profit gap does not show it — the landscape is flat. Parked as invisible to scores, then **un-parked** when the tripwire (`P(order@2) > 0.35`) fired on m-MMFE at 0.433: the collapse is branch-specific, not a property of the learner | [#E4](#E4), [#E8](#E8) |
 | `grid_mean=sign_flip` | diagnosis · tier=3 | the m-MMFE "fitted beats the net" claim was an artifact of an equal-weight grid mean over an *enumerated* grid: the correct denominator uses seeds as the replication unit (1.78 SE, below the bar), the median cell Δ is negative, and 4% of cells carried the whole mean. The improvement claim is withdrawn; the structural claim is untouched | [#E11](#E11) |
 
@@ -155,9 +287,27 @@ asked and how it resolved (frontier as of #E11).
 | a-MMFE | 0.885487 | ties (t = −0.26), 6× tighter spread | 0.886428 | −0.21% |
 | m-MMFE | **2.277242** | **beats, +0.003651 ± 0.000365** | 2.279888 | −0.51% |
 
+**Config address of each crowned cell** (§13, and the third node row that
+displays it):
+
+| cell | crowned address | deviations |
+|---|---|---|
+| a-MMFE | `sc0/g0/a0/h0b` | none |
+| m-MMFE | `sc1/g0/a0/h0b` | none |
+
 L1′ is the ship-by-default configuration: it wins outright on m-MMFE and ties
 with far better reproducibility on a-MMFE. The configuration layer is worth
 ≈ 0 on a-MMFE and ~+0.004 on m-MMFE.
+
+**Read the "best single arm" column against those addresses, not past them.**
+The m-MMFE best arm *is* the crowned cell (`sc1/g0/a0/h0b`, L1′ seed3 @ 1.7M).
+The a-MMFE best arm is **not**: 0.886428 comes from `sc0/L0`, the faithful-
+defaults floor, at seed2 @ 1.4M. Both facts were already in `README.md`; what
+the v0.9.27 address row changed is that the tree now says so too, at the node
+that displays the number. On a-MMFE the crown rests on reproducibility — a 6×
+tighter retrain spread at a tied mean — and never on the best single draw
+(§9.7's warning that best-of-3 systematically favours the higher-variance arm is
+this exact trap, and #E3 flags it in its own note).
 
 ## FRAME-CHANGELOG
 
@@ -176,12 +326,29 @@ with far better reproducibility on a-MMFE. The configuration layer is worth
 2026-08-17  RE-ROOTED   the frame roots at IR mdp d415b34e8c33 (was 40110193eba5) (F2)
 2026-08-17  REPARENTED  benchmarks moved off-tree-register → the `solver` layer  (§3.1)
 2026-08-17  REPARENTED  L0 drawn as a chain parent, not a crown-eligible sibling (§3.2)
+2026-08-24  RETYPED     split kinds means→design-axes, designs→escalations       (v0.9.26 #65)
+2026-08-24  RETYPED     the readback is the IR's declared instrument, not a search (v0.9.26 #65)
+2026-08-24  REPARENTED  method=fitted → solver layer; it overwrote `method`       (v0.9.26 #65)
+2026-08-24  RETYPED     L1/L1' are L1 generations on a chain, not P-ranked rivals (v0.9.26 §13.4)
+2026-08-24  INTRODUCED  §CONFIG-REGISTRY — the log's spine is five sections       (v0.9.26 #60)
+2026-08-24  INTRODUCED  node config addresses; method=ppo (a) shows an sc0/L0 arm (v0.9.27 #66)
 ```
 
 The three 2026-08-17 lines are one **retype**, not a re-framing: no number, no
 verdict and no crown moved. They are logged because §3.1 makes REPARENTED and
 RE-ROOTED changelog-owing moves, and because the tree they replace is the one
 the guide cites `cases/fnv` by name for.
+
+The six 2026-08-24 lines are the same kind of move two releases later — the
+v0.9.26 retype, its one reparent, the new spine section, and v0.9.27's node
+config addresses. Again no number and no verdict moved, and the gates were
+re-run first: conformance **24/30**, laws 7/9, differential MATCH on base +
+`mmmfe`, 19 domain tests, zero FAILs, both fingerprints unmoved. The last line
+is the only one that changed what the diagram *says* rather than how it is
+typed — the addresses were read out of the campaign tree's args logs and
+`README.md`, and the one that surprised is on the crowned a-MMFE `method=ppo`
+node: its headline number is an `sc0/L0` arm, two rungs below the
+ship-by-default `h0b`.
 
 ## IR-CHANGELOG
 
@@ -313,6 +480,134 @@ Two side-effects worth their own line:
   issue #37 (fixed in v0.9.3) was `--all-instances` reading
   `raw["mdp"]["scenario"]`, the same root cause one layer down, whose fix never
   generalized to the exemplars or to the contract.
+
+## CONFIG-REGISTRY   (living — ids append-only; guide §13)
+
+**Retrospective, and complete.** The campaign closed 2026-08-14, so this section
+was reconstructed on 2026-08-24 from the §8.6 derivation table in
+`fnv_ppo_train.py` §"L1 derivation" and from the campaign's own args logs — not
+authored ahead of the runs it describes. It is complete rather than
+illustrative: all **18** training runs (2 branches × 3 rungs × 3 seeds) resolve
+to a row below, at **zero declared deviations**. Note that `results/` is
+gitignored, so the args logs the rows were checked against live in the campaign
+tree and not in this repo — the same asymmetry `run.provenance` has here, where
+the check SKIPs for want of a run directory to read. Five things about this domain are worth reading before the
+tables:
+
+- **§MAP displays these ids and is authoritative for neither** (§13.5, added at
+  v0.9.27). Each node in the design tree carries the address of the
+  configuration whose score it shows — a pointer into this section, never a
+  definition. Where a node has no tuple it says which kind of nothing it has;
+  where it pools several on purpose, it says that instead of picking a negative
+  that would be false. If the tree and this section disagree, this section wins
+  on *why* and `{domain}_configs.py` would win on *what* — except that here the
+  module does not exist, so see the residue.
+- **`sc` aliases `GRIDS`, not `SCENARIOS`.** §13.1 defines the scenario axis as
+  an alias for a key in the domain's `SCENARIOS` registry; here `SCENARIOS`
+  holds only `simple`, which no arm was ever trained on, and the study base is a
+  **grid sampler** (§5.5–§5.6, and the folder trap "grids are not scenarios").
+  The axis still *references* rather than defines, which is the property §13.1
+  is actually asking for, so the alias points at `GRIDS`. Recorded as a domain
+  boundary call, not as a silent re-reading.
+- **The `g`/`h` partition of the derivation was the live hazard**, exactly as
+  §13.1 warns: `norm_obs` and `norm_reward` sit next to the learner arguments in
+  the parser and read as hyperparameters, but they are the vec-env wrapper stack
+  and belong to `g`. The rows below are partitioned by implementing layer, so no
+  knob appears in two axes.
+- **`net_arch` is `h`, not `a`** (§13.1, inherited from spec §8.6's own row).
+  `a` never moved on this domain: every arm is the stock SB3 `MlpPolicy` with no
+  custom extractor, no custom value head.
+- **The origin rows were *read*, not written — but from prose.**
+  `fnv_ppo_train.py` carries the §8.6 derivation as a comment table and has no
+  `_L1_DERIVED` dict and no `assert_l1_current` call, which conformance WARNs on
+  (`scripts.l1_derived`, `scripts.launch_check`). So the mechanical guarantee
+  §13.2 asks for — an origin that cannot drift from the derivation it names — is
+  **not** in place here; the rows were cross-checked knob-for-knob against the
+  archived args logs instead. See the residue at the end.
+
+### scenario · `sc`
+
+| id | key | note |
+|---|---|---|
+| <a id="sc0"></a>`sc0` | `FNV-aMMFE` in `GRIDS` | additive branch, `D = mu + I`; 540 cells, trained through `grid.as_sampler()`. Its own leaderboard |
+| <a id="sc1"></a>`sc1` | `FNV-mMMFE` in `GRIDS` | multiplicative branch, `D = exp(mu + I)`; 540 cells. A separate board — never comparable with `sc0` |
+
+### gym · `g`
+
+| id | parent | delta | why it exists / what promoted it | cell tuned in |
+|---|---|---|---|---|
+| <a id="g0"></a>`g0` | — (L1 origin, gen a) | `observation_mode=vec`, `action_mode=box`, `reward_mode=profit`, `norm_obs=True`, `norm_reward=True`, `vecnorm_clip_obs=10.0` | the §8.6 derivation's **gym** output; reserved. `norm_obs` from `rl.obs_normalization.enabled=true` (the six features span `stdev ~0.1`, `T ~0.9`, `lamb ~0.1`, `period 1..3`, `inventory ~1`, `information ~0` — heterogeneous and stationary); `norm_reward` on with `gamma` passed per §8.3, else it normalizes against SB3's default 0.99 | — |
+
+Never moved. The IR declares one observation mode and one action mode, so `g`
+carries no design axis to escalate on and the wrapper stack was derived once and
+kept. One naming note for anyone who reopens this: the gym kwarg value is
+`"box"` where `gym.action_modes[0].name` in the IR is `"order"`, so §13.5's
+"every design-axis value a `g` delta sets, validated against the IR" would not
+resolve the value as written. Harmless while there is exactly one mode; recorded
+rather than fixed, because the rename would touch the gym, the IR and the
+campaign tree's copy for no behavioural gain while the mode set has one member.
+
+### arch · `a`
+
+| id | parent | delta | why it exists / what promoted it | cell tuned in |
+|---|---|---|---|---|
+| <a id="a0"></a>`a0` | — (L1 origin, gen a) | stock SB3 `MlpPolicy`; no custom feature extractor, no custom value head | the derivation's **arch** output; reserved. `net_arch=[64,64]` is *not* here — width is `h` (§13.1) | — |
+
+Never moved.
+
+### hp · `h`
+
+| id | parent | delta | why it exists / what promoted it | cell tuned in |
+|---|---|---|---|---|
+| <a id="h0"></a>`h0` | — (L1 origin, gen a) | `learning_rate=1e-4 → lr_final=1e-5`, `n_steps=512`, `batch_size=256`, `n_epochs=10`, `gamma=1.0`, `gae_lambda=0.95`, `clip_init=0.2 → clip_final=0.05`, `ent_coef=0.005`, `vf_coef=0.5`, `max_grad_norm=0.5`, `target_kl=0.02`, `n_envs=4`, `net_arch=[64,64]` | the §8.6 derivation's **hp** output as first read; reserved. **Refuted on score against the L0 floor on both branches** and superseded — but it stays an origin, because a refuted derivation is still what the derivation emitted | — |
+| <a id="h0b"></a>`h0b` | — (L1 origin, **gen b**) | `h0` with `learning_rate=3e-4 → lr_final=3e-5`, `batch_size=64`; everything else identical | §13.4's **re-derivation**: both values sit inside the spec's own ranges, so this is a re-application of the L1 rules and not a tuned escalation, which is why it mints a fresh origin instead of a child row. Promoted by [#E3](#E3) (a-MMFE, ties L0 with 6× tighter spread) and [#E6](#E6) (m-MMFE, beats L0 outright). This is the campaign's ship-by-default | — |
+
+`h0b`'s delta line is shown against `h0` for reading only — it is an **origin**,
+not a child, and the ladder above it restarts. Nothing was measured against `h0`
+that had to be re-measured against `h0b`: the campaign opened no L2 arm at all.
+
+**`L1b` and `L1′` are the same rung.** §13.4 letters generations
+(`L1b`/`h0b`) rather than priming them, so grep stays shell-safe. This campaign
+was written before that rule and spells it `L1′`/`L1'` in §LEDGER, `README.md`,
+`PLAYBOOK.md` and `INTERPRET.md` — append-only or widely cited text in every
+case, so the old spelling stands there under §7 rule 2 and the lettered token is
+used only where it is new. **Grep for both**, and note the primed form appears
+with two different apostrophes.
+
+### Constraints   (declared on the constraining id, refused at launch)
+
+None. The axes never interacted on this domain: `g` and `a` each hold one row,
+and no `h` value forces a wrapper or policy-class setting.
+
+### Current bases
+
+| axis | current | since |
+|---|---|---|
+| `sc` | `sc0` and `sc1` — both covered, both closed | [#E1](#E1), [#E6](#E6) |
+| `g` | `g0` | derivation |
+| `a` | `a0` | derivation |
+| `h` | `h0b` | [#E3](#E3), [#E6](#E6) |
+
+Crowned tuple: **`sc{0,1}` / `g0` / `a0` / `h0b`**, zero deviations — the §MAP
+"current best bundle" read as a config rather than as a path. The `L0` arms cite
+`{sc}/L0` and no axis ids at all (§13.4), which is why the floor never appears
+as a row here.
+
+### Residue
+
+- **No `{domain}_configs.py`.** §13.5 makes the module authoritative for *what a
+  config is* and this section authoritative for *why*, with the overlap checked
+  rather than trusted. Only the "why" half exists here, because the check the
+  module exists to run is a **launch-time** check and this campaign launches
+  nothing: it closed ten days before the rule shipped. The module is owed the
+  moment an arm is launched on this domain again, and the rows above are written
+  so it can be transcribed rather than re-derived.
+- **The origin is prose, not data.** `_L1_DERIVED` and `assert_l1_current`
+  (solver v0.9.22/v0.9.23) are unadopted in `fnv_ppo_train.py`; both are
+  standing conformance WARNs. Until they land, `g0`/`a0`/`h0` are a reading of a
+  comment table, and §13.2's "read the origin, never write it" is satisfied by
+  hand.
+
 
 ## LEDGER
 
