@@ -317,14 +317,23 @@ def _resolve_bound_entry(entry: float | str, consts: dict, where: str) -> object
 def _check_bound_entries(
     entries: list, pair: list, consts: dict, instances: dict,
     where: str, noun: str, pair_noun: str | None = None,
-    sources: set[str] = frozenset(),
+    sources: set[str] = frozenset(), discrete: bool = False,
 ) -> None:
-    """Every entry must resolve to a number, and the pair to lo < hi, in the
-    base scenario and in every declared instance — one contract for all three
-    forms, which is what makes them interchangeable.
+    """Every entry must resolve to a number, and the pair to a non-empty
+    interval, in the base scenario and in every declared instance — one
+    contract for all three forms, which is what makes them interchangeable.
 
     `entries` is everything to name-check (a Confirmable carries `suggested`
     alongside `value`); `pair` is the [lo, hi] that is actually resolved.
+
+    Non-empty means `lo < hi` for a continuous bound and `lo <= hi` for a
+    discrete one: `[a, a]` is a point, which is not a usable interval, but it
+    IS `Discrete(1)` — an action that exists with exactly one legal value.
+    That is the honest declaration whenever a derivation correct across a
+    family collapses on a member of it, and §5.0 plus #53/#54 make that
+    routine by pushing bounds toward derivations rather than per-instance
+    numerals. An inverted bound (`lo > hi`) still fails in both, which is the
+    mis-resolution this check exists to catch (#69).
     """
     pair_noun = pair_noun or noun
     symbolic = [x for x in entries if isinstance(x, str)]
@@ -367,9 +376,10 @@ def _check_bound_entries(
                 raise ValueError(
                     f"{where}: {noun} {tag} resolves to non-numeric {v!r} in {scope}"
                 )
-        if lo >= hi:
+        if (lo > hi) if discrete else (lo >= hi):
+            rel = ">" if discrete else ">="
             raise ValueError(
-                f"{where}: {pair_noun} resolve to lo >= hi ({lo} >= {hi}) in {scope}"
+                f"{where}: {pair_noun} resolve to lo {rel} hi ({lo} {rel} {hi}) in {scope}"
             )
 
 
@@ -483,14 +493,21 @@ class Decision(_Narrowable):
 
     @model_validator(mode="after")
     def _check_bounds_shape(self) -> "Decision":
+        # the same predicate the symbolic form gets in `_check_bound_entries`:
+        # a rule that read `[0, "expr"]` and `[0, 0]` differently would split
+        # by notation rather than by what the space is (#69)
+        discrete = self.type.value is DecisionType.discrete
         for tag, b in (("value", self.bounds.value), ("suggested", self.bounds.suggested)):
             if len(b) != 2:
                 raise ValueError(
                     f"decision {self.name!r}: bounds.{tag} must be [lo, hi], got {b}"
                 )
-            if all(isinstance(x, (int, float)) for x in b) and b[0] >= b[1]:
+            if all(isinstance(x, (int, float)) for x in b) and (
+                (b[0] > b[1]) if discrete else (b[0] >= b[1])
+            ):
+                rel = "<=" if discrete else "<"
                 raise ValueError(
-                    f"decision {self.name!r}: bounds.{tag} must satisfy lo < hi, got {b}"
+                    f"decision {self.name!r}: bounds.{tag} must satisfy lo {rel} hi, got {b}"
                 )
         return self
 
@@ -1506,6 +1523,7 @@ class MdpBlock(_Base):
                 d.bounds.value + d.bounds.suggested, d.bounds.value,
                 consts, self.scenario.instances,
                 f"decision {d.name!r}", "bound", "bounds", sources,
+                d.type.value is DecisionType.discrete,
             )
         return self
 
@@ -1514,7 +1532,13 @@ class MdpBlock(_Base):
         """Symbolic entries in state (element_)bounds must resolve to numeric
         lo < hi in the base scenario and in every instance — same contract as
         decision bounds. An expression reaching here still carries the
-        constants it reads: the catalog resolver folds only its slot stats."""
+        constants it reads: the catalog resolver folds only its slot stats.
+
+        Strictly `lo < hi`, unlike an action bound (#69): a state variable
+        carries no discrete/continuous type, and a zero-width envelope is an
+        observation dimension that cannot vary — likelier a mis-resolved
+        constant than a design, with no `Discrete(1)` analogue to make it the
+        canonical spelling of anything."""
         consts = {c.name: c.value for c in self.scenario.constants}
         sources = {s.name for s in self.uncertainty_sources}
         for sv in self.state_variables:
@@ -1775,14 +1799,18 @@ class ActionMode(_Base):
                     f"multi-decision modes must be identity (transform=\"\")"
                 )
             pairs = self.bounds                            # type: ignore[assignment]
+        discrete = self.type is DecisionType.discrete
         for b in pairs:
             if len(b) != 2:
                 raise ValueError(
                     f"action mode {self.name!r}: bounds entries must be [lo, hi], got {b!r}"
                 )
-            if all(isinstance(x, (int, float)) for x in b) and b[0] >= b[1]:
+            if all(isinstance(x, (int, float)) for x in b) and (
+                (b[0] > b[1]) if discrete else (b[0] >= b[1])
+            ):
+                rel = "<=" if discrete else "<"
                 raise ValueError(
-                    f"action mode {self.name!r}: bounds must satisfy lo < hi, got {b!r}"
+                    f"action mode {self.name!r}: bounds must satisfy lo {rel} hi, got {b!r}"
                 )
         return self
 
@@ -2132,6 +2160,7 @@ class MdpIR(_Base):
                 _check_bound_entries(
                     pair, pair, const_values, self.mdp.scenario.instances,
                     f"action mode {m.name!r}", "bound", "bounds", sources,
+                    m.type is DecisionType.discrete,
                 )
             unknown = [d for d in m.encoded_decisions() if d not in decision_names]
             if unknown:
@@ -2277,6 +2306,55 @@ class MdpIR(_Base):
             raise ValueError(
                 f"benchmark {name!r} tolerance {raw!r} resolved to {v} < 0")
         return float(v)
+
+    def action_bounds(
+        self, mode: str, decision: str | None = None, instance: str | None = None
+    ) -> tuple[float, float]:
+        """Effective [lo, hi] of an action mode's bound, per encoded decision.
+
+        The gym-side counterpart of `mdp.decision_bounds` / `mdp.state_bounds`:
+        entries take the same three forms — a literal, the name of a scenario
+        constant, an expression over constants — and resolve against the same
+        pool, base constants under this instance's overrides. Without it a
+        domain gating its rendered action space against the IR had to
+        re-implement that namespace rule, which is the defect one layer up
+        from the one #53/#54 closed: having won the right to state a bound as
+        its derivation, a campaign could not read the derivation back (#70).
+
+        `decision` selects the pair on a multi-decision mode by decision name
+        (aligned with `encoded_decisions()`); it may be omitted when the mode
+        encodes one. Lives here rather than on `GymBlock`, which cannot see
+        the constants, or on `ActionMode`, which must keep handing the
+        validator the *unresolved* entries so it can report which one failed.
+        """
+        m = next((mm for mm in self.gym.action_modes if mm.name == mode), None)
+        if m is None:
+            raise KeyError(f"no action mode named {mode!r}")
+        encoded = m.encoded_decisions()
+        if decision is None:
+            if len(encoded) != 1:
+                raise ValueError(
+                    f"action mode {mode!r} encodes {encoded}; name which decision's "
+                    f"bound to resolve"
+                )
+            idx = 0
+        else:
+            if decision not in encoded:
+                raise KeyError(
+                    f"action mode {mode!r} does not encode {decision!r}; it encodes "
+                    f"{encoded}"
+                )
+            idx = encoded.index(decision)
+        pair = m.bounds_per_decision()[idx]
+        consts = self.mdp._bounds_pool(instance)
+        where = f"action mode {mode!r} bound"
+        out = []
+        for x in pair:
+            v = _resolve_bound_entry(x, consts, where)
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise TypeError(f"{where} {x!r} resolved to non-numeric {v!r}")
+            out.append(float(v))
+        return out[0], out[1]
 
     def mdp_fingerprint(self) -> str:
         """Stable hash of the mdp block — the freeze token. Phase B records it;

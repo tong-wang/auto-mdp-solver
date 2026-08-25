@@ -409,6 +409,11 @@ verifying rather than dictating.
     // (e.g. an order&allocations vector encoding);
     // strategy: clip (continuous), mask (discrete), reparametrize (needs transform)
     "action_modes": [
+      // bounds take the same three forms Decision.bounds does and resolve the
+      // same way — per instance, at `ir.action_bounds(mode, decision=None,
+      // instance=)`, which is what a domain gates its rendered space against.
+      // A DISCRETE mode may resolve to [a, a] (= Discrete(1), an action with
+      // one legal value here); only a continuous one needs lo < hi.
       { "name": "order", "default": true, "encodes": "order",
         "type": "continuous", "bounds": [0, "20 * demand.mean"],
         "transform": "", "feasibility_strategy": "clip",
