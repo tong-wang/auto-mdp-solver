@@ -830,12 +830,10 @@ def _args_logs(h: DomainHandle) -> list[Path]:
 
 
 def _parse_args_log(path: Path) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in path.read_text(errors="replace").splitlines():
-        key, sep, value = line.partition(":")
-        if sep:
-            out[key.strip()] = value.strip()
-    return out
+    # one reader, in the module the train script imports at launch — the check
+    # and the run must agree about what the log says
+    from .launch import read_args_log
+    return read_args_log(path)
 
 
 _LAYER_LEAK = ("benchmark", "solver", "tractab", "gridded", "dp reference")
@@ -2097,7 +2095,10 @@ def check_launch_check(h: DomainHandle) -> CheckResult:
     silent, findings = [], []
     for train in trains:
         source = train.read_text()
-        if "assert_l1_current" not in source:
+        # either entry point: `assert_launch` is the same check plus the
+        # config/comparator groups a domain with a §13 registry can supply
+        if not any(name in source
+                   for name in ("assert_l1_current", "assert_launch")):
             silent.append(train.name)
         basis, _ = _l1_basis(source)
         if basis is None:
@@ -2111,7 +2112,8 @@ def check_launch_check(h: DomainHandle) -> CheckResult:
         return CheckResult("scripts.launch_check", "FAIL", "; ".join(findings))
     if silent:
         return CheckResult("scripts.launch_check", "WARN",
-                           f"{', '.join(silent)}: no assert_l1_current call — the "
+                           f"{', '.join(silent)}: no assert_l1_current/assert_launch "
+                           f"call — the "
                            f"L1 derivation is printed, not checked, so a run at "
                            f"an instance it was not derived for is launched "
                            f"silently (§8.6)")
