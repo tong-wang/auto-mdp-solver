@@ -395,14 +395,28 @@ verifying rather than dictating.
   // ═══════════════ gym — interface menus (mutable design axes) ═══════════════
   "gym": {
 
-    // the MENU of modes (§5.2); a latent var may appear in NO mode (validated)
+    // the MENU of modes (§5.2); a latent var may appear in NO mode (validated).
+    // `features` is EXHAUSTIVE and in render order (spec §7): every component
+    // the gym puts in the vector is declared, INCLUDING the time feature a
+    // finite-horizon gym prepends. That one is what actually goes missing —
+    // it enters the gym as a formatting decision, not as a state variable
+    // someone chose to expose — so it leads each mode below. `T` is the
+    // horizon symbol, so the expr resolves per instance; spec §7 recommends
+    // this counting-down form over the raw period index, and states the
+    // horizon-proportional case where relative forward is right instead.
+    // (The shipped `inv_single/` renders the raw `period`: it predates the
+    // rule, so this one field is what a NEW domain writes, not what that
+    // folder's code does.)
     "observation_modes": [
       { "name": "vec", "default": true,
-        "features": [ {"ref": "inventory"}, {"ref": "pipeline"} ] },
+        "features": [ {"derived": "time_to_go", "expr": "T - period"},
+                      {"ref": "inventory"}, {"ref": "pipeline"} ] },
       { "name": "vec_d",
-        "features": [ {"ref": "inventory"}, {"ref": "pipeline"}, {"ref": "info.demand"} ] },
+        "features": [ {"derived": "time_to_go", "expr": "T - period"},
+                      {"ref": "inventory"}, {"ref": "pipeline"}, {"ref": "info.demand"} ] },
       { "name": "vec_ip",
-        "features": [ {"derived": "inventory_position", "expr": "inventory + sum(pipeline)"} ] }
+        "features": [ {"derived": "time_to_go", "expr": "T - period"},
+                      {"derived": "inventory_position", "expr": "inventory + sum(pipeline)"} ] }
     ],
 
     // encodings of the canonical decision(s), possibly several at once
@@ -645,6 +659,13 @@ Two distinct concepts, now in two different *layers*:
 Features reference a **state var**, an **info field** (`info.demand`), or a
 **derived expression** (`inventory_position`). Validation: refs resolve, exprs
 resolve, and no mode touches anything latent.
+
+Note what validation does **not** cover, because the asymmetry is easy to
+mistake for coverage: a latent variable's *absence* from every mode is checked,
+while a rendered feature's absence from the list it belongs to is not. The list
+is exhaustive **by rule** (spec §7), not by gate — every declared feature is
+verified to resolve, and no check has ever asked whether the gym renders
+something the list omits.
 
 ### 5.3 Uncertainty realization timing drives the seed key — derived, not written
 Each source is a list of **stages** with `realization` ∈ `{period, event,

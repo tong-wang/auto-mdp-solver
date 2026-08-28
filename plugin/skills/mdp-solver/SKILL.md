@@ -507,6 +507,17 @@ exposing latent state), every action mode with its declared strategy
 clip / reparametrize per spec §7.2), reward modes from objective
 components in `info`, `terminated` at horizon + any early-termination expr.
 
+- **The rendered vector is the declared vector** (spec §7): the modes the
+  wrapper accepts are the modes the IR names, and each renders exactly that
+  mode's `features`, in order. When the wrapper wants a component the IR does
+  not declare, edit the IR first — `gym` is a mutable block, so a feature line
+  costs no re-confirmation and moves no fingerprint. **The time feature is the
+  one this loses**: a finite-horizon gym almost always prepends one and it
+  reaches the vector as a formatting decision, so it is written in the code and
+  nowhere else unless you declare it. No check catches either half; count the
+  widths by hand at the gate below. Spec §7 also states which encoding to
+  prefer (`time_to_go = T - t`) and the horizon-proportional exception.
+
 - **Action-box design lesson:** SB3 PPO's Gaussian initializes at raw
   action 0. If raw 0 maps to a dead zone (e.g. a shut-off intensity),
   learning stalls. Prefer encodings where raw 0 is a live, low-value
