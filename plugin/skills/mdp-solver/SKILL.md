@@ -512,9 +512,12 @@ components in `info`, `terminated` at horizon + any early-termination expr.
   mode's `features`, in order. When the wrapper wants a component the IR does
   not declare, edit the IR first — `gym` is a mutable block, so a feature line
   costs no re-confirmation and moves no fingerprint. **The time feature is the
-  one this loses**: a finite-horizon gym almost always prepends one and it
-  reaches the vector as a formatting decision, so it is written in the code and
-  nowhere else unless you declare it. No check catches either half; read the vector against
+  one this loses**, in the domains that have one: where the horizon is the
+  problem's own boundary (`termination.horizon_end: "terminated"`) the gym
+  prepends one as a formatting decision, so it is written in the code and
+  nowhere else unless you declare it. Where the horizon is only a cap
+  (`"truncated"`) the problem is stationary, the policy must not see the clock,
+  and there is nothing to declare — spec §7. No check catches either half; read the vector against
   the list by hand at the gate below — by *provenance*, not by width, since
   a mode may re-encode what it declares (a one-hot expansion of a declared
   board is compliant; an undeclared scalar prepended to it is not, and the

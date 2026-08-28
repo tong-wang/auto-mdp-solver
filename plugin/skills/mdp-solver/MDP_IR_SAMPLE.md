@@ -399,9 +399,13 @@ verifying rather than dictating.
     // `features` is EXHAUSTIVE and in render order (spec §7): every component
     // the gym puts in the vector comes from something declared here —
     // content, not width, since a mode may re-encode what it declares —
-    // INCLUDING the time feature a finite-horizon gym prepends. That one is what actually goes missing —
-    // it enters the gym as a formatting decision, not as a state variable
-    // someone chose to expose — so it leads each mode below. `T` is the
+    // INCLUDING the time feature. `inv_single`'s horizon is the problem's own
+    // boundary (`termination.horizon_end: "terminated"`), so time IS state here
+    // and the gym prepends it; where a horizon is only a cap ("truncated", e.g.
+    // a move limit) the problem is stationary and there is no time feature to
+    // declare at all — spec §7 draws that line. The prepended one is what
+    // actually goes missing: it enters the gym as a formatting decision, not as
+    // a state variable someone chose to expose — so it leads each mode below. `T` is the
     // horizon symbol, so the expr resolves per instance; spec §7 recommends
     // this counting-down form over the raw period index, and states the
     // horizon-proportional case where relative forward is right instead.
