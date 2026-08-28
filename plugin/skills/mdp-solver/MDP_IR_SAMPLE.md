@@ -397,8 +397,9 @@ verifying rather than dictating.
 
     // the MENU of modes (§5.2); a latent var may appear in NO mode (validated).
     // `features` is EXHAUSTIVE and in render order (spec §7): every component
-    // the gym puts in the vector is declared, INCLUDING the time feature a
-    // finite-horizon gym prepends. That one is what actually goes missing —
+    // the gym puts in the vector comes from something declared here —
+    // content, not width, since a mode may re-encode what it declares —
+    // INCLUDING the time feature a finite-horizon gym prepends. That one is what actually goes missing —
     // it enters the gym as a formatting decision, not as a state variable
     // someone chose to expose — so it leads each mode below. `T` is the
     // horizon symbol, so the expr resolves per instance; spec §7 recommends

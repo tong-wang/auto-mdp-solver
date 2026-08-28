@@ -514,8 +514,11 @@ components in `info`, `terminated` at horizon + any early-termination expr.
   costs no re-confirmation and moves no fingerprint. **The time feature is the
   one this loses**: a finite-horizon gym almost always prepends one and it
   reaches the vector as a formatting decision, so it is written in the code and
-  nowhere else unless you declare it. No check catches either half; count the
-  widths by hand at the gate below. Spec §7 also states which encoding to
+  nowhere else unless you declare it. No check catches either half; read the vector against
+  the list by hand at the gate below — by *provenance*, not by width, since
+  a mode may re-encode what it declares (a one-hot expansion of a declared
+  board is compliant; an undeclared scalar prepended to it is not, and the
+  two look alike if you only count). Spec §7 also states which encoding to
   prefer (`time_to_go = T - t`) and the horizon-proportional exception.
 
 - **Action-box design lesson:** SB3 PPO's Gaussian initializes at raw
