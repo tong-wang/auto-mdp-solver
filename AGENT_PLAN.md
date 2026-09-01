@@ -2,10 +2,12 @@
 
 *Design record, 2026-07-23; revised 2026-07-24 (solve = backbone + escalation;
 gym-gate design, §14); 2026-07-27: solve levels L0/L1/L2+ and the L1
-derivation table pinned in `SOLVE_LEVELS_PLAN.md` (repo root).
+derivation table pinned in `SOLVE_LEVELS_PLAN.md` (repo root); 2026-09-01: the
+skill split executed — structure as built in §15, which supersedes §4's op
+table where they differ.
 Captures the decisions, architecture, and roadmap for
-turning the `mdp-solver` pipeline into a deployable agent. This is a plan, not yet
-built; nothing here is committed to code.*
+turning the `mdp-solver` pipeline into a deployable agent. Roadmap step 1 (the
+split) is built; the SDK conversion (§6–§11) is still a plan.*
 
 ## 1. Goal and premise
 
@@ -598,3 +600,138 @@ interview touch `formalize`; the filtered view and faithful-mode eval touch `bui
 codegen; and the gates are exactly what makes gym-layer escalation (§4) safe headless.
 The escalation framework itself stays out of the spec — the spec describes domains,
 not the process that searches over them.
+
+## 15. The skill split, resolved — structure as built (2026-09-01)
+
+*Executes roadmap step 1. §4 remains the design rationale; this section is the
+resolved structure the split actually ships, including two divergences from
+§4's five-op table. Status: built — the sections above that say "not yet
+built" no longer apply to the split itself (the SDK conversion, §6–§11,
+remains unbuilt).*
+
+### 15.1 The op set — seven, not five-plus-conductor
+
+| skill | entry gate (executable, re-validated) | durable exit artifact |
+|---|---|---|
+| `mdp-solver` (conductor) | env `ENV OK` | the final report |
+| `mdp-formalize` | — (source op; scope check inside) | frozen IR + restatement + `{name}.signoff.json` |
+| `mdp-build` | `mdp_stage --for build` | domain code + gym + tests + campaign docs |
+| `mdp-solve` | `mdp_stage --for solve` | `{name}.runplan.json` + baselines + L0/L1 leaderboard row |
+| `mdp-escalate` | `mdp_stage --for escalate` + an L1 gap | L2+ winner + `ESCALATION.md` progress |
+| `mdp-interpret` | `mdp_stage --for interpret` | probe stats, fitted-rule score, overlay figure |
+| `mdp-package` | `mdp_stage --for package` | `{domain}_policy.py` + finished README |
+
+Two divergences from §4, both deliberate:
+
+- **`escalate` is its own op.** §4 framed escalation as "a policy `solve`
+  applies to an outcome," not a stage. It nevertheless meets the same
+  admission test every other op met: its own entry artifact (a failed L1
+  gate), its own durable record (`ESCALATION.md` + §CONFIG-REGISTRY +
+  §LEDGER), its own reference corpus (`ESCALATION_LOG_GUIDE.md` +
+  `PLAYBOOK.md`), and — decisive — it is re-entered on its own clock across
+  days, which is exactly the re-entry ergonomics the split buys. Folded into
+  `solve`, it would be the one op that stays 300+ lines and loads in full
+  when the user only wants a backbone run. §4's *content* (three layers, the
+  asymmetries, diagnosis-before-escalation, stopping rule) is unchanged; only
+  its packaging moved. The backbone/escalation *seam* stays in `solve`: the
+  diagnosis point (L1 ≤ random → build bug; L1 < L0 → derivation misfired;
+  competitive → stop) is `solve`'s exit, and opening escalation is a decision
+  `solve` reports, never silently takes.
+- **Stage 0 (run plan) moved out of the conductor into `solve`'s entry.**
+  Stages 1–2 support every registered scenario and grid regardless — the run
+  plan scopes only the expensive Stage 3–4 runs (SKILL.md said this already).
+  So `build` needs no interactive moment at all, and the skill↔agent fork of
+  §5 ("run-plan asked vs supplied") localizes to a single op's entry instead
+  of sitting in the conductor.
+
+### 15.2 Layout — the corpus stays in `mdp-solver/`
+
+```
+plugin/skills/
+  mdp-solver/          conductor SKILL.md + the shared corpus:
+    ENVIRONMENT.md INTERVIEW.md CONTRACTS.md
+    MDP_PROJECT_SPEC.md MDP_IR_SAMPLE.md ESCALATION_LOG_GUIDE.md
+    PLAYBOOK.md DOMAIN_*_TEMPLATE.md examples/
+  mdp-formalize/ mdp-build/ mdp-solve/ mdp-escalate/
+  mdp-interpret/ mdp-package/          one SKILL.md each
+```
+
+Step skills reference the corpus as
+`${CLAUDE_SKILL_DIR}/../mdp-solver/<doc>`. That placement is load-bearing: it
+resolves identically under a marketplace plugin install and under the
+per-skill `~/.claude/skills/` symlink channel (the two layouts mirror each
+other, and sibling symlinks exist by the pinning ritual). A `plugin/reference/`
+directory — conceptually cleaner — would break the symlink channel outright,
+since `${CLAUDE_PLUGIN_ROOT}` is undefined for personal skills. The "read from
+this skill's directory, never search the filesystem" rule survives verbatim:
+the path is deterministic from the invoked skill's location.
+
+New corpus files: `ENVIRONMENT.md` (interpreter resolution, `ENV OK` gate,
+retry budgets, background-run discipline — every op cites it),
+`INTERVIEW.md` (the five Phase-A interaction rules — `formalize` and `solve`
+cite it), `CONTRACTS.md` (the op table, the state-file contracts, the
+re-validation principle — the split's own governing doc).
+
+### 15.3 Cross-op state — derivable is re-derived, the rest is two files
+
+The split only functions if cross-stage state stops living in the
+conversation. The rule: **derivable state is never recorded** (IR validity,
+`unconfirmed()`, fingerprint, conformance/laws/differential verdicts, TSVs —
+recording these creates the stale "stage 2 done" lie), and **non-derivable
+state gets a single-writer file**:
+
+- `{name}.signoff.json` — written by `formalize` at its gate, nothing else
+  writes it: `mdp_fingerprint` at sign-off, sign-off date, restatement
+  filename. Replaces "record the fingerprint in the conversation."
+- `{name}.runplan.json` — written by `solve` at run-plan confirmation:
+  target, strategy (specialist/generalist), escalation budget, date.
+  Re-entering for another target rewrites it — that is re-entering at
+  Stage 0, as before.
+
+Both are committed (they are the durable record the README's repro story
+rests on); neither is consulted by any generated code — they are pipeline
+state, not domain state, so the portable-domain contract is untouched.
+
+### 15.4 `mdp_stage` — the entry gates as a harness tool
+
+`python -m mdp_stage <domain-dir>` prints the stage table (cheap checks);
+`--for <op>` runs that op's full entry gate and exits 0/1 — conformance, laws
+and the differential are *run*, not trusted, matching "each op re-validates
+its upstream gate at entry" (§4). This is the piece the mode-2 dispatcher
+(§6) reuses verbatim as its admission check. The always-on freeze check —
+`signoff.mdp_fingerprint == mdp_fingerprint()` at every op ≥ build — closes a
+hole the monolith had: nothing previously detected a post-freeze `mdp` edit
+outside one conversation's memory. Judgment stays out: the tool checks
+artifacts and verdicts, never "is the gap big enough to escalate."
+
+### 15.5 Conductor mechanics
+
+`mdp-solver` keeps its established trigger description (cold-start phrases
+land there); step skills get **entry-condition-scoped descriptions** — the
+trigger text is the entry state ("use when a frozen, signed-off IR exists
+and no domain code does"), which is what stops seven sibling skills from
+mis-firing. The conductor body is short: resolve env once, dispatch
+formalize → build → solve → [escalate]* → interpret → package, running
+`mdp_stage --for <next>` between ops rather than trusting the previous op's
+report. Skip logic is IR-derived (interpret owed iff a declared stance owes a
+probe; escalate only on an L1 gap). It owns two human moments: the >30-min
+compute ask and the final report. All ops stay model-invocable (the conductor
+must be able to dispatch them) and user-invocable (re-entry is the point).
+
+**v1 runs everything in-context — no `context: fork`.** Forking the
+mechanical ops (`build` first: everything downstream re-reads from disk) is
+the token win later, but a fork loses conversation history and, backgrounded,
+`AskUserQuestion`; turn it on op by op only after `mdp_stage` proves the
+handoff is genuinely filesystem-carried. Honest cost meanwhile: a full
+conductor run loads more prose than the monolith did, not less.
+
+### 15.6 Verify before relying on (extends §13)
+
+- **Plugin packaging:** current docs say the *entire* plugin directory is
+  copied to the cache — contradicting the "recognized dirs only" model this
+  repo's CLAUDE.md records (basis of "examples/ must live inside skills/").
+  The split doesn't depend on either answer; re-test empirically with a real
+  install before moving `examples/` anywhere.
+- **Conductor dispatch:** that a skill with default invocation flags is
+  reliably invokable by the model mid-turn as the conductor assumes — cheap
+  two-skill probe before the SDK conversion leans on it.
