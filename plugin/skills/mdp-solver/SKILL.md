@@ -17,7 +17,11 @@ This skill *is* the two-phase pipeline and is self-contained — run it end to
 end from here. `MDP_PROJECT_SPEC.md`, co-located with this file, is the
 canonical convention reference — consult it while writing each file; do not
 code from memory of it. `MDP_IR_SAMPLE.md` (same directory) is the annotated
-IR reference. The pipeline runs in whatever workspace holds the domain; use
+IR reference, and `ESCALATION_LOG_GUIDE.md` (same directory) is the campaign-log
+format — its §-numbers are cited from case logs and never renumber. **Read these
+from this skill's own directory. Do not search the filesystem for them**: a
+development checkout of the solver may also be on disk, and reading that instead
+silently substitutes unreleased content for the version you are installed at. The pipeline runs in whatever workspace holds the domain; use
 that workspace's venv.
 
 **Environment (once, before anything).** Every gate and every generated script

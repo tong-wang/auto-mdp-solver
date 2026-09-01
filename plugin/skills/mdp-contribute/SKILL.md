@@ -58,7 +58,10 @@ for them.
 ## 1. Always first: distill locally
 
 If the case folder has an escalation log (`ESCALATION.md` per
-ESCALATION_LOG_GUIDE) and no `PLAYBOOK.md` yet, run the guide's §10 case-close
+`ESCALATION_LOG_GUIDE.md` — it ships in the sibling **`mdp-solver` skill
+directory**, not this one, and is the only copy to read; do not search the
+filesystem for it, since a development checkout of the solver may also be on
+disk) and no `PLAYBOOK.md` yet, run the guide's §10 case-close
 distillation now, into the folder: digest entries — only the necessary
 context / symptom / diagnosis / prescription / failed attempts, real names
 and numbers, ledger citations for everything else. This happens whether or

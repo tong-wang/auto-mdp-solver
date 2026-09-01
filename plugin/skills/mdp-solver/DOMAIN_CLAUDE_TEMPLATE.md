@@ -74,6 +74,13 @@ over this file, over the code, and over local habit:**
 | `SKILL.md` | the pipeline stages, their gates, and what each stage must emit |
 | `ESCALATION_LOG_GUIDE.md` | the campaign log (§MAP, §FRAME-CHANGELOG, §IR-CHANGELOG, §CONFIG-REGISTRY, §LEDGER) and the §10 playbook digest |
 
+All three live **in the `mdp-solver` skill's own directory** — wherever the
+plugin is installed, they sit beside its `SKILL.md`. Read them from there.
+**Do not search the filesystem for them by name**: a development checkout of
+the solver may also be on disk, and reading that instead silently swaps
+unreleased content for the version this folder was built against, which is
+exactly what the two provenance lines below exist to pin down.
+
 Solver provenance — **two versions, two meanings** (keep both; they answer
 different questions, and a case that is later contributed upstream needs the
 distinction — see `cases/README.md`, "After a case is merged"):
