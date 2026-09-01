@@ -21,7 +21,8 @@ prefixed with the domain name; the campaign docs (`CLAUDE.md`, `README.md`,
 
 | File | Purpose |
 |---|---|
-| `CLAUDE.md` | Domain-local operating brief — emitted at Stage 1 from the skill's `DOMAIN_CLAUDE_TEMPLATE.md`. Pointer-first: where to look + what bites, never a second copy of the README |
+| `README.md` | **The case, for a human reader** — emitted at Stage 1 from the skill's `DOMAIN_README_TEMPLATE.md`. Four sections in order (§1.3), and the inventory of everything the campaign produced. The one document that answers "what is this and did it work" without reading anything else |
+| `CLAUDE.md` | **Domain-local operating brief, for an agent about to change the folder** — emitted at Stage 1 from the skill's `DOMAIN_CLAUDE_TEMPLATE.md`. Five sections in order (§1.3); names only what is *authoritative over* the folder, never what the campaign produced |
 | `{domain}_exceptions.py` | Custom exception hierarchy (optional) |
 | `{domain}_uncertainty.py` | Stochastic primitives: the `SamplingContext` protocol and all `{Source}Generator` classes (demand, leadtime, …) — including latent-bearing generators that own their source's per-episode world latent (§5.2) — **omit entirely when the dynamics are deterministic** (§4.3) |
 | `{domain}_scenarios.py` | **World layer — composition only**: the `{Domain}Scenario` / `{Domain}ScenarioSource` / `{Domain}MixtureSampler` classes, their predefined instances, and the `SCENARIOS` registry. Owns no sampling: latents live on generators (§5.2) |
@@ -107,6 +108,122 @@ enough to build a case *and* check it. `[dev]` is pytest on its own, the
 torch-free path: `pytest` over `harness/tests` and over a domain's own
 `{domain}_test.py` both work under it, since neither imports the training
 stack.
+
+### 1.3 The two campaign documents
+
+`README.md` and `CLAUDE.md` are both read before the code, by different
+readers, for different reasons. The split that stops them becoming copies of
+each other is directional:
+
+> **`CLAUDE.md` points up; `README.md` points across.** `CLAUDE.md` names only
+> what is *authoritative over* this folder — the spec, the skill, the guide,
+> and which version of them the folder was built against. Everything the
+> campaign *produced* — its documents, its code, its numbers — is inventoried
+> in `README.md`. A campaign document is *inventoried* in exactly one of the
+> two — either file may name the other as an address.
+
+That line is what makes the pointer rule checkable:
+
+> **A pointer file may name a destination; it may never describe, summarise or
+> score what is inside it.** If it enumerates, restates or reproduces
+> something that exists elsewhere, that content has an owner and this is not
+> it.
+
+Stated negatively — "never a second copy of the README" — the rule does not
+reach a routing table, a file inventory or a command block. None of the three
+looks like a copy, and all three have been written into a `CLAUDE.md` and
+removed again on a later pass.
+
+#### `README.md` — four sections, in this order
+
+1. **The problem** — what the decision is, what it costs, what makes it hard.
+   Before any file list. A reader who stops here knows whether the case is
+   relevant to them.
+2. **Layout** — **documents and code in separate tables.** They answer
+   different questions ("where do I read about X" vs "where is X
+   implemented") and a merged table serves neither. A document the spec
+   requires and the campaign has not written is listed **"owed"**, never
+   silently dropped.
+3. **Results, organised by the research-question tier each answers**
+   (ESCALATION_LOG_GUIDE §3.1):
+   - **`1-comparative`** — the standing question every campaign asks. State
+     the eval protocol every number below is quoted at (seeds, CRN,
+     reference bar, and **which eval mode is the record** — §9.1 makes both
+     reachable and neither the default). Then **introduce the scenarios
+     first** — each config and the role it plays in the study — then one
+     leaderboard per scenario per §9, then which artifact ships and why that
+     one, then a pointer to `ESCALATION.md` for how it was reached.
+   - **`2-structural`** — the stances declared in `research_questions`
+     (§14.0): the verdict on each in brief, with a pointer to `INTERPRET.md`
+     for the evidence. A campaign gates on answering these, so the document
+     reporting them mirrors the commitment that produced them.
+4. **Technical appendix** — the commands that run the code: train, eval,
+   benchmark, probe, plot. Every one verified to run as written, and
+   sufficient to reproduce `results/` from an empty folder. The *gate*
+   commands are not here; they are `CLAUDE.md`'s, because they are run by
+   whoever is changing the folder rather than reading it.
+
+The ordering principle, stated once so it survives cases the template does not
+anticipate: **each section must be readable by someone who has read only the
+sections above it.** That is what puts the problem before the layout, the
+scenarios before the leaderboards that name them, and the commands last.
+
+**The shape is necessary and not sufficient.** A README rebuilt to exactly
+these four sections has still shipped with a symbol its headline table turned
+on defined nowhere, two boards sorted by different keys, a column mixing
+signed differences with ratios, and a percentage that did not recompute from
+the costs printed beside it. None of it is reachable by a gate — a checker
+counting headings would be the wrong instrument — so Stage 6 runs six
+questions over the finished file instead:
+
+1. Is every symbol defined before its first use — each value function, each
+   config-id grammar, each action encoding, CRN?
+2. Does every `§` reference say **whose** section it is — the paper's, the
+   spec's, or this file's?
+3. Does every declared scenario have a table, and every table the same
+   columns?
+4. Is every table sorted by one stated key, with every column in one unit?
+5. Does each board name **which artifact ships and why that one**, and say why
+   any arm absent from that board is absent?
+6. Does every quoted percentage recompute from the numbers in its own table?
+
+Question 5 catches the worst class. A case that trains several arms per board
+has to *choose*, and the choice is a scientific claim — a campaign may ship a
+lower-scoring arm deliberately, because its sibling was handed a transform the
+result is supposed to be evidence for. Nothing else in this spec asks a case
+to state that, so the default is to ship the best number and say nothing.
+
+#### `CLAUDE.md` — five sections, in this order
+
+1. **What this file is** — the contract stated positively, plus the problem in
+   2–4 lines and which instances are separate leaderboards whose scores may
+   never be compared.
+2. **Authoritative specs** — the documents that override this file and the
+   code, and **the two solver versions**: the tag the folder's numbers were
+   produced under, and how far its conformance has been carried forward.
+3. **Hard rules** — the invariants an agent must not violate, each phrased
+   **trigger → destination**, never trigger → answer.
+4. **Gate commands** — validation, conformance, laws, differential, pytest.
+5. **File hygiene** — what belongs in the folder, what belongs in `scratch/`.
+
+**And nothing else — in particular, no traps section.** A per-domain list of
+"what bites here" reliably grows into a restatement of the campaign log, and
+every entry one has ever held already has an owner: a rule a gate enforces is
+owned by the gate, whose failure message is the reminder; a rule the spec
+states but no gate checks is identical in every domain and belongs upstream,
+in one copy; a cross-domain convention belongs in the repo-root `CLAUDE.md`;
+the eval-mode stance qualifies every number on every leaderboard and belongs
+above them, in `README.md` §3; and a trap the campaign paid for is a
+`#E` ledger entry, digested at close into `PLAYBOOK.md`, whose entry shape
+(ESCALATION_LOG_GUIDE §10) is a strict superset of it.
+
+What `CLAUDE.md` keeps is the *push*. It is the one file whose placement
+decides whether an agent sees it at all — the host loads a folder's
+`CLAUDE.md` exactly when work touches that folder, while `README.md`,
+`ESCALATION.md` and `PLAYBOOK.md` are pulled. So the hard rules carry the
+trigger and the address and stop there: "before quoting a number, say which
+artifact it came from (§8.4)" is a hard rule; the same sentence continuing
+into which artifact won is a copy.
 
 ### 1.1 Dependency chain
 
@@ -2191,7 +2308,9 @@ with the metric, the paired delta against the stated comparison, and its
 significance, plus a column or note carrying each row's scope where arms
 differ in it. Numbers a reader must compare across arms do not belong in
 prose; the same applies to any multi-arm readout in the campaign docs
-(ESCALATION_LOG_GUIDE §6).
+(ESCALATION_LOG_GUIDE §6). Where it sits in the README — under the
+`1-comparative` tier, after the scenario it scores has been introduced — is
+§1.3.
 
 The screen layer is affordable because the **selection evaluator is
 vectorized over episodes** — the old "~256–512 seeds" tier reflected a

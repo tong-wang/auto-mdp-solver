@@ -470,12 +470,21 @@ Write in dependency order: `{domain}_exceptions.py` (optional) →
   the differential parametrized over the covering set derived from the schema,
   at least one negative control, and any claim an IR expression cannot state.
 
-- Emit `{domain}/CLAUDE.md` from `DOMAIN_CLAUDE_TEMPLATE.md` (beside this
-  skill) as the folder's first doc: fill the problem statement, the
-  leaderboard-commensurability line, the pinned-solver line and the command
-  slots; keep the fixed text verbatim; leave the Traps section seeded. The
-  template's filling rules are binding — pointer-first, campaign-varying
-  content linked never copied, traps added the same day they are paid for.
+- Emit the folder's two campaign docs from the templates beside this skill,
+  in the shapes spec §1.3 fixes. They divide by direction: `CLAUDE.md` points
+  **up**, at the specs governing the folder; `README.md` points **across**, at
+  everything the campaign produces. A campaign document is inventoried in
+  exactly one of them.
+  - `{domain}/CLAUDE.md` from `DOMAIN_CLAUDE_TEMPLATE.md` — five sections:
+    fill the problem statement, the leaderboard-commensurability line, the
+    two provenance lines and the gate-command slots; keep the fixed text
+    verbatim. The template's filling rules are binding — a pointer may name a
+    destination, never describe or score what is inside it, and a hard rule is
+    phrased trigger → destination.
+  - `{domain}/README.md` from `DOMAIN_README_TEMPLATE.md` — four sections:
+    fill **The problem** and the two layout tables now (documents the campaign
+    owes are listed "owed", never omitted); the results and appendix sections
+    are seeded as headings and grow as findings land, not at Stage 6.
 
 - Emit `{domain}/.gitignore` beside it — three lines: `results/`, `scratch/`,
   `__pycache__/`. The folder must carry its own ignore rules (portable-domain
@@ -701,23 +710,41 @@ show and move on.
 
 No hard gate: a failed structural recovery fires spec §14.2's diagnosis
 branches but does not block packaging — the finding (including "it is not
-doing the classical thing") goes in the README's empirical findings.
+doing the classical thing") is a verdict on a declared stance and goes in the
+README's `2-structural` results (spec §1.3).
 
 ### Stage 6 — package
 
 - `{domain}_policy.py` per spec §12 (model + vecnorm stats + action
   transform behind `act(obs)`; documented observation contract; `__main__`
   smoke test against the raw `_mdp` loop — run it).
-- Domain `README.md`: layout table, usage commands, results table with all
-  baselines and the shipped model, and any empirical findings (which modes
-  won/lost and why, plus the Stage-5 readback: the recovered rule, its
-  agreement with the reference, and the fitted rule's paired score).
+- Complete `{domain}/README.md` in the spec-§1.3 shape it was seeded with at
+  Stage 1 — the problem, the two layout tables, results by research-question
+  tier, technical appendix. **Results is where the campaign's answers land:**
+  the protocol every number is quoted at (including which eval mode is the
+  record) and every symbol the tables use, stated once above them; then the
+  scenario table before the boards that name it; then one §9 leaderboard per
+  scenario carrying every baseline and the shipped model; then **which
+  artifact ships and why that one** — a choice among trained arms is a claim,
+  not a ranking. The `2-structural` block reports the verdict on each declared
+  stance (§14.0), the Stage-5 readback among them: the recovered rule, its
+  agreement with the reference, and the fitted rule's paired score.
+- **Run the six-question checklist (spec §1.3) over the finished README** —
+  symbols defined before use, `§` references attributed, every scenario
+  tabled with matching columns, one sort key and one unit per table, each
+  board naming its shipped artifact and any absent arm, every percentage
+  recomputed from the numbers beside it. No gate sees any of these; the pass
+  is the instrument. Fix what it finds before packaging.
 - Final pass over `{domain}/CLAUDE.md` (emitted at Stage 1 from
-  `DOMAIN_CLAUDE_TEMPLATE.md`): every command runs as written, the
-  record-eval stance matches how the leaderboard was actually produced, the
-  doc table matches the files that exist (owed docs marked "owed"), traps
-  current. Then add the domain to the root `CLAUDE.md`'s domain list — one
-  line; the folder's own file carries the rest.
+  `DOMAIN_CLAUDE_TEMPLATE.md`): the gate commands run as written, the hard
+  rules are current and still phrased trigger → destination, and the two
+  provenance lines are right — "built and gated at" naming the checkout the
+  numbers came from, "conformance maintained through" naming how far the
+  folder has been carried. **And check what the file has accreted:** anything
+  describing, summarising or scoring what lives in another document is a copy
+  and comes out — the README owns the case, this file owns the specs above
+  it. Then add the domain to the root `CLAUDE.md`'s domain list — one line;
+  the folder's own file carries the rest.
 - Trained artifacts (`results/`) are gitignored; the README's commands must
   reproduce them.
 

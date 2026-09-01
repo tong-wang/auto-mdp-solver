@@ -39,7 +39,8 @@ subtrees, plus root-level material for public browsers:
 | `plugin/skills/mdp-solver/SKILL.md` | the pipeline skill (source of truth) |
 | `plugin/skills/mdp-solver/MDP_PROJECT_SPEC.md` | **canonical** per-domain architecture/naming/RNG/script conventions |
 | `plugin/skills/mdp-solver/MDP_IR_SAMPLE.md` | annotated MDP-IR reference |
-| `plugin/skills/mdp-solver/DOMAIN_CLAUDE_TEMPLATE.md` | template for the per-domain `{domain}/CLAUDE.md` emitted at Stage 1 (provenance block, file hygiene, seeded traps; campaign-specific slots) |
+| `plugin/skills/mdp-solver/DOMAIN_CLAUDE_TEMPLATE.md` | template for the per-domain `{domain}/CLAUDE.md` emitted at Stage 1 — the folder's *upward* pointers: governing specs, provenance, hard rules, gate commands, file hygiene (spec §1.3) |
+| `plugin/skills/mdp-solver/DOMAIN_README_TEMPLATE.md` | template for the per-domain `{domain}/README.md` emitted at Stage 1 — the folder's *across* view: the problem, layout, results by research-question tier, technical appendix (spec §1.3) |
 | `plugin/skills/mdp-solver/examples/` | frozen exemplar domains — ship with the plugin as few-shot exemplars **and** are the regression suite (see `examples/MANIFEST.md` there) |
 | `plugin/skills/mdp-solver/PLAYBOOK.md` | shipped escalation-playbook **index** — maintainer-curated; links into promoted examples' in-folder `PLAYBOOK.md`s (digest entries per ESCALATION_LOG_GUIDE §10) |
 | `plugin/skills/mdp-contribute/SKILL.md` | the contribution skill (case PRs with the playbook riding in the folder / re-skinned cases; a case too sensitive even re-skinned is not contributed; `.github/workflows/case-gates.yml` is its CI counterpart) |
@@ -67,8 +68,9 @@ they exist for the public GitHub repo.
   drifts from the downstream copy *silently*, which is a worse failure than the
   stale line it was trying to fix — a stale line is visible. If a change cannot
   be expressed without touching contributed material, stop and ask.
-  `DOMAIN_CLAUDE_TEMPLATE.md` is the source template and is maintained here;
-  the per-domain `CLAUDE.md` files emitted from it into cases/examples are not.
+  `DOMAIN_CLAUDE_TEMPLATE.md` and `DOMAIN_README_TEMPLATE.md` are the source
+  templates and are maintained here; the per-domain `CLAUDE.md` and `README.md`
+  files emitted from them into cases/examples are not.
 - `plugin/skills/mdp-solver/examples/` is additionally frozen in its code,
   schemas, and tests: those change only when pipeline/spec work requires it,
   never as research — and then through the entry's author, per the rule above.
