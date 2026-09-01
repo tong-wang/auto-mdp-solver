@@ -64,7 +64,7 @@ Two independently-published artifacts live in their own subtrees:
 | path | role |
 |---|---|
 | `harness/` | **the PyPI package** `auto-mdp-solver`: `mdp_ir` (IR schema + interpreter + differential runner), `mdp_conformance` (architecture/RNG/purity checks), `mdp_gates` (statistical eval gates, ≥ 2 SE), `mdp_tuning` (Optuna driver) |
-| `plugin/` | **the Claude Code plugin**: `skills/mdp-solver/` (SKILL.md + canonical spec `MDP_PROJECT_SPEC.md` + annotated IR reference `MDP_IR_SAMPLE.md`) and, shipped alongside it, `examples/` — frozen exemplar domains that double as the regression suite (`examples/MANIFEST.md`) |
+| `plugin/` | **the Claude Code plugin**: `skills/mdp-solver/` (the pipeline conductor + canonical spec `MDP_PROJECT_SPEC.md` + annotated IR reference `MDP_IR_SAMPLE.md`), six step skills (`mdp-formalize` … `mdp-package`) for entering the pipeline at any seam, and, shipped alongside, `examples/` — frozen exemplar domains that double as the regression suite (`examples/MANIFEST.md`) |
 | `cases/` | end-to-end pipeline test cases (browse on GitHub) |
 | `README.md`, `docs/` | public landing + guides |
 

@@ -35,8 +35,11 @@ subtrees, plus root-level material for public browsers:
 | `harness/mdp_conformance/` | spec-conformance harness (`python -m mdp_conformance <domain-dir>`) |
 | `harness/mdp_gates/` | eval-gate comparison (`python -m mdp_gates`) |
 | `harness/mdp_tuning/` | Optuna tuning driver (`python -m mdp_tuning <domain-dir> ...`) |
+| `harness/mdp_stage/` | pipeline entry gates (`python -m mdp_stage <domain-dir> [--for <op>]`) — the split ops' executable entry re-validation, incl. the always-on freeze check against `{name}.signoff.json` |
 | `plugin/` | **the Claude Code plugin** (`.claude-plugin/plugin.json` + `skills/`) |
-| `plugin/skills/mdp-solver/SKILL.md` | the pipeline skill (source of truth) |
+| `plugin/skills/mdp-solver/SKILL.md` | the pipeline **conductor** — dispatches the six step skills with `mdp_stage` gates between (split per AGENT_PLAN §15) |
+| `plugin/skills/mdp-{formalize,build,solve,escalate,interpret,package}/` | the six **step skills** — one op each, cut at durable-artifact seams, independently entrant; they read the shared corpus from `../mdp-solver/` |
+| `plugin/skills/mdp-solver/{ENVIRONMENT,INTERVIEW,CONTRACTS}.md` | the split's shared corpus: interpreter/budgets/run discipline; the five interview rules; the op contracts + the two single-writer state files (`{name}.signoff.json`, `{name}.runplan.json`) |
 | `plugin/skills/mdp-solver/MDP_PROJECT_SPEC.md` | **canonical** per-domain architecture/naming/RNG/script conventions |
 | `plugin/skills/mdp-solver/MDP_IR_SAMPLE.md` | annotated MDP-IR reference |
 | `plugin/skills/mdp-solver/DOMAIN_CLAUDE_TEMPLATE.md` | template for the per-domain `{domain}/CLAUDE.md` emitted at Stage 1 — the folder's *upward* pointers: governing specs, provenance, hard rules, gate commands, file hygiene (spec §1.3) |

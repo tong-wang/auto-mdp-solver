@@ -71,11 +71,12 @@ over this file, over the code, and over local habit:**
 | doc | governs |
 |---|---|
 | `MDP_PROJECT_SPEC.md` | architecture, layering, naming, RNG/seed tree, script + eval conventions (§1–§14) |
-| `SKILL.md` | the pipeline stages, their gates, and what each stage must emit |
+| `CONTRACTS.md` + the step skills (`mdp-formalize` … `mdp-package`) | the pipeline ops, their entry gates (`python -m mdp_stage`), and what each op must emit |
 | `ESCALATION_LOG_GUIDE.md` | the campaign log (§MAP, §FRAME-CHANGELOG, §IR-CHANGELOG, §CONFIG-REGISTRY, §LEDGER) and the §10 playbook digest |
 
-All three live **in the `mdp-solver` skill's own directory** — wherever the
-plugin is installed, they sit beside its `SKILL.md`. Read them from there.
+All of these live **in the `mdp-solver` skill's own directory** (the step
+skills are its siblings) — wherever the plugin is installed, they sit beside
+its `SKILL.md`. Read them from there.
 **Do not search the filesystem for them by name**: a development checkout of
 the solver may also be on disk, and reading that instead silently swaps
 unreleased content for the version this folder was built against, which is
