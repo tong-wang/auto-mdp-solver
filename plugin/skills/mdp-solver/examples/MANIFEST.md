@@ -59,6 +59,47 @@ Current caveats:
   with verbatim output, so `docs.restatement_current` re-runs them. Campaign-
   record curation, not research: no number, verdict or ranking moved.
 
+- `game2048` was **promoted with declared debt outstanding**, which the
+  admission criteria in `cases/README.md` otherwise forbid — the criterion says
+  the debt is paid *before* the freeze, and here it was not. Two things are
+  owed: spec §14.3's figure contract is only partly met (`figures/` carries
+  committed replay animations, but there is no `game2048_plot_policy.py`
+  emitting a static *and* an interactive render of the action surface from one
+  spec), and the fitted rule that its `discover` stance owes as a first-class
+  §9 benchmark was not delivered. The folder's own `README.md` and
+  `INTERPRET.md` both say so; this line records that the maintainer waived the
+  criterion rather than that the folder hid the gap. **Read this as "does not
+  meet §14.3 today", not "can never".** The freeze bars *research* edits; a
+  spec-contract deliverable is exactly what still lands here when pipeline or
+  spec work calls for it, through the entry's author — which is how every other
+  example's code has moved. The fitted rule is the harder of the two, since
+  fitting and scoring one is research and would need a spec change to arrive by
+  that route.
+- `game2048`'s **campaign record is a deliberate 32-of-85 subset**, so it is a
+  weaker drill-down than `mab`'s. Nine `#E` citations do not resolve (12, 16,
+  18, 19, 20, 30, 34, 35, 45 — `#E12` dangles in the source record too, having
+  been reserved and never authored), and `§CONFIG-REGISTRY` is omitted. The
+  held-back material — the afterstate-factored policy, the critic-architecture
+  programme, the GAE-λ axis, the adversarial-spawn programme and the visitation
+  channel — is ongoing research on a chassis this folder does not publish. Read
+  the entries that are here; do not chase a citation that is not.
+- `game2048`'s **`PLAYBOOK.md` carries no lever entries**, so it contributes no
+  rows to the shipped `PLAYBOOK.md` index. That is the campaign's own verdict,
+  not an omission: its transferable findings are either textbook, or general
+  method belonging in the escalation guide, or — for the one genuinely
+  non-obvious lever it measured, the GAE-λ descent — established on the
+  unpublished chassis and **not used by either shipped crown**, both of which
+  run at the λ = 0.95 default. Read this entry for the *shapes* it covers
+  below, not for levers.
+- `game2048` is the first example whose deliverable **loses at one of its two
+  scales**, and it is promoted anyway because the criterion is beating the
+  classical baselines, which it does at both. At `3x3_20` the trained policy
+  clears everything on the board (2688.37 against a 1154.25 bar). At `4x4_20`
+  it beats every baseline and expectimax d2 but reaches only 82% of d3, and the
+  bar — expectimax d3 with a hand-shaped monotone-chain leaf evaluator — stands
+  3.0× above it. The folder states that negative as its headline. An exemplar
+  that only ever won would teach that the pipeline always wins.
+
 Every example carries three gates, all run from the repo root with
 `E=plugin/skills/mdp-solver/examples`:
 
@@ -67,6 +108,7 @@ Every example carries three gates, all run from the repo root with
 | `inv_single` | imported 2026-07-21 | `python -m mdp_conformance $E/inv_single` · `python -m mdp_ir $E/inv_single/inv_single_schema.json` · `pytest $E/inv_single` |
 | `dynamic_pricing` | imported 2026-07-21 | `python -m mdp_conformance $E/dynamic_pricing` · `python -m mdp_ir $E/dynamic_pricing/dynamic_pricing_schema.json` · `pytest $E/dynamic_pricing` |
 | `mab` | promoted from `cases/` 2026-08-13 (contributed PR #13) | `python -m mdp_conformance $E/mab` · `python -m mdp_ir $E/mab/mab_schema.json` · `pytest $E/mab` |
+| `game2048` | promoted from `cases/` 2026-09-01 (contributed PR #73) | `python -m mdp_conformance $E/game2048` · `python -m mdp_ir $E/game2048/game2048_schema.json` · `pytest $E/game2048` |
 
 The third gate is each domain's own `{domain}_test.py`, sitting beside the code
 it describes. It runs the engine laws (`mdp_ir.laws`) and **parametrizes the
@@ -96,6 +138,14 @@ and T ∈ {10 … 40000}, plus the `gaussian` composition itself. Its size axes
 are symbolic (`n_arms`, `horizon_T`), so registering a further cell extends
 the sweep without touching the structure.
 
+`game2048`'s covering set: the `3x3_20` base + seven instances spanning board
+size × spawn regime (2×2, 3×3, 4×4, 5×5 × `prob_4` ∈ {0.0, 0.2}) — eight
+compositions in all. `3x3_20` is the base itself and is therefore correctly
+absent from the `instances` block; `3x3_0` overrides only `prob_4` and
+`4x4_20` only the geometry, so the grid is expressed as deviations rather
+than enumerated. The board dimension is symbolic (`grid_size`, `n_cells`,
+`T_cap`), so a further board size is one instance row.
+
 Shape coverage note: these cover continuous single-entity control, two-step
 advance, episode-support demand, decision-conditioned generators, exact-DP
 benchmarks, and a **cross-family world mixture** (`inv_single`'s
@@ -110,10 +160,29 @@ naming scenario constants, so one IR spans 34 compositions), and the **§14
 interpret leg** end to end — a policy probe, a fitted structural rule scored
 as a first-class §9 benchmark, and the campaign record (`ESCALATION.md`,
 `PLAYBOOK.md`, `INTERPRET.md`, `CLAUDE.md`) that makes the in-folder playbook
-reachable by the installed skill. Not yet covered by a shipped example:
-multi-entity, action masking, deterministic dynamics + sampled instances,
-competitive information modes, an information-accumulation (MMFE) state, and
-a terminal-only stochastic payoff.
+reachable by the installed skill.
+
+And, from `game2048`, the **spatial board** — a 2-D grid observation with CNN
+extractors (the case carries `SmallBoardCnn` per spec §8.5, since SB3's
+NatureCNN cannot run on a 3×3 board), **action masking** (`masked`, with a
+`masked`/`free` feasibility-strategy menu declared in one IR), a
+**state-dependent categorical support** (the spawn cell is `categorical` over
+`empty_cells(board)`, resolved from the live namespace at draw time — which is
+why `mdp_ir.laws` correctly declines to assert `path_independence` here),
+**uncertainty stages keyed on something other than `period`** (both spawn
+slots key on `spawn_count`), **domain expression builtins**
+(`mdp.expr_builtins` → `game2048_board.py`, so the slide/merge rules have one
+implementation shared by the IR and the `_mdp` layer), and the shape where
+**neither an `exact` nor a `relaxed` node exists** — tile values are unbounded,
+so the state space cannot be enumerated and every bar is `feasible`. That last
+one matters as an exemplar: the optimum is never bracketed, so the strongest
+reference is the best policy anyone built rather than a ceiling, and the role
+vocabulary has to carry that without a DP to anchor it.
+
+Not yet covered by a shipped example:
+multi-entity, deterministic dynamics + sampled instances, competitive
+information modes, an information-accumulation (MMFE) state, and a
+terminal-only stochastic payoff.
 
 `mab`'s grid trips the §5.6 `grids.axes` tier warning (its axis is the
 horizon), so that branch of the check has a live regression; the tier-3 PASS

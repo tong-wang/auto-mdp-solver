@@ -86,7 +86,7 @@ the answer — that is what makes them safe to keep current.
 
 ## Gate commands
 
-Run from `cases/` (the parent of this folder). These are the checks; the
+Run from `plugin/skills/mdp-solver/examples/` (the parent of this folder). These are the checks; the
 commands that *run* the code — train, eval, benchmark, probe — are in
 `README.md`'s technical appendix. Always pin threads for training: torch
 oversubscribes on a shared box.

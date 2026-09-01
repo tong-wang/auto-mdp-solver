@@ -119,6 +119,17 @@ maintainer-curated).
 | promoted case | when | now at |
 |---|---|---|
 | `mab` — stochastic multi-armed bandit | 2026-08-13 | `plugin/skills/mdp-solver/examples/mab/` |
+| `game2048` — the 2048 sliding-tile game (scoped subset) | 2026-09-01 | `plugin/skills/mdp-solver/examples/game2048/` |
+
+`game2048` was contributed and promoted in **one step** (PR #73) and so never
+appeared in the table above — the folder went straight to `examples/`. One of
+the four criteria was waived by maintainer decision rather than met — **no
+declared debt** — against which two things were owed: its §14.3 figure contract
+and its `discover` fitted rule. `examples/MANIFEST.md` records the waiver and
+what it costs, which is where a reader of the promoted folder will be looking.
+Waived is not foreclosed: the freeze bars research edits, so a spec-contract
+deliverable can still arrive through the entry's author later. Contribution and promotion staying
+separate decisions is still the norm; this was an exception, taken knowingly.
 
 Demotion is the same move in reverse, and is not a failure verdict: an
 example that no longer earns its place as a *few-shot exemplar* — too
