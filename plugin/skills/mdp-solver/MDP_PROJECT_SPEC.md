@@ -1,8 +1,8 @@
 # MDP Project Specification
 
 Canonical patterns for MDP simulation domains. Shipped conformant examples:
-`examples/inv_single` and `examples/dynamic_pricing`; hypothetical domains
-(a one-warehouse multi-retailer system, a tile-merging board game, …) are
+`examples/inv_single`, `examples/mab` and `examples/game2048`; hypothetical
+domains (a one-warehouse multi-retailer system, …) are
 described inline where a pattern needs an illustration richer than the
 examples provide. All new MDP domains should follow these conventions.
 

@@ -403,11 +403,12 @@ continuous decision?" gates the bounds/masking question.)
 
 ## Phase B — build (gated stages)
 
-Pick few-shot exemplars by problem shape. Two ship with this plugin in the
+Pick few-shot exemplars by problem shape. Three ship with this plugin in the
 `examples/` directory beside this file (see `examples/MANIFEST.md`):
-`inv_single` two-step advance +
-episode-support demand + exact-DP baseline; `dynamic_pricing` continuous
-price control + decision-conditioned generator + exact-DP baseline. If the
+`inv_single` vector state + two-step advance + episode-support demand +
+exact-DP baseline; `mab` exploration/exploitation over an equivariant state +
+censored feedback + a fitted rule scored as a benchmark; `game2048` a
+variable, long horizon + board state + CNN extractor + action masking. If the
 current workspace contains other spec-conformant domains, prefer whichever
 matches the problem shape (multi-entity, discrete + action masking,
 deterministic dynamics + scenario-sampled instances, …); otherwise

@@ -104,8 +104,8 @@ stages:
 
 ```bash
 E=plugin/skills/mdp-solver/examples
-python -m mdp_conformance $E/inv_single $E/dynamic_pricing $E/mab   # generated-code shape
-python -m mdp_ir.laws     $E/inv_single $E/dynamic_pricing $E/mab   # IR execution semantics
+python -m mdp_conformance $E/inv_single $E/mab $E/game2048   # generated-code shape
+python -m mdp_ir.laws     $E/inv_single $E/mab $E/game2048   # IR execution semantics
 python -m mdp_ir.differential $E/inv_single/inv_single_schema.json --all-instances --episodes 40
 ```
 
@@ -119,9 +119,12 @@ Under `plugin/skills/mdp-solver/examples/`:
 
 - `inv_single` — single-echelon inventory control with stochastic
   lead times (two-step advance, episode-support demand, exact-DP benchmark).
-- `dynamic_pricing` — finite-horizon revenue management (Gallego &
-  van Ryzin 1994): continuous price control, decision-conditioned demand
-  generator, exact-DP benchmark; PPO reaches within 0.6% of DP.
+- `mab` — the standard multi-armed bandit: exploration against exploitation
+  over an equivariant state, with a per-episode latent inferred from censored
+  feedback, and a fitted structural rule scored as a first-class benchmark.
+- `game2048` — the 2048 sliding-tile game: a variable, long horizon over a
+  board state read by a CNN extractor, with masked discrete actions and no DP
+  to bracket the optimum.
 
 ## License
 

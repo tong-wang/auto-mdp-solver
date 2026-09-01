@@ -1,6 +1,6 @@
 """dynamic_pricing's own tests.
 
-    pytest plugin/skills/mdp-solver/examples/dynamic_pricing
+    pytest cases/dynamic_pricing
     python dynamic_pricing_test.py
 
 The generic guarantees live in ``mdp_ir.laws``; the sales/stock consistency

@@ -134,11 +134,11 @@ between stages, and what `$E/MANIFEST.md` lists per example:
 
 ```bash
 E=plugin/skills/mdp-solver/examples
-python -m mdp_conformance $E/inv_single $E/dynamic_pricing $E/mab  # generated-code shape
-python -m mdp_ir.laws     $E/inv_single $E/dynamic_pricing $E/mab  # IR execution semantics
+python -m mdp_conformance $E/inv_single $E/mab $E/game2048  # generated-code shape
+python -m mdp_ir.laws     $E/inv_single $E/mab $E/game2048  # IR execution semantics
 python -m mdp_ir $E/inv_single/inv_single_schema.json \
-                 $E/dynamic_pricing/dynamic_pricing_schema.json \
-                 $E/mab/mab_schema.json                             # IR validation
+                 $E/mab/mab_schema.json \
+                 $E/game2048/game2048_schema.json                   # IR validation
 python -m mdp_ir.differential $E/inv_single/inv_single_schema.json --all-instances --episodes 40
 ```
 

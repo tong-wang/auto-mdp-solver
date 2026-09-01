@@ -20,6 +20,7 @@ changes; **gated** is the tag its conformance has been carried through.
 |---|---|---|---|---|
 | `clark_scarf` — serial multi-echelon inventory | Andrew J. Clark and Herbert Scarf, "Optimal Policies for a Multi-Echelon Inventory Problem", *Management Science* **6**(4), 1960 — read from the 2004 reprint, *Management Science* **50**(12S), 1782–1790. Model is §2–§3, generalized to N levels. | A **coupled multi-stage decision**: N simultaneous shipments per period, each clipped to what its source holds, so the top of the chain anticipates demand it never sees. Carries an `exact` DP verified against a brute-force joint-state solve rather than taken on the theorems' word — the first draft was 30% suboptimal and entirely convincing. | v0.9.5 | v0.9.5 |
 | `fnv` — fresh-newsvendor sequential ordering under MMFE | Tong Wang, Atalay Atasu, Mümin Kurtuluş (2012), "A Multiordering Newsvendor Model with Dynamic Forecast Evolution", *Manufacturing & Service Operations Management* **14**(3), 472–484, [doi:10.1287/msom.1120.0387](https://doi.org/10.1287/msom.1120.0387). Forecast process is the MMFE of Heath & Jackson (1994). | **Progressive information revelation**: a martingale signal refines while cost rises, so the decision is when to commit rather than how much. Two demand transforms are separate leaderboards. Demoted from `examples/` 2026-08-13 for shipping no train/eval pair; the solve leg and record were contributed after. | v0.8.0 | v0.9.5 |
+| `dynamic_pricing` — finite-horizon revenue management | Guillermo Gallego and Garrett van Ryzin (1994), "Optimal Dynamic Pricing of Inventories with Stochastic Demand over Finite Horizons", *Management Science* **40**(8), 999–1020. | **Continuous price control over a depleting stock**: price sets the arrival intensity, so the decision shapes the demand it then faces, and the episode can end early when inventory hits zero. Carries an exact DP and the paper's fluid policies; PPO reaches within 0.6% of DP. Demoted from `examples/` 2026-09-01 — the shape is one `inv_single` already teaches, not a defect in the folder. Its numbers predate the version stamps and it carries no `built` tag, but unlike `adi_flex` it does meet the contract below. | — | v0.9.37 |
 | `adi_flex` — inventory with advance demand information and flexible delivery | Tong Wang and Beril L. Toktay (2008), "Inventory Management with Advance Demand Information and Flexible Delivery", *Management Science* **54**(4), 716–732 — §4. | A **joint ordering + allocation** decision under **demand crossover**: orders are seen when placed but due now, next period, or two out, so stock spent shipping a not-yet-due order may be stock an urgent one needs tomorrow — the manager chooses how much to buy *and* how much to withhold. The one case whose optimum is **bracketed rather than exact**: a relaxation bounds it from below and heuristics from above — the shape the `relaxed`/`feasible` roles exist for, though this case declares no `benchmarks` block and its four benchmark files carry no role. **Predates the contribution contract** — see below. | — | v0.9.5 |
 
 **No paper PDF is in this repository, at any revision** — the root
@@ -102,8 +103,10 @@ Criteria:
   baselines at the case's protocol. The deliverable may be the trained
   policy *or* its §14 readback: a fitted rule that outperforms its own net
   is a Stage-5 success, not a negative case.
-- **coverage** — the case covers a shape the manifest's coverage note lists
-  as missing, or is the regression case for an `mdp_ir` change.
+- **coverage** — the case teaches a shape none of the shipped examples
+  already teaches, or is the regression case for an `mdp_ir` change. The set
+  is deliberately small and there is no list of shapes it is trying to fill:
+  a candidate has to displace nothing and add something.
 - **no declared debt** — coverage debt is paid before the freeze; frozen
   entries take no research edits afterward.
 - **gates green** on the folder as it will ship, and the case README's
@@ -111,8 +114,8 @@ Criteria:
 
 Mechanics: move the whole folder — never copy; two folders with the same
 `{name}_*` modules break pytest's `prepend` import mode — add the manifest
-row, update its shape-coverage note, record the promotion in the table
-below, and bump the plugin version. See `examples/MANIFEST.md` for the
+row with what the entry teaches, extend its shape-coverage line, record the
+promotion in the table below, and bump the plugin version. See `examples/MANIFEST.md` for the
 scoped freeze (code/schema/tests frozen; campaign-record docs
 maintainer-curated).
 
@@ -137,6 +140,13 @@ specific a problem, or incomplete as a pipeline run — returns here, where it
 still gates. `fnv` moved back on 2026-08-13: at the time it shipped no
 train/eval pair, so it never exercised the solve leg, and its MMFE ordering
 problem is narrower than the shapes an exemplar should teach.
+
+`dynamic_pricing` moved back on 2026-09-01 for the other reason the paragraph
+above names — not incompleteness, which it never had, but redundancy: its
+continuous single-entity control is the shape `inv_single` teaches, and a
+few-shot set is stronger at three distinct shapes than at four overlapping
+ones. It arrives here complete, with its exact DP, its fluid benchmarks and a
+train/eval pair, and it gates unchanged.
 
 That first reason no longer holds — PR #15 contributed the solve leg, the
 campaign record and a §14 readback that recovers the paper's structure, and

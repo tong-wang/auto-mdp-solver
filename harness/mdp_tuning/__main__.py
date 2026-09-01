@@ -5,10 +5,10 @@
         [--train-arg KEY=VALUE ...] [--eval-arg KEY=VALUE ...]
 
 Examples:
-    python -m mdp_tuning plugin/skills/mdp-solver/examples/dynamic_pricing -s simple \
+    python -m mdp_tuning cases/dynamic_pricing -s simple \
         --metric revenue_mean --n-trials 25
-    python -m mdp_tuning plugin/skills/mdp-solver/examples/dynamic_pricing --show-space  # what would be tuned
-    python -m mdp_tuning plugin/skills/mdp-solver/examples/dynamic_pricing -s simple --summary-only
+    python -m mdp_tuning cases/dynamic_pricing --show-space  # what would be tuned
+    python -m mdp_tuning cases/dynamic_pricing -s simple --summary-only
 
 Optuna TPE proposes each trial from the algorithm-level space (spaces.py)
 restricted to the knobs the domain's train script exposes. Each trial shells

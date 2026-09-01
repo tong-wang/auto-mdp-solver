@@ -13,7 +13,7 @@ for a trained generator.
 
 ```bash
 # from the repo root, using the project venv
-.venv/bin/python -m mdp_conformance plugin/skills/mdp-solver/examples/inv_single plugin/skills/mdp-solver/examples/dynamic_pricing
+.venv/bin/python -m mdp_conformance plugin/skills/mdp-solver/examples/inv_single plugin/skills/mdp-solver/examples/mab plugin/skills/mdp-solver/examples/game2048
 
 # no args: auto-discover every sibling domain (any dir with a *_mdp.py)
 .venv/bin/python -m mdp_conformance
