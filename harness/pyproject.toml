@@ -49,4 +49,4 @@ Repository = "https://github.com/tong-wang/auto-mdp-solver"
 Issues = "https://github.com/tong-wang/auto-mdp-solver/issues"
 
 [tool.setuptools]
-packages = ["mdp_ir", "mdp_conformance", "mdp_gates", "mdp_tuning"]
+packages = ["mdp_ir", "mdp_conformance", "mdp_gates", "mdp_tuning", "mdp_stage"]
