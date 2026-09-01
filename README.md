@@ -57,19 +57,59 @@ RL policy from a verbal description of a dynamic decision-making problem**:
    and scored paired against the reference), and a `{domain}_policy.py`
    deployment wrapper — with an executable gate between every stage.
 
-## Components
+## Repository layout
 
-Two independently-published artifacts live in their own subtrees:
+The repo carries **two independently-published artifacts** in their own
+subtrees, plus root-level material for public browsers. The two packaging
+systems are disjoint: the PyPI wheel contains only the `harness/` packages;
+the plugin ships only `plugin/`'s recognized dirs (so `examples/` must live
+**inside** `plugin/skills/mdp-solver/` to ship). Neither looks at the
+other's metadata. `cases/` and the root-level material ship in neither —
+they exist for the public GitHub repo.
+
+### `harness/` — the PyPI package `auto-mdp-solver`
+
+Has its own `pyproject.toml`; deliberately torch-free at base install (the
+`[domain]` extra adds the training stack).
 
 | path | role |
 |---|---|
-| `harness/` | **the PyPI package** `auto-mdp-solver`: `mdp_ir` (IR schema + interpreter + differential runner), `mdp_conformance` (architecture/RNG/purity checks), `mdp_gates` (statistical eval gates, ≥ 2 SE), `mdp_tuning` (Optuna driver) |
-| `plugin/` | **the Claude Code plugin**: `skills/mdp-solver/` (the pipeline conductor + canonical spec `MDP_PROJECT_SPEC.md` + annotated IR reference `MDP_IR_SAMPLE.md`), six step skills (`mdp-formalize` … `mdp-package`) for entering the pipeline at any seam, and, shipped alongside, `examples/` — frozen exemplar domains that double as the regression suite (`examples/MANIFEST.md`) |
-| `cases/` | end-to-end pipeline test cases (browse on GitHub) |
-| `README.md`, `docs/` | public landing + guides |
+| `harness/mdp_ir/` | IR schema (pydantic), interpreter, differential runner |
+| `harness/mdp_ir/layering.py` | catalog ⊕ selection resolution + symbolic bounds (one `{domain}_schema.json`; each uncertainty slot declares a `candidates` pool + `default`, instances select candidates and override constants; `load_ir(path, instance=, select=)` resolves, so nothing downstream sees the catalog) |
+| `harness/mdp_ir/families.py` | distribution-family registry: derived `mean`/`max`/`min`/`is_discrete` (with latent composition) that symbolic bounds resolve against — never hand-authored per domain |
+| `harness/mdp_ir/runtime.py` | generic generator runtime: the one family→numpy sampling dispatch (shared with the interpreter) + `FamilyGenerator`, a spec-§4.2 generator over any registered family; domains bridge it once per slot, so a new catalog candidate needs zero new domain Python |
+| `harness/mdp_conformance/` | spec-conformance harness (`python -m mdp_conformance <domain-dir>`) |
+| `harness/mdp_gates/` | eval-gate comparison (`python -m mdp_gates`) |
+| `harness/mdp_tuning/` | Optuna tuning driver (`python -m mdp_tuning <domain-dir> ...`) |
+| `harness/mdp_stage/` | pipeline entry gates (`python -m mdp_stage <domain-dir> [--for <op>]`) — the split ops' executable entry re-validation, incl. the always-on freeze check against `{name}.signoff.json` |
 
-The two packaging systems are disjoint: `pip install` sees only `harness/`; the
-plugin ships only `plugin/`.
+### `plugin/` — the Claude Code plugin
+
+`.claude-plugin/plugin.json` + `skills/`; the plugin is the versioned unit
+(every release is a `v<version>` tag matching `plugin.json`).
+
+| path | role |
+|---|---|
+| `plugin/skills/mdp-solver/SKILL.md` | the pipeline **conductor** — dispatches the six step skills with `mdp_stage` gates between (split per `AGENT_PLAN.md` §15) |
+| `plugin/skills/mdp-{formalize,build,solve,escalate,interpret,package}/` | the six **step skills** — one op each, cut at durable-artifact seams, independently entrant; they read the shared corpus from `../mdp-solver/` |
+| `plugin/skills/mdp-solver/{ENVIRONMENT,INTERVIEW,CONTRACTS}.md` | the split's shared corpus: interpreter/budgets/run discipline; the five interview rules; the op contracts + the two single-writer state files (`{name}.signoff.json`, `{name}.runplan.json`) |
+| `plugin/skills/mdp-solver/MDP_PROJECT_SPEC.md` | **canonical** per-domain architecture/naming/RNG/script conventions |
+| `plugin/skills/mdp-solver/MDP_IR_SAMPLE.md` | annotated MDP-IR reference |
+| `plugin/skills/mdp-solver/DOMAIN_CLAUDE_TEMPLATE.md` | template for the per-domain `{domain}/CLAUDE.md` emitted at Stage 1 — the folder's *upward* pointers: governing specs, provenance, hard rules, gate commands, file hygiene (spec §1.3) |
+| `plugin/skills/mdp-solver/DOMAIN_README_TEMPLATE.md` | template for the per-domain `{domain}/README.md` emitted at Stage 1 — the folder's *across* view: the problem, layout, results by research-question tier, technical appendix (spec §1.3) |
+| `plugin/skills/mdp-solver/ESCALATION_LOG_GUIDE.md` | **canonical** campaign-log format (§MAP, §FRAME-CHANGELOG, §IR-CHANGELOG, §CONFIG-REGISTRY, §LEDGER) and the §10 playbook digest — a governing doc for every domain folder, so it ships with the plugin; its section numbers are cited from case logs and are append-only |
+| `plugin/skills/mdp-solver/examples/` | frozen exemplar domains — ship with the plugin as few-shot exemplars **and** are the regression suite (see `examples/MANIFEST.md` there) |
+| `plugin/skills/mdp-solver/PLAYBOOK.md` | shipped escalation-playbook **index** — maintainer-curated; links into promoted examples' in-folder `PLAYBOOK.md`s (digest entries per ESCALATION_LOG_GUIDE §10) |
+| `plugin/skills/mdp-contribute/SKILL.md` | the contribution skill (case PRs with the playbook riding in the folder / re-skinned cases; a case too sensitive even re-skinned is not contributed; `.github/workflows/case-gates.yml` is its CI counterpart) |
+| `plugin/skills/mdp-propose/SKILL.md` | the proposal skill — mid-campaign spec/schema/process extension proposals, one `upstream-proposal` issue each; maintainer disposition accept (case becomes the regression) / reject / defer, recorded on the issue |
+
+### Root
+
+| path | role |
+|---|---|
+| `.claude-plugin/marketplace.json` | marketplace manifest (points at `./plugin`) |
+| `cases/` | auto-solve test cases: one folder per case, built end-to-end by the skill |
+| `AGENT_PLAN.md`, `AGENT_COMPETITION_PLAN.md`, `SOLVE_LEVELS_PLAN.md`, `IR_LAYERING_PLAN.md` | design records — architecture decisions and their reasons, kept current as they execute |
 
 ## Install
 
