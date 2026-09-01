@@ -811,7 +811,10 @@ Separately from distillation: walls hit **mid-campaign** — a spec/schema/
 process gap the campaign had to work around — are filed when fresh via
 **mdp-propose** (`UPSTREAM_PROPOSAL_<slug>.md` → one issue each), never
 batched to case close; a proposal is pinned against a spec version and goes
-stale.
+stale. The draft is scratch and the issue is the record: the ledger entry that
+hit the wall carries the issue URL, and the maintainer's disposition when it
+lands — which is what lets the campaign tell a filed proposal from a forgotten
+one without keeping a tracked copy that cannot follow the issue.
 
 ## 11. Template
 

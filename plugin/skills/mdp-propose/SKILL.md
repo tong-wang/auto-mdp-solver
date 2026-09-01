@@ -6,7 +6,8 @@ description: >
   any downstream project, the moment a campaign hits a wall the current
   version cannot express or mandates the wrong thing. Use when the user says
   "propose this upstream", "file a proposal", "this needs a spec/schema
-  change", or when UPSTREAM_PROPOSAL_*.md drafts exist in the project folder.
+  change", or when UPSTREAM_PROPOSAL_*.md drafts exist in the project's
+  scratch/ folder.
   One GitHub issue per proposal; nothing is sent without the user's explicit
   approval of the final body.
 ---
@@ -28,8 +29,11 @@ issue body and approves it before any `gh issue create` runs.
 
 ## 1. Draft locally
 
-One `UPSTREAM_PROPOSAL_<slug>.md` per independent change, in the project
-folder, git-tracked. Required sections:
+One `UPSTREAM_PROPOSAL_<slug>.md` per independent change, in `scratch/` and
+**never tracked** — a draft is working material, the same shape as a round
+plan. Once the issue exists the issue *is* the proposal, and a tracked local
+copy is a second source of truth that cannot follow the issue's edits, its
+disposition, or its rejection. Required sections:
 
 - **Target** — the upstream file or spec section (e.g. `mdp_ir/schema.py
   StateVariable`, spec §8.6), and a version pin in the header:
@@ -70,8 +74,11 @@ projects — run the same three-way disposition before the issue is filed.
   independently; a batch issue can only be closed once.
 - Title `proposal: <slug> — <one-line gap>`, label `upstream-proposal` (omit
   if the repo lacks it), body = the draft.
-- On confirm, send; then flip the local draft's status line to
-  `proposed — <issue URL>` so the folder shows what is filed.
+- On confirm, send; then **record the issue URL in `ESCALATION.md`** — on the
+  ledger entry that hit the wall, where the disposition lands when it arrives —
+  and delete the draft. The issue is the proposal; the log is the campaign's
+  memory that it filed one. A folder that "shows what is filed" is showing a
+  copy that will not move when the issue does.
 
 ## 3. What happens upstream (the proposer's contract)
 

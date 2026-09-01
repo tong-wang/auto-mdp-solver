@@ -118,9 +118,9 @@ the answer — that is what makes them safe to keep current.
   §8.4). It re-bases every Δ(L2−L1) above it, so it takes a logged basis and
   a ledger entry — see spec §8.6 for when re-deriving is the right move.
 - **A deliberate deviation from the spec is recorded, not silent** — in the
-  code comment, in the log, and as an upstream proposal
-  (`UPSTREAM_PROPOSAL_*.md`, filed via the mdp-propose skill) if the spec
-  should change.
+  code comment, in `ESCALATION.md`, and, if the spec should change, as an
+  upstream issue filed via the mdp-propose skill. The issue is the record and
+  the log carries its URL; the draft behind it is scratch (see File hygiene).
 
 ## Gate commands
 
@@ -142,13 +142,14 @@ pytest {domain}_test.py
 A new file belongs in `{domain}/` only if it is (a) spec-§1 layout, (b) an
 implementation a finding cites and someone must re-run to reproduce it
 (probes, extra gates), or (c) a campaign document (`README`, `ESCALATION`,
-`INTERPRET`, `PLAYBOOK`, `UPSTREAM_PROPOSAL_*`). **Everything else goes to
-`scratch/` (gitignored): launchers, monitors, one-off checks, throwaway
-analysis. All output goes to `results/` (gitignored).**
+`INTERPRET`, `PLAYBOOK`). **Everything else goes to `scratch/` (gitignored):
+launchers, monitors, one-off checks, throwaway analysis. All output goes to
+`results/` (gitignored).**
 
-**Round plans are never tracked.** A `*_PLAN.md` lives in `scratch/` while
-it is being drafted AND while it is being executed; findings go into
-`ESCALATION.md` and `README.md` **as they land**, and the plan is deleted
+**Round plans and upstream-proposal drafts are never tracked.** A `*_PLAN.md`
+lives in `scratch/` while it is being drafted AND while it is being executed;
+findings go into `ESCALATION.md` and `README.md` **as they land**, and the
+plan is deleted
 once written up. If a plan is the only place a result exists, that is a bug
 in `ESCALATION.md`. **The probe a plan drives is the opposite — it stays,
 permanently**: an escalation entry cites numbers that only exist if the code
@@ -158,6 +159,13 @@ escalation entry that cites it** — `git log ESCALATION.md` then shows each
 finding beside the code that produced it. Design rationale that must outlive
 the round has two tracked homes, neither of them the plan: the escalation
 entry and the probe's module docstring.
+
+An `UPSTREAM_PROPOSAL_*.md` is the same shape and for the same reason: it is
+drafted in `scratch/`, and once the mdp-propose skill files the issue, the
+issue is the proposal — the draft goes, and `ESCALATION.md` carries the issue
+URL and, later, the maintainer's disposition. A proposal is pinned to a spec
+version and goes stale; a tracked copy goes stale *silently*, which is how a
+folder ends up asserting a claim upstream has already rejected.
 
 Check with `git status --short {domain}/`: untracked files should be rare
 and deliberate.
