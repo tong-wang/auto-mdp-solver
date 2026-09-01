@@ -90,7 +90,7 @@ Has its own `pyproject.toml`; deliberately torch-free at base install (the
 
 | path | role |
 |---|---|
-| `plugin/skills/mdp-solver/SKILL.md` | the pipeline **conductor** — dispatches the six step skills with `mdp_stage` gates between (split per `AGENT_PLAN.md` §15) |
+| `plugin/skills/mdp-solver/SKILL.md` | the pipeline **conductor** — dispatches the six step skills with `mdp_stage` gates between |
 | `plugin/skills/mdp-{formalize,build,solve,escalate,interpret,package}/` | the six **step skills** — one op each, cut at durable-artifact seams, independently entrant; they read the shared corpus from `../mdp-solver/` |
 | `plugin/skills/mdp-solver/{ENVIRONMENT,INTERVIEW,CONTRACTS}.md` | the split's shared corpus: interpreter/budgets/run discipline; the five interview rules; the op contracts + the two single-writer state files (`{name}.signoff.json`, `{name}.runplan.json`) |
 | `plugin/skills/mdp-solver/MDP_PROJECT_SPEC.md` | **canonical** per-domain architecture/naming/RNG/script conventions |
@@ -109,7 +109,6 @@ Has its own `pyproject.toml`; deliberately torch-free at base install (the
 |---|---|
 | `.claude-plugin/marketplace.json` | marketplace manifest (points at `./plugin`) |
 | `cases/` | auto-solve test cases: one folder per case, built end-to-end by the skill |
-| `AGENT_PLAN.md`, `AGENT_COMPETITION_PLAN.md`, `SOLVE_LEVELS_PLAN.md`, `IR_LAYERING_PLAN.md` | design records — architecture decisions and their reasons, kept current as they execute |
 
 ## Install
 

@@ -43,9 +43,11 @@ restate:
   entry gates (`python -m mdp_stage`), and the two single-writer state files.
 - `plugin/skills/mdp-solver/examples/MANIFEST.md` — what each frozen example
   teaches and the gate lines it must keep green.
-- `AGENT_PLAN.md`, `SOLVE_LEVELS_PLAN.md`, `IR_LAYERING_PLAN.md`,
-  `AGENT_COMPETITION_PLAN.md` (repo root) — design records; read before
-  resuming the work they pin.
+- `scratch/{AGENT_PLAN,SOLVE_LEVELS_PLAN,IR_LAYERING_PLAN,AGENT_COMPETITION_PLAN}.md`
+  — design records; read before resuming the work they pin. **Untracked**
+  (`scratch/` is gitignored; this checkout holds the only current copies —
+  never `git clean -fdX` here), though spec/guide/code still cite their
+  §-numbers, which stay append-only like the rest.
 
 ## Rules
 
