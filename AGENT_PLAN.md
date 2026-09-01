@@ -146,7 +146,7 @@ Rules:
     too (sudoku: budget exhausted without clearing the bar → negative-case entry).
     The trace convention that feeds it — MAP (typed views, revised in place) +
     FRAME-CHANGELOG + LEDGER, with the no-run-without-an-address rule — is specified in
-    `ESCALATION_LOG_GUIDE.md` (repo root; trial as of 2026-07-24, to be validated on a
+    `ESCALATION_LOG_GUIDE.md` (ships with the plugin; trial as of 2026-07-24, to be validated on a
     live project before promotion into the plugin). Agent-side enforcement is
     three-tier: playbook instruction (the log *is* the brain's serialized diagnosis
     state, so agents need it intrinsically for resume/cross-cell view) → a

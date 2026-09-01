@@ -203,7 +203,7 @@ and must contain the derived point.**
 |---|---|---|
 | level definitions, diagnosis rules, L0 conventions, attribution chain | `SKILL.md` Phase B (+ pointer added in `AGENT_PLAN.md` §solve) | plugin doc |
 | L1 derivation table + vec-env contract + selection protocol | `MDP_PROJECT_SPEC.md`, new subsection under §8 (+ §8.3 VecNormalize-gamma edit; §9 eval scores with β; RNG rules gain the episode-seed idiom) | plugin doc (spec) |
-| ledger addresses gain a level tag | `ESCALATION_LOG_GUIDE.md` (on trial) | root doc |
+| ledger addresses gain a level tag | `ESCALATION_LOG_GUIDE.md` (on trial) | plugin doc |
 | β field `objective.discount_factor` | `harness/mdp_ir/schema.py` (+ `MDP_IR_SAMPLE.md`, Phase A interview question in `SKILL.md`) | **schema — additive** (default 1.0); coordinate downstream repos before release |
 | episode-seed fix | spec RNG rules + the frozen example gyms (spec-required edit — allowed under the freeze rule; re-run manifest gates) + train-script template | plugin doc + frozen examples |
 | `--n-envs`, required `--net_arch` dest, EvalCallback machinery, `stats_window_size` | spec §8 script conventions + example train scripts | plugin doc + examples |
