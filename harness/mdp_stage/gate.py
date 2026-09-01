@@ -23,7 +23,7 @@ from mdp_ir.laws import resolve_schema
 from mdp_ir.schema import MdpIR, load_ir
 
 _FAILING = {"FAIL", "ERROR"}
-_ICON = {"PASS": "PASS", "FAIL": "FAIL", "SKIP": "SKIP", "ERROR": "ERR "}
+_ICON = {"PASS": "PASS", "FAIL": "FAIL", "WARN": "WARN", "SKIP": "SKIP", "ERROR": "ERR "}
 
 # episodes per differential run at the solve gate — the skill's Stage-1 gate
 # figure, not the differential CLI's own default (20): the gate re-runs the
@@ -234,6 +234,29 @@ def check_baselines(ctx: DomainContext) -> GateResult:
     )
 
 
+def _qualifying_runs(rdir: Path) -> list[Path]:
+    """Run dirs under ``results/{target}/`` (not ``benchmark/``) holding both
+    a model and an eval TSV."""
+    return [
+        d for d in sorted(rdir.iterdir())
+        if d.is_dir() and d.name != "benchmark"
+        and any(d.glob("*.zip")) and any(d.glob("*.tsv"))
+    ]
+
+
+def _recorded_fingerprint(run_dir: Path) -> str | None:
+    """The ``ir_mdp_fingerprint`` a run's args log recorded at launch
+    (spec §8.4 provenance keys), or None for a pre-provenance run."""
+    logs = sorted(run_dir.glob("*_args.txt"))
+    if not logs:
+        return None
+    for line in logs[0].read_text().splitlines():
+        key, _, value = line.partition(":")
+        if key.strip() == "ir_mdp_fingerprint":
+            return value.strip() or None
+    return None
+
+
 def check_rl_artifacts(ctx: DomainContext) -> GateResult:
     """At least one trained run: a run dir under ``results/{target}/`` (not
     ``benchmark/``) holding a model and its eval TSV."""
@@ -242,11 +265,7 @@ def check_rl_artifacts(ctx: DomainContext) -> GateResult:
         return GateResult("rl.artifacts", "SKIP", "no readable run plan names a target")
     if not rdir.is_dir():
         return GateResult("rl.artifacts", "FAIL", f"{rdir} does not exist")
-    runs = [
-        d for d in sorted(rdir.iterdir())
-        if d.is_dir() and d.name != "benchmark"
-        and any(d.glob("*.zip")) and any(d.glob("*.tsv"))
-    ]
+    runs = _qualifying_runs(rdir)
     if not runs:
         return GateResult(
             "rl.artifacts", "FAIL",
@@ -256,6 +275,50 @@ def check_rl_artifacts(ctx: DomainContext) -> GateResult:
         "rl.artifacts", "PASS", f"{len(runs)} run(s): "
         + ", ".join(d.name for d in runs[:4]) + ("…" if len(runs) > 4 else ""),
     )
+
+
+def check_rl_current(ctx: DomainContext) -> GateResult:
+    """Trained artifacts belong to the model as it stands NOW. Every run's
+    args log records ``ir_mdp_fingerprint`` at launch (spec §8.4); comparing
+    it to the current fingerprint catches the drift the freeze check alone
+    cannot: a legitimate re-freeze (formalize re-confirmed, sign-off
+    rewritten) leaves every op unblocked while the runs on disk still answer
+    the *previous* model's question. Stale-but-accompanied is a warning —
+    old arms are legitimate history; all-stale is a FAIL — there is nothing
+    current to read."""
+    rdir = ctx.results_dir()
+    if rdir is None or not rdir.is_dir():
+        return GateResult("rl.current", "SKIP", "no run tree to read")
+    runs = _qualifying_runs(rdir)
+    if not runs:
+        return GateResult("rl.current", "SKIP", "no qualifying runs to date")
+    try:
+        current = ctx.ir.mdp_fingerprint()
+    except Exception as exc:
+        return GateResult("rl.current", "FAIL", f"{type(exc).__name__}: {exc}")
+    recorded = {d.name: _recorded_fingerprint(d) for d in runs}
+    stale = sorted(n for n, fp in recorded.items() if fp and fp != current)
+    fresh = sorted(n for n, fp in recorded.items() if fp == current)
+    unknown = sorted(n for n, fp in recorded.items() if fp is None)
+    if stale and not fresh and not unknown:
+        return GateResult(
+            "rl.current", "FAIL",
+            f"every run predates the current mdp block ({current}): "
+            + ", ".join(stale) + " — retrain before reading these artifacts",
+        )
+    if stale:
+        return GateResult(
+            "rl.current", "WARN",
+            f"stale run(s) from a superseded mdp block: {', '.join(stale)}"
+            " — select and report only from current runs",
+        )
+    if unknown and not fresh:
+        return GateResult(
+            "rl.current", "WARN",
+            "runs record no ir_mdp_fingerprint (pre-provenance) — currency "
+            "unverifiable; treat with care",
+        )
+    return GateResult("rl.current", "PASS", f"all runs match {current}")
 
 
 def check_escalation_log(ctx: DomainContext) -> GateResult:
@@ -370,11 +433,13 @@ OPS: dict[str, list] = {
     "build": list(_FREEZE_CORE),
     "solve": _FREEZE_CORE + [check_conformance, check_laws, check_differential],
     "escalate": _FREEZE_CORE
-    + [check_runplan, check_baselines, check_rl_artifacts, check_escalation_log],
+    + [check_runplan, check_baselines, check_rl_artifacts, check_rl_current,
+       check_escalation_log],
     "interpret": _FREEZE_CORE
-    + [check_runplan, check_rl_artifacts, check_interpret_owed],
+    + [check_runplan, check_rl_artifacts, check_rl_current,
+       check_interpret_owed],
     "package": _FREEZE_CORE
-    + [check_runplan, check_baselines, check_rl_artifacts],
+    + [check_runplan, check_baselines, check_rl_artifacts, check_rl_current],
 }
 
 # checks whose cost is a training-gate re-run, listed so the table can say

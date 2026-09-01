@@ -140,6 +140,8 @@ def test_package_entry_passes_with_full_artifact_tree(tmp_path, ir_doc, capsys):
     run.mkdir()
     (run / "model.zip").write_text("")
     (run / "tiny_ppo_eval_base.tsv").write_text("x\n")
+    fp = load_ir(d / "tiny_schema.json").mdp_fingerprint()
+    (run / "base_ppo_args.txt").write_text(f"ir_mdp_fingerprint: {fp}\n")
     results, code = run_gate(d, "package")
     assert code == 0
     assert set(_statuses(results).values()) == {"PASS"}
@@ -153,6 +155,55 @@ def test_one_baseline_tsv_is_not_enough(tmp_path, ir_doc, capsys):
     results, code = run_gate(d, "package")
     assert code == 1
     assert _statuses(results)["baselines.tsv"] == "FAIL"
+
+
+# -- artifact currency: runs must belong to the CURRENT mdp block ------------
+
+
+def _run_with_fp(d, name, fp):
+    run = d / "results" / "base" / name
+    run.mkdir(parents=True, exist_ok=True)
+    (run / "model.zip").write_text("")
+    (run / "eval.tsv").write_text("x\n")
+    if fp is not None:
+        (run / "base_ppo_args.txt").write_text(f"seed: 1\nir_mdp_fingerprint: {fp}\n")
+    return run
+
+
+def test_all_runs_stale_after_refreeze_blocks(tmp_path, ir_doc, capsys):
+    """The freeze check alone misses this: formalize legitimately re-confirms
+    (sign-off rewritten, every gate unblocked) while the runs on disk still
+    answer the previous model's question."""
+    from mdp_stage.gate import check_rl_current
+    d = _with_runplan(_write_domain(tmp_path, _confirm_all(ir_doc)))
+    _run_with_fp(d, "obs_vec", "000000000000")  # not the current fingerprint
+    r = check_rl_current(DomainContext(d))
+    assert r.status == "FAIL"
+    assert "retrain" in r.detail
+
+
+def test_stale_beside_current_warns_but_does_not_block(tmp_path, ir_doc, capsys):
+    from mdp_stage.gate import check_rl_current
+    d = _with_runplan(_write_domain(tmp_path, _confirm_all(ir_doc)))
+    fp = load_ir(d / "tiny_schema.json").mdp_fingerprint()
+    _run_with_fp(d, "old_arm", "000000000000")
+    _run_with_fp(d, "new_arm", fp)
+    r = check_rl_current(DomainContext(d))
+    assert r.status == "WARN" and "old_arm" in r.detail
+    bench = d / "results" / "base" / "benchmark"
+    bench.mkdir(parents=True)
+    (bench / "a.tsv").write_text("x\n")
+    (bench / "b.tsv").write_text("x\n")
+    _, code = run_gate(d, "package")
+    assert code == 0  # WARN does not fail the gate
+
+
+def test_pre_provenance_runs_warn_unverifiable(tmp_path, ir_doc):
+    from mdp_stage.gate import check_rl_current
+    d = _with_runplan(_write_domain(tmp_path, _confirm_all(ir_doc)))
+    _run_with_fp(d, "obs_vec", None)  # no args log at all
+    r = check_rl_current(DomainContext(d))
+    assert r.status == "WARN" and "unverifiable" in r.detail
 
 
 # -- interpret informational branch ------------------------------------------

@@ -701,7 +701,15 @@ its upstream gate at entry" (§4). This is the piece the mode-2 dispatcher
 (§6) reuses verbatim as its admission check. The always-on freeze check —
 `signoff.mdp_fingerprint == mdp_fingerprint()` at every op ≥ build — closes a
 hole the monolith had: nothing previously detected a post-freeze `mdp` edit
-outside one conversation's memory. Judgment stays out: the tool checks
+outside one conversation's memory. Its complement (added 2026-09-01, same
+day): `rl.current` at the escalate/interpret/package entries compares each
+run's launch-recorded `ir_mdp_fingerprint` (spec §8.4 provenance) to the
+current fingerprint — catching what the freeze check alone cannot, a
+legitimate *re*-freeze that leaves every gate open while the runs on disk
+still answer the previous model's question (all-stale = FAIL; stale beside
+current = WARN). Baselines record no fingerprint, so their staleness after a
+re-freeze stays a discipline rule (re-run Stage 3), not a check — a
+candidate future spec item. Judgment stays out: the tool checks
 artifacts and verdicts, never "is the gap big enough to escalate."
 
 ### 15.5 Conductor mechanics
