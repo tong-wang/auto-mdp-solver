@@ -1,0 +1,479 @@
+{
+  "ir_version": "0.4",
+  "seed_scheme": "v2",
+  "domain": {
+    "name": "game2048",
+    "class_prefix": "Game2048",
+    "one_line": "The 2048 sliding-tile game as a finite-horizon MDP: slide the board in one of four directions, equal tiles merge and double, a new tile spawns into a random empty cell after every board-changing slide, and the episode ends when no slide is legal.",
+    "problem_class": "game_playing"
+  },
+  "mdp": {
+    "horizon": {
+      "T": "T_cap",
+      "period_indexing": "0-based"
+    },
+    "entity_structure": {
+      "kind": "single",
+      "entity_id_in_seed": false
+    },
+    "state_variables": [
+      {
+        "name": "period",
+        "role": "time_index",
+        "type": "int",
+        "bounds": [
+          0,
+          8000
+        ],
+        "observability": "observable",
+        "desc": "moves taken so far, counting illegal (no-op) slides; the episode is truncated at T_cap"
+      },
+      {
+        "name": "board",
+        "role": "core",
+        "type": "int_vector",
+        "length": "n_cells",
+        "element_bounds": [
+          0,
+          131072
+        ],
+        "observability": "observable",
+        "desc": "the grid flattened row-major, length n_cells = grid_size^2; cell (r,c) is index r*grid_size + c, 0 = empty. The gym reshapes it to grid_size x grid_size for the CNN observation modes."
+      },
+      {
+        "name": "spawn_count",
+        "role": "core",
+        "type": "int",
+        "bounds": [
+          0,
+          8001
+        ],
+        "observability": "observable",
+        "desc": "tiles spawned so far. Advances only on a board-changing slide, and keys the spawn draws — so a given episode seed produces the same tile sequence no matter how many illegal slides the agent wastes, which is what makes the masked and free action modes comparable on shared seeds."
+      }
+    ],
+    "info_fields": [
+      {
+        "name": "gained",
+        "type": "float",
+        "desc": "2048 score earned by this slide: the sum of the values of the tiles it created (a merge producing v pays v). 0 on an illegal slide."
+      },
+      {
+        "name": "move_valid",
+        "type": "int",
+        "desc": "1 if the slide moved or merged something, 0 if it was illegal and left the board untouched"
+      },
+      {
+        "name": "spawned",
+        "type": "int",
+        "desc": "total value of tiles spawned this period: 0 after an illegal slide, 2 or 4 normally, and both opening tiles at period 0"
+      },
+      {
+        "name": "game_over",
+        "type": "int",
+        "desc": "1 once the board is full and no slide is legal — the absorbing state that ends the episode"
+      }
+    ],
+    "decisions": [
+      {
+        "name": "move",
+        "type": {
+          "value": "discrete",
+          "suggested": "discrete",
+          "source": "human_confirmed",
+          "rationale": "the game offers exactly four slides; there is nothing continuous to encode"
+        },
+        "dim": 1,
+        "bounds": {
+          "value": [
+            0,
+            3
+          ],
+          "suggested": [
+            0,
+            3
+          ],
+          "source": "human_confirmed",
+          "rationale": "0=Up, 1=Down, 2=Right, 3=Left — the full action set, not a scale guess"
+        },
+        "feasibility": [
+          "integer"
+        ],
+        "desc": "the direction to slide. Illegal slides are a no-op at this layer; whether the agent is prevented from choosing one is the gym's action_mode."
+      }
+    ],
+    "dynamics": {
+      "event_sequence": [
+        "I",
+        "M",
+        "S"
+      ],
+      "observation_point": "pre-move",
+      "transitions": [
+        {
+          "event": "I",
+          "guard": "period == 0",
+          "updates": [
+            "spawn_count = spawn_count + 1",
+            "cell ~ spawn_cell.draw",
+            "four ~ spawn_value.draw",
+            "tile = 2 + 2 * four",
+            "board[cell] = tile",
+            "spawned = spawned + tile"
+          ]
+        },
+        {
+          "event": "M",
+          "updates": [
+            "move_valid = board_changed(board, move)",
+            "gained = slide_score(board, move)",
+            "board = slide_board(board, move)"
+          ]
+        },
+        {
+          "event": "S",
+          "guard": "move_valid == 1",
+          "updates": [
+            "spawn_count = spawn_count + 1",
+            "cell ~ spawn_cell.draw",
+            "four ~ spawn_value.draw",
+            "tile = 2 + 2 * four",
+            "board[cell] = tile",
+            "spawned = spawned + tile"
+          ]
+        },
+        {
+          "event": "END_OF_PERIOD",
+          "updates": [
+            "game_over = is_game_over(board)",
+            "period = period + 1"
+          ]
+        }
+      ]
+    },
+    "objective": {
+      "sense": "maximize",
+      "discount_factor": 1.0,
+      "per_step_components": [
+        {
+          "name": "merge",
+          "expr": "gained",
+          "desc": "the game's own score for this move. Episode total = the final 2048 score."
+        }
+      ]
+    },
+    "invariants": [
+      {
+        "name": "sum_conserved",
+        "expr": "close(sum(board), sum(prev.board) + spawned)",
+        "desc": "sliding only rearranges and combines tiles — two 2s become one 4 — so the board total can change only by the tile that spawns"
+      },
+      {
+        "name": "illegal_move_scores_nothing",
+        "expr": "move_valid == 1 or close(gained, 0)",
+        "desc": "a slide that cannot move or merge anything earns no points"
+      },
+      {
+        "name": "illegal_move_spawns_nothing",
+        "expr": "t == 0 or move_valid == 1 or (close(sum(board), sum(prev.board)) and spawned == 0)",
+        "desc": "a slide that cannot move or merge anything leaves the board exactly as it was — no new tile. Period 0 is exempt because it also carries the opening spawn (the I event), which happens whether or not the first slide turns out to be legal."
+      },
+      {
+        "name": "game_over_needs_a_full_board",
+        "expr": "game_over == 0 or len(empty_cells(board)) == 0",
+        "desc": "the game can only be over when every cell is occupied; an empty cell always admits some slide"
+      },
+      {
+        "name": "score_cannot_exceed_the_board",
+        "expr": "gained <= sum(board)",
+        "desc": "every point scored came from tiles that were already on the board"
+      }
+    ],
+    "scenario": {
+      "constants": [
+        {
+          "name": "grid_size",
+          "value": 3,
+          "axis": "board",
+          "desc": "board dimension n; the board is n x n"
+        },
+        {
+          "name": "n_cells",
+          "value": 9,
+          "axis": "board",
+          "desc": "grid_size^2 — the flattened board length. Carried as its own constant because state_variables.length and initial_state's zeros() both need a resolvable name; every instance overrides it together with grid_size."
+        },
+        {
+          "name": "prob_4",
+          "value": 0.2,
+          "axis": "spawn",
+          "desc": "probability a spawned tile is a 4 rather than a 2; 0.2 is the standard game, 0.0 makes tile values deterministic"
+        },
+        {
+          "name": "T_cap",
+          "value": 2048,
+          "axis": "sizing",
+          "desc": "move cap = max(200, 2^(n_cells+2)). Masked play is bounded by (max terminal board sum)/2 <= 2^(n_cells+1) moves (every move spawns +2/+4 and slides conserve the sum), so this cap is >= 2x the theoretical limit at every scale and can never distort masked play; under the free action mode a policy that keeps choosing illegal slides never reaches game over, and the cap is what ends the episode. Recalibrated 2026-08-10 (IR-CHANGELOG F2): the old per-size values (1000/4000/8000) sat BELOW the natural bound at 3x3 (1023) and amputated ~94% of 4x4_0's 2-only world (~65.5k-move perfect game)."
+        },
+        {
+          "name": "invalid_penalty",
+          "value": 4.0,
+          "axis": "",
+          "desc": "points deducted per illegal slide by the gym's score_penalty reward mode. Shaping only — it is not part of the objective, so evaluation and every baseline still score pure merge points."
+        }
+      ],
+      "instances": {
+        "2x2_0": {
+          "grid_size": 2,
+          "n_cells": 4,
+          "prob_4": 0.0,
+          "T_cap": 200
+        },
+        "2x2_20": {
+          "grid_size": 2,
+          "n_cells": 4,
+          "T_cap": 200
+        },
+        "3x3_0": {
+          "prob_4": 0.0
+        },
+        "4x4_0": {
+          "grid_size": 4,
+          "n_cells": 16,
+          "prob_4": 0.0,
+          "T_cap": 262144
+        },
+        "4x4_20": {
+          "grid_size": 4,
+          "n_cells": 16,
+          "T_cap": 262144
+        },
+        "5x5_0": {
+          "grid_size": 5,
+          "n_cells": 25,
+          "prob_4": 0.0,
+          "T_cap": 134217728
+        },
+        "5x5_20": {
+          "grid_size": 5,
+          "n_cells": 25,
+          "T_cap": 134217728
+        }
+      }
+    },
+    "initial_state": {
+      "board": "zeros(n_cells)",
+      "spawn_count": 0
+    },
+    "uncertainty_slots": [
+      {
+        "name": "spawn_cell",
+        "interface": "SpawnCellGenerator",
+        "stream_id": 0,
+        "latent": false,
+        "stages": [
+          {
+            "name": "draw",
+            "realization": "keyed",
+            "key_exprs": [
+              "spawn_count"
+            ]
+          }
+        ],
+        "desc": "which empty cell the new tile lands in. Keyed on spawn_count rather than period because spawns are counted in board-changing slides, not in moves attempted.",
+        "default": "uniform_empty",
+        "candidates": {
+          "uniform_empty": {
+            "generator": "UniformEmptyCell",
+            "family": "categorical",
+            "settings": {
+              "values": "empty_cells(board)",
+              "probabilities": "uniform_probs(board)"
+            },
+            "is_discrete": true,
+            "desc": "uniform over the currently empty cells — a categorical whose SUPPORT depends on the state, resolved from the live namespace at draw time. The S event's move_valid guard is what guarantees the support is non-empty: a board-changing slide either merges (freeing a cell) or slides into one that was already free."
+          }
+        }
+      },
+      {
+        "name": "spawn_value",
+        "interface": "SpawnValueGenerator",
+        "stream_id": 1,
+        "latent": false,
+        "stages": [
+          {
+            "name": "draw",
+            "realization": "keyed",
+            "key_exprs": [
+              "spawn_count"
+            ]
+          }
+        ],
+        "desc": "whether the new tile is a 4 (1) or a 2 (0); the dynamics map it to the tile value with 2 + 2*four.",
+        "default": "bernoulli_4",
+        "candidates": {
+          "bernoulli_4": {
+            "generator": "Bernoulli4",
+            "family": "bernoulli",
+            "settings": {
+              "p": "prob_4"
+            },
+            "is_discrete": true,
+            "desc": "the standard game's 2-or-4 spawn. Drawn on its own stream so the tile's value and its position stay independent."
+          }
+        }
+      }
+    ],
+    "expr_builtins": [
+      {
+        "name": "slide_board",
+        "module": "game2048_board",
+        "desc": "the board after sliding a direction (unchanged if illegal)"
+      },
+      {
+        "name": "slide_score",
+        "module": "game2048_board",
+        "desc": "2048 points earned by a slide — the sum of the tiles it creates"
+      },
+      {
+        "name": "board_changed",
+        "module": "game2048_board",
+        "desc": "1 if a slide would move or merge anything, else 0"
+      },
+      {
+        "name": "empty_cells",
+        "module": "game2048_board",
+        "desc": "flat indices of the empty cells — the spawn draw's support"
+      },
+      {
+        "name": "uniform_probs",
+        "module": "game2048_board",
+        "desc": "uniform weights over the empty cells, aligned with empty_cells"
+      },
+      {
+        "name": "is_game_over",
+        "module": "game2048_board",
+        "desc": "1 when the board is full and no slide is legal"
+      }
+    ]
+  },
+  "gym": {
+    "observation_modes": [
+      {
+        "name": "vec",
+        "default": true,
+        "features": [
+          {
+            "ref": "board"
+          }
+        ]
+      },
+      {
+        "name": "grid",
+        "features": [
+          {
+            "ref": "board"
+          }
+        ]
+      },
+      {
+        "name": "onehot",
+        "features": [
+          {
+            "ref": "board"
+          }
+        ]
+      }
+    ],
+    "action_modes": [
+      {
+        "name": "masked",
+        "default": true,
+        "encodes": "move",
+        "type": "discrete",
+        "bounds": [
+          0,
+          3
+        ],
+        "transform": "",
+        "feasibility_strategy": "mask",
+        "desc": "MaskablePPO over the slides that actually change the board; valid_actions lives in the mdp layer (spec 7.1) and action_masks() delegates to it"
+      },
+      {
+        "name": "free",
+        "encodes": "move",
+        "type": "discrete",
+        "bounds": [
+          0,
+          3
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "all four slides always offered; an illegal one is a no-op that still consumes a move. Harder to learn — the cost of stalling arrives only through T_cap — which is what the score_penalty reward mode exists to test."
+      }
+    ],
+    "reward_modes": [
+      {
+        "name": "score",
+        "default": true,
+        "expr": "total",
+        "desc": "the objective itself: merge points this move (sense=maximize, no sign flip). Episode sum = the final 2048 score."
+      },
+      {
+        "name": "score_penalty",
+        "expr": "total - invalid_penalty * (1 - move_valid)",
+        "desc": "merge points minus a fixed deduction per illegal slide. Shaping for the free action mode: it makes wasting a move immediately and attributably costly instead of only distantly so. Scored runs still report pure merge points."
+      }
+    ],
+    "termination": {
+      "horizon_end": "truncated",
+      "early_terminated_when": "game_over == 1"
+    }
+  },
+  "rl": {
+    "requires_memory": {
+      "value": false,
+      "suggested": false,
+      "source": "human_confirmed",
+      "rationale": "fully observed: the board is the entire state and the agent sees all of it; nothing is hidden to infer"
+    },
+    "algo": "maskable_ppo",
+    "frame_stack": 1,
+    "obs_normalization": {
+      "enabled": false,
+      "rationale": "the observation distribution shifts continuously through an episode — tile magnitudes grow as the game progresses — so VecNormalize's running statistics chase a moving target instead of standardising a stationary one. The wrapper's log2 scaling puts the features on a comparable range without it."
+    }
+  },
+  "research_questions": {
+    "tier2": [
+      {
+        "stance": "discover",
+        "structure": "the crowned policy's own decision pattern",
+        "claim": "the best trained PPO policy has a describable structural form — a rule over board features that reproduces its decisions — recoverable from the trained net and scorable against it",
+        "instrument": "policy readback on the crowned artifact (game2048_interpret.py): feature regressions on the critic, counterfactual sweeps, and a fitted rule scored as a first-class §9 benchmark",
+        "priority": "primary"
+      },
+      {
+        "stance": "confirm",
+        "structure": "snake ordering — the monotone boustrophedon chain the strongest reference plays",
+        "claim": "the learned policy builds and maintains the snake ordering that the snake-leaf search reference uses",
+        "instrument": "snake-chain readback (snake_len and corner/monotonicity occupancy) on the crowned artifact, compared against the snake heuristic and the snake-leaf expectimax reference",
+        "priority": "primary"
+      }
+    ]
+  },
+  "assumptions_log": [
+    "OPENING TILE: the episode opens with ONE tile, spawned by the guarded `I` event at period 0 before the first slide, then a second tile spawns after that slide if it was legal. This follows the pre-IR domain (init_state spawned a single tile); the physical game opens with two. The IR cannot draw inside initial_state, so the opening spawn had to become a period-0 event either way.",
+    "MOVE ENCODING: 0=Up, 1=Down, 2=Right, 3=Left, carried over unchanged from the pre-IR domain.",
+    "OBSERVATION MODES ARE ENCODINGS OF ONE VARIABLE: vec, grid and onehot all reference the same `board` state variable and differ only in the tensor the wrapper builds from it — vec is the flat log2-scaled board (MlpPolicy), grid reshapes it to (1, grid_size, grid_size) log2-scaled, and onehot expands it to (K, grid_size, grid_size) binary planes with plane k marking tiles of value 2^k (both CnnPolicy). ObservationMode carries no desc field, so the distinction is recorded here and in the README rather than in the mode entries.",
+    "BOARD IS FLAT: the grid is a length-n_cells row-major vector at the mdp layer. The IR has no 2-D state variable; the 2-D shape is reconstructed in the gym for the CNN observation modes, where it belongs.",
+    "BOARD element_bounds IS A LITERAL, NOT SYMBOLIC: the exact ceiling is 2**n_cells (the largest tile an n x n board can hold), but that cannot be expressed. A bounds entry tracks per-instance overrides only when it is a BARE constant name — mdp_ir.layering._resolve_bounds defers those by exact string match and MdpBlock.decision_bounds resolves them per instance. Any ARITHMETIC on such a constant ('2 ** n_cells') is instead evaluated eagerly against the base constants at load time and frozen for every instance, silently: 2x2_20 and 5x5_20 both reported 512, the base 3x3 value. The bare form is unusable here besides, because StateVariable.element_bounds is typed list[float] and rejects the deferred string. A generous literal (131072 = 2**17) is therefore the honest choice; these bounds are metadata only — the gym sizes its own spaces from grid_size.",
+    "SPAWN KEYED ON spawn_count: spawn draws are `keyed` on spawn_count, not `period`, so the tile sequence for an episode seed is fixed regardless of how many illegal slides were attempted. Keeps the masked and free action modes comparable on shared seeds.",
+    "SPAWN POSITION IS STATE-DEPENDENT: the cell draw is a categorical whose support is `empty_cells(board)`, resolved from the live namespace at draw time. It is therefore NOT decision-path independent, and cannot be: which cells are free is exactly what the agent's moves determine. Only the seed key is path-independent.",
+    "TWO SPAWN STREAMS: position (stream 0) and value (stream 1) draw from separate streams rather than sharing one rng as the pre-IR generator did. Trajectories therefore differ from the February runs; nothing downstream depended on those.",
+    "T_cap IS A TRUNCATION, NOT THE PROBLEM: horizon_end is `truncated` because the game ends on its own at game_over. Under the masked action mode T_cap is slack; under the free mode it is what bounds a stalling policy.",
+    "INVALID-MOVE PENALTY IS GYM SHAPING: invalid_penalty appears only in the score_penalty reward mode, never in objective.per_step_components, so evaluation and every baseline score pure merge points regardless of how the policy was trained.",
+    "MERGE RULE: a tile formed by a merge cannot merge again within the same slide, and a line compresses toward the wall it travels to, resolving pairs from that wall outward ([2,2,2] slid left gives [4,2]).",
+    "SCORE DEFINITION: a merge producing a tile of value v pays v. This is the game's own score, and it is NOT the pre-IR domain's `sum` reward, which accumulated the change in board total and therefore measured survival (total spawned value) rather than play quality."
+  ]
+}
