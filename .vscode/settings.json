@@ -2,7 +2,7 @@
     // Keep the inotify watcher off the vendored/generated trees. .gitignore
     // does NOT exclude anything from the file watcher, and the inotify limit
     // is per-USER across every window and language server — so a second large
-    // workspace open alongside rl_test is what tips it over into
+    // workspace open alongside this one is what tips it over into
     // "Unable to watch for file changes". .venv here is ~3,400 directories.
     "files.watcherExclude": {
         "**/.venv/**": true,

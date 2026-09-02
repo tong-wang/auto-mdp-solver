@@ -7,7 +7,7 @@ plugin skill as the trace convention feeding the escalation playbook. Distilled 
 what worked — and what stayed invisible — in `topk_id` (EQUINET.md, BAYES11.md).
 2026-07-29: §IR-CHANGELOG added (formalization reversals), seeded on `mab` P9.
 2026-07-29 (same day, second revision): first live trial ran — `game2048` in
-rl_test. §3 reframed around the priority-ordered design tree with a frontier
+a downstream project. §3 reframed around the priority-ordered design tree with a frontier
 (operator direction), id spaces fixed (§2), interview-reversal tripwire added
 (§5), imported-verdict rule added (§7), template updated (§11).
 2026-07-29 (third revision): diagnosis entries added to §6 — typed checkpoint
