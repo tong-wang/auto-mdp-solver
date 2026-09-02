@@ -1,14 +1,23 @@
 # mab — escalation log
 
 Format: `ESCALATION_LOG_GUIDE.md` (mdp_solver). Reorganized from the 2026-07-24
-decomposition+grids shape on 2026-07-29; **retyped to the `cases`/`means`/
-`designs` taxonomy and the node/edge drawing contract on 2026-08-16** (upstream
-issues #19, #20, #22). Ids migrated, **no verdict and no number edited** in
-either pass — see the migration lines in FRAME-CHANGELOG.
+decomposition+grids shape on 2026-07-29; retyped to the `cases`/`means`/
+`designs` taxonomy and the node/edge drawing contract on 2026-08-16 (upstream
+issues #19, #20, #22); **retyped again on 2026-09-02 to the v0.9.26 split-kind
+names — `means` → `design-axes`, `designs` → `escalations`** (upstream issue
+#65). Ids migrated, **no verdict and no number edited** in any pass — see the
+migration lines in FRAME-CHANGELOG.
+
+**§MAP is a living section and carries the current spelling; §LEDGER,
+§FRAME-CHANGELOG and §IR-CHANGELOG are append-only and keep whatever was
+written at the time.** Entries below 2026-09-02 therefore say `means` and
+`designs` where §MAP now says `design-axes` and `escalations`. Grep for both;
+the guide says so explicitly (§3.1).
 
 Id spaces per guide §2: `S{n}` = schedule, ordering coverage at a `cases` or
-`means` split · `P{n}` = priority, ordering competitors at a `designs` split ·
-`A{n}` frontier agenda · `#E{n}` ledger · `F{n}` IR reversal.
+`design-axes` split · `P{n}` = priority, ordering competitors at an
+`escalations` split · `A{n}` frontier agenda · `#E{n}` ledger · `F{n}` IR
+reversal.
 `D{n}` is a local extension (deviation register, below) and `O{n}` names the
 two derivation defects that `mab_ppo_train.py` cites by name in its docstrings.
 
@@ -51,22 +60,26 @@ campaign reports T1 only and every T1 claim ships bounded to Gaussian
 payouts.** The typing did its job — it is why that boundary is stated on every
 claim rather than left implicit.
 
-Below a case sits the **`solver` layer**, a **`means`** split grouped by
-**role** (guide §3.1, spec §9.9): `oracle` is `relaxed ≽ opt` — it reads the
+Below a case sits the **`solver` layer**, a **`design-axes`** split grouped by
+**role** (guide §3.1, spec §9.9). Per guide §3.1 a `design-axes` split cites
+the IR declaration it draws: this one draws `mab_schema.json`'s root
+**`benchmarks`** block, whose six entries are exactly the six children below,
+and design-axis values are write-once — a child names a cell and is never
+moved once drawn. The roles read: `oracle` is `relaxed ≽ opt` — it reads the
 hidden arm means, so no deployable policy can reach it — and `thompson`,
 `ucb1`, `greedy`, `random` and `ppo` are all `feasible ≼ opt`. No `exact` arm
 exists here; the optimum is unknown, which is exactly why the bracket matters.
 The benchmarks are **on the tree**, not in the off-tree register: each is a
 solution to the problem, and grouping them by role is what makes the ceiling
-readable next to the artifact. `means` children share T1's frame, so their
+readable next to the artifact. `design-axes` children share T1's frame, so their
 scores are comparable — that is what licenses every "% of thompson" in this
 log — and none is prunable: crowning `ppo` would not retire the references.
 
-Everything below the solver layer is **`designs`** — obs encoding, escalation
+Everything below the solver layer is **`escalations`** — obs encoding, escalation
 layer, HP — competing on one shared leaderboard, where the point is to crown
-one child and prune the rest. The crown **forks at the `cases` and `means`
+one child and prune the rest. The crown **forks at the `cases` and `design-axes`
 splits** (T1 has a ★ path, T2 has none; `oracle` and the references keep their
-own ★-free readings) and passes through exactly one child at each `designs`
+own ★-free readings) and passes through exactly one child at each `escalations`
 split.
 
 **L0 is a chain parent, not a sibling (guide §3.2).** The earlier tree drew
@@ -107,42 +120,42 @@ graph TD
     T1 ==>|"cases · scenario · S1 · required ✓"| SC1["scenario=gauss_K10_T1000<br/>the tuning cell · #E7"]
     T1 ==>|"cases · scenario · S2 · required ✓"| CELLS["scenario=cells+grid (34 instances)<br/>every T1 claim re-tested off its cell · #E32"]
 
-    SC1 -->|"means · solver · role=relaxed · tier=1"| ORACLE["method=oracle<br/>1530.75 · #E7"]
-    SC1 -->|"means · solver · role=feasible · tier=1"| TS["method=thompson<br/>1462.38 ± 6.52 · #E7"]
-    SC1 -->|"means · solver · role=feasible · tier=1"| UCB["method=ucb1<br/>1440.79 ± 6.52 · #E7"]
-    SC1 -->|"means · solver · role=feasible · tier=1"| GRE["method=greedy<br/>1015.69 ± 6.52 · #E7"]
-    SC1 -->|"means · solver · role=feasible · tier=1"| RND["method=random<br/>−2.51 ± 3.50 · #E7"]
-    SC1 ==>|"means · solver · role=feasible · tier=1 ★"| PPO["method=ppo<br/>1453.57 ± 4.80 · #E23"]
+    SC1 -->|"design-axes · solver · role=relaxed · tier=1"| ORACLE["method=oracle<br/>1530.75 · #E7"]
+    SC1 -->|"design-axes · solver · role=feasible · tier=1"| TS["method=thompson<br/>1462.38 ± 6.52 · #E7"]
+    SC1 -->|"design-axes · solver · role=feasible · tier=1"| UCB["method=ucb1<br/>1440.79 ± 6.52 · #E7"]
+    SC1 -->|"design-axes · solver · role=feasible · tier=1"| GRE["method=greedy<br/>1015.69 ± 6.52 · #E7"]
+    SC1 -->|"design-axes · solver · role=feasible · tier=1"| RND["method=random<br/>−2.51 ± 3.50 · #E7"]
+    SC1 ==>|"design-axes · solver · role=feasible · tier=1 ★"| PPO["method=ppo<br/>1453.57 ± 4.80 · #E23"]
 
-    PPO ==>|"designs · gym.observation_mode · P1 · tier=2 ★"| OB["obs=bayes<br/>+458.73 vs stats at the L1 centre · #E7"]
-    PPO -->|"designs · gym.observation_mode · P2 · tier=2"| OS["obs=stats<br/>927.63 → 1408.55 reopened · #E10, #E29"]
+    PPO ==>|"escalations · gym.observation_mode · P1 · tier=2 ★"| OB["obs=bayes<br/>+458.73 vs stats at the L1 centre · #E7"]
+    PPO -->|"escalations · gym.observation_mode · P2 · tier=2"| OS["obs=stats<br/>927.63 → 1408.55 reopened · #E10, #E29"]
 
     OB ==>|"L0→L1 escalation (Δ +1316.13)"| L0B["level=L0<br/>−1.67, z=0.08 vs random · #E7"]
-    L0B ==>|"designs · hp · tier=3 ★"| L1B["level=L1<br/>1314.46 · #E7"]
+    L0B ==>|"escalations · hp · tier=3 ★"| L1B["level=L1<br/>1314.46 · #E7"]
     L1B ==>|"L1→L2 escalation"| L2["level=L2<br/>children differ by locus · #E14"]
 
     L1B -.->|"training-free probe"| PROBE["probe=capacity<br/>distilled ceiling 1455.49 · #E11"]
     L1B -.->|"instrument audit"| SELECT["audit=selection_validity<br/>+1.44 noise vs +42.90 value · #E33"]
 
-    L2 -->|"designs · gym.reward_shaping · P3 ✗ · tier=3"| GYM["shaping=belief_potential<br/>1293.03 (Δ −21.4) · #E15"]
-    L2 ==>|"designs · arch.policy · P2 ✓ · tier=3"| ARCH["policy=index<br/>1387.57 ± 6.30 · #E14, #E20"]
-    L2 -->|"designs · arch+algo.entropy_price · P2 · tier=3"| ALGO["entropy_price=t2<br/>1445.32, 3 seeds · #E18, #E21"]
-    L2 ==>|"designs · hp · P1 · tier=3 ★"| HP["hp=A8-a<br/>1453.57 ± 4.80, 3 seeds · #E23, #E28"]
+    L2 -->|"escalations · gym.reward_shaping · P3 ✗ · tier=3"| GYM["shaping=belief_potential<br/>1293.03 (Δ −21.4) · #E15"]
+    L2 ==>|"escalations · arch.policy · P2 ✓ · tier=3"| ARCH["policy=index<br/>1387.57 ± 6.30 · #E14, #E20"]
+    L2 -->|"escalations · arch+algo.entropy_price · P2 · tier=3"| ALGO["entropy_price=t2<br/>1445.32, 3 seeds · #E18, #E21"]
+    L2 ==>|"escalations · hp · P1 · tier=3 ★"| HP["hp=A8-a<br/>1453.57 ± 4.80, 3 seeds · #E23, #E28"]
 
     ARCH -.->|"parametrization ✗ ×4"| HEAD["head=temperature<br/>1427.41, 3 seeds · #E19, #E22, #E23"]
     HP -.->|"diagnosis + constructive fix"| COVER["anchor=forward_kl<br/>tail 15–22× smaller at no cost in mean · #E31"]
 
     HP ==>|"§14 readback · tier=2 ★★"| READ["readback=quantile_index<br/>1486.14 (Δ +22.95 vs thompson) · #E24, #E25, #E26"]
-    READ ==>|"designs · scenario.grid · tier=2 ★"| GRID["robustness=grid_21cells<br/>21/21 vs thompson; c* = 1.204 + 0.286·ln n · #E32"]
-    GRID ==>|"designs · scenario.horizon · tier=2"| ENV["envelope=T_star<br/>T* = 14,149 (K=10) / 14,513 (K=20) · #E34"]
+    READ ==>|"escalations · scenario.grid · tier=2 ★"| GRID["robustness=grid_21cells<br/>21/21 vs thompson; c* = 1.204 + 0.286·ln n · #E32"]
+    GRID ==>|"escalations · scenario.horizon · tier=2"| ENV["envelope=T_star<br/>T* = 14,149 (K=10) / 14,513 (K=20) · #E34"]
 
-    CELLS -->|"designs · hp.gae_lambda · tier=3"| LAM["lambda=coverage_scaled<br/>flat 2–3× thompson at constant coverage · #E35"]
-    CELLS ==>|"means · solver · role=feasible · tier=1 ★"| GEN["method=ppo_generalist<br/>ties thompson at T=500; +76% at T=10000 · #E36"]
+    CELLS -->|"escalations · hp.gae_lambda · tier=3"| LAM["lambda=coverage_scaled<br/>flat 2–3× thompson at constant coverage · #E35"]
+    CELLS ==>|"design-axes · solver · role=feasible · tier=1 ★"| GEN["method=ppo_generalist<br/>ties thompson at T=500; +76% at T=10000 · #E36"]
     GEN ==>|"§14 readback · tier=2 ★"| GREAD["readback=fixed_quantile<br/>c ≈ 0.85 constant, ~⅓ of c*(n) · #E37"]
 
     OS ==>|"L0→L1 escalation (Δ +195.46)"| L0S["level=L0<br/>732.17 · #E7"]
-    L0S ==>|"designs · hp · tier=3"| L1S["level=L1<br/>927.63 at norm_obs=True · #E10"]
-    L1S ==>|"designs · hp · tier=3 (A11)"| REOPEN["hp=A8_centre<br/>1408.55 ± 8.66, 3 seeds · #E29"]
+    L0S ==>|"escalations · hp · tier=3"| L1S["level=L1<br/>927.63 at norm_obs=True · #E10"]
+    L1S ==>|"escalations · hp · tier=3 (A11)"| REOPEN["hp=A8_centre<br/>1408.55 ± 8.66, 3 seeds · #E29"]
     REOPEN ==>|"§14 readback · tier=2"| SREAD["readback=learned_thompson<br/>behavioral c = −0.47; anneal 0.31→0.05 · #E30"]
 ```
 
@@ -151,40 +164,50 @@ graph TD
 One table, keyed by node (guide §3.1). The tree is an index; every reading
 below reproduces from the entry it cites.
 
+**Nodes carry two rows, not three — this campaign does not adopt
+§CONFIG-REGISTRY.** The third row is the config address, and guide §3.1 makes
+it conditional: *"a campaign with no §CONFIG-REGISTRY has no address to write
+and draws two rows."* §13 graduated to a rule on 2026-08-24, two weeks after
+this campaign closed (2026-08-11), and §8 states that a base *"cannot be
+recovered from the archive at all"* — so minting ids retroactively from run
+directory names would generate exactly the phantom bases §13 exists to
+prevent. The configuration behind every node is instead reachable the way it
+always was here: the `#E` id on the node, and §RUNS for the run dirs.
+
 | node | kind · attributes · tier | reading | entry |
 |---|---|---|---|
 | `payout=gaussian` | cases · required · tier=1 | the reported branch; every claim in this log ships bounded to Gaussian payouts | [#E34](#E34) |
 | `payout=bernoulli` | cases · required · tier=1 | implemented and differentially gated, deliberately not evaluated — scoped out by the operator 2026-08-11. Forgone: the sharpest transfer test of the A9 constant | [#E27](#E27) |
 | `scenario=gauss_K10_T1000` | cases · required · tier=1 | the tuning cell; the standard protocol and bar are annotated on it, not on the campaign | [#E7](#E7) |
 | `scenario=cells+grid` | cases · required · tier=1 | since F3 the IR spans 34 instances (K∈{5,10,20}, T∈{10…40000}) + 1 grid — where every cell-local claim gets tested off its tuning cell | [#E32](#E32) |
-| `method=oracle` | means · role=relaxed · tier=1 | clairvoyant best arm — reads the hidden means, so unattainable by any deployable policy (§9.9). The ceiling, never a gate | [#E7](#E7) |
-| `method=thompson` | means · role=feasible · tier=1 | exact conjugate sampling; the `--reference` this campaign measures headroom against (D8), 95.5% of oracle | [#E7](#E7) |
-| `method=ucb1` | means · role=feasible · tier=1 | sigma-scaled UCB1, 94.1% of oracle; `--reference`, not a must-beat bar | [#E7](#E7) |
-| `method=greedy` | means · role=feasible · tier=1 | myopic Bayes, 66.4% of oracle — a `--baseline` the artifact must clear | [#E7](#E7) |
-| `method=random` | means · role=feasible · tier=1 | the floor, −0.2% of oracle | [#E7](#E7) |
-| `method=ppo` | means · role=feasible · tier=1 ★ | the trained artifact; crowned within its own frame, and read against thompson rather than gated on it | [#E23](#E23) |
-| `obs=bayes` | designs · gym.observation_mode · tier=2 | the conjugate update is *handed* to the agent — posterior mean+sd per arm. +458.73 over stats at the L1 centre | [#E7](#E7) |
-| `obs=stats` | designs · gym.observation_mode · tier=2 | raw sufficient statistic (counts + totals + ttg); the agent must learn the update. Pruned at 927.63 under a centre later shown bad, then reopened at the A8 centre | [#E10](#E10), [#E29](#E29) |
+| `method=oracle` | design-axes · role=relaxed · tier=1 | clairvoyant best arm — reads the hidden means, so unattainable by any deployable policy (§9.9). The ceiling, never a gate | [#E7](#E7) |
+| `method=thompson` | design-axes · role=feasible · tier=1 | exact conjugate sampling; the `--reference` this campaign measures headroom against (D8), 95.5% of oracle | [#E7](#E7) |
+| `method=ucb1` | design-axes · role=feasible · tier=1 | sigma-scaled UCB1, 94.1% of oracle; `--reference`, not a must-beat bar | [#E7](#E7) |
+| `method=greedy` | design-axes · role=feasible · tier=1 | myopic Bayes, 66.4% of oracle — a `--baseline` the artifact must clear | [#E7](#E7) |
+| `method=random` | design-axes · role=feasible · tier=1 | the floor, −0.2% of oracle | [#E7](#E7) |
+| `method=ppo` | design-axes · role=feasible · tier=1 ★ | the trained artifact; crowned within its own frame, and read against thompson rather than gated on it | [#E23](#E23) |
+| `obs=bayes` | escalations · gym.observation_mode · tier=2 | the conjugate update is *handed* to the agent — posterior mean+sd per arm. +458.73 over stats at the L1 centre | [#E7](#E7) |
+| `obs=stats` | escalations · gym.observation_mode · tier=2 | raw sufficient statistic (counts + totals + ttg); the agent must learn the update. Pruned at 927.63 under a centre later shown bad, then reopened at the A8 centre | [#E10](#E10), [#E29](#E29) |
 | `level=L0` (bayes) | chain rung · tier=3 | faithful defaults, reporting-only (§8.6): −1.67, indistinguishable from random (z=0.08). The posterior is worthless until something funds exploration — the pairing constraint stated structurally | [#E7](#E7) |
 | `level=L1` (bayes) | chain rung · tier=3 | the derived centre, raw MLP 1314.46; a0 frame-average mitigation 1353.35, eval-only | [#E7](#E7), [#E13](#E13) |
 | `level=L2` | chain rung · tier=3 | the escalation surface: every A6/A7/A8 arm is L2 and they differ by which §8.6 layer they open | [#E14](#E14) |
-| `shaping=belief_potential` | designs · gym.reward_shaping · tier=3 | A7-b: regressed −21.4 vs the raw MLP | [#E15](#E15) |
-| `policy=index` | designs · arch.policy · tier=3 | A6 symmetry ladder rung b — architecture of record; 20M re-run 1391.49, 3-seed 1369.92. Every enlargement lost (c 1310.16, c-max 1328.16, d 1336.65): findability, not capacity | [#E14](#E14), [#E20](#E20) |
-| `entropy_price=t2` | designs · arch+algo.entropy_price · tier=3 | ttg-weighted entropy price; t2n 1419.65, t2-t3 1422.80 ✗, t2n-t3 1326.41 ✗. λ probes: 0.995→1459.74 n.s., 1.0→1325.05 ✗. Statistically level with A8-a — the two subsidy-removals converge | [#E18](#E18), [#E21](#E21) |
-| `hp=A8-a` | designs · hp · tier=3 ★ | A3 tuning → ent_coef 3.4e-5, λ 0.988, lr 1.6e-5, 20 epochs. Argmax gap 450→37: exploration moved INTO the index. A3 closed 73/73 trials; its own top trial refuted at protocol | [#E23](#E23), [#E28](#E28) |
+| `shaping=belief_potential` | escalations · gym.reward_shaping · tier=3 | A7-b: regressed −21.4 vs the raw MLP | [#E15](#E15) |
+| `policy=index` | escalations · arch.policy · tier=3 | A6 symmetry ladder rung b — architecture of record; 20M re-run 1391.49, 3-seed 1369.92. Every enlargement lost (c 1310.16, c-max 1328.16, d 1336.65): findability, not capacity | [#E14](#E14), [#E20](#E20) |
+| `entropy_price=t2` | escalations · arch+algo.entropy_price · tier=3 | ttg-weighted entropy price; t2n 1419.65, t2-t3 1422.80 ✗, t2n-t3 1326.41 ✗. λ probes: 0.995→1459.74 n.s., 1.0→1325.05 ✗. Statistically level with A8-a — the two subsidy-removals converge | [#E18](#E18), [#E21](#E21) |
+| `hp=A8-a` | escalations · hp · tier=3 ★ | A3 tuning → ent_coef 3.4e-5, λ 0.988, lr 1.6e-5, 20 epochs. Argmax gap 450→37: exploration moved INTO the index. A3 closed 73/73 trials; its own top trial refuted at protocol | [#E23](#E23), [#E28](#E28) |
 | `probe=capacity` | off-crown probe · tier=2 | training-free: the index class distils to 99.5% of thompson at 4.5k parameters — capacity REFUTED as the deficit. Distilled ceiling 1455.49, later exceeded by #E26 | [#E11](#E11) |
 | `audit=selection_validity` | off-crown audit · tier=3 | the 256-seed callback picks the oracle checkpoint in 5 of 6 runs; noise costs +1.44 against the +42.90 that selecting at all is worth. Selection retained, plateau early-stopping retired | [#E33](#E33) |
-| `head=temperature` | designs · arch.policy · tier=3 ✗ | refuted four times; β learned the anneal with the sign INVERTED. Placement, not parametrization, was the defect | [#E19](#E19), [#E22](#E22), [#E23](#E23) |
-| `anchor=forward_kl` | designs · algo.anchor · tier=3 | the starvation tail IS the deficit — verdict H-opt, an optimizer failure rather than a rational trade. A forward-KL anchor to thompson removes the tail 15–22× at no measurable cost in mean, dose-ordered in β | [#E31](#E31) |
+| `head=temperature` | escalations · arch.policy · tier=3 ✗ | refuted four times; β learned the anneal with the sign INVERTED. Placement, not parametrization, was the defect | [#E19](#E19), [#E22](#E22), [#E23](#E23) |
+| `anchor=forward_kl` | escalations · algo.anchor · tier=3 | the starvation tail IS the deficit — verdict H-opt, an optimizer failure rather than a rational trade. A forward-KL anchor to thompson removes the tail 15–22× at no measurable cost in mean, dose-ordered in β | [#E31](#E31) |
 | `readback=quantile_index` | §14 readback · tier=2 ★★ | the crown IS a quantile index: argmax of m + c·s, 98% action agreement, 12-knot fit 1459.56. Tuned c = 2.5·(ttg/T)^0.15 → 1486.14, beats thompson +22.95; flat c=2.5 → 1482.82 on ONE parameter; best parameter-free form 1464.87, 21.27 short | [#E24](#E24), [#E25](#E25), [#E26](#E26), [#E27](#E27) |
-| `robustness=grid_21cells` | designs · scenario.grid · tier=2 | beats thompson in all 21 cells (K∈{5,10,20} × n=T/K ∈ 2…100), capturing ~⅓ of thompson's closable gap — but the LEVEL is a log law, c* = 1.204 + 0.286·ln n (R² 0.743). The fitted 2.5 is cell-local; the shape is not | [#E32](#E32) |
-| `envelope=T_star` | designs · scenario.horizon · tier=2 | where the rule STOPS: a fixed quantile is inconsistent, regret linear in T vs thompson's log. Crossover K-invariant in total rounds. Repair must GROW with t, and every repair converges to thompson — V3, where policy search stopped | [#E34](#E34) |
-| `lambda=coverage_scaled` | designs · hp.gae_lambda · tier=3 | credit horizon must scale with T: state λ as coverage = (1/(1−λ))/T, aim ~8%, floor ~1%. At 0.41% coverage 2 of 3 seeds never learn (31× thompson); at constant coverage PPO is a flat 2–3× thompson, not diverging | [#E35](#E35) |
-| `method=ppo_generalist` | means · role=feasible · tier=1 ★ | one net over a §5.6 grid, 40 log-spaced cells T∈[500,10000]: ties thompson at T=500 (1.05×) where no specialist has, +10% vs the specialist at T=1000 and +76% at T=10000 budget-matched. Limits: one grid cannot vary K, one scalar λ cannot cover a 20× T span | [#E36](#E36) |
+| `robustness=grid_21cells` | escalations · scenario.grid · tier=2 | beats thompson in all 21 cells (K∈{5,10,20} × n=T/K ∈ 2…100), capturing ~⅓ of thompson's closable gap — but the LEVEL is a log law, c* = 1.204 + 0.286·ln n (R² 0.743). The fitted 2.5 is cell-local; the shape is not | [#E32](#E32) |
+| `envelope=T_star` | escalations · scenario.horizon · tier=2 | where the rule STOPS: a fixed quantile is inconsistent, regret linear in T vs thompson's log. Crossover K-invariant in total rounds. Repair must GROW with t, and every repair converges to thompson — V3, where policy search stopped | [#E34](#E34) |
+| `lambda=coverage_scaled` | escalations · hp.gae_lambda · tier=3 | credit horizon must scale with T: state λ as coverage = (1/(1−λ))/T, aim ~8%, floor ~1%. At 0.41% coverage 2 of 3 seeds never learn (31× thompson); at constant coverage PPO is a flat 2–3× thompson, not diverging | [#E35](#E35) |
+| `method=ppo_generalist` | design-axes · role=feasible · tier=1 ★ | one net over a §5.6 grid, 40 log-spaced cells T∈[500,10000]: ties thompson at T=500 (1.05×) where no specialist has, +10% vs the specialist at T=1000 and +76% at T=10000 budget-matched. Limits: one grid cannot vary K, one scalar λ cannot cover a 20× T span | [#E36](#E36) |
 | `readback=fixed_quantile` | §14 readback · tier=2 ★ | the generalist is a FIXED quantile — c ≈ 0.85 constant, no dependence on ttg/T (0.003 vs the rule's 0.15) nor on T (0.003 vs #E32's 0.286). ~⅓ of c*(n), shortfall widening, regret linear in T (R² 0.9999); at T=10000 only ~6 of 10 arms ever pulled — #E34's mechanism, seen | [#E37](#E37) |
 | `level=L0` (stats) | chain rung · tier=3 | 732.17 — the encoding that survives without funded exploration, which is the contrast that makes the bayes L0 reading meaningful | [#E7](#E7) |
 | `level=L1` (stats) | chain rung · tier=3 | best 927.63 at norm_obs=True; verdict ✗ at z=−9.29 vs greedy, trained at ent_coef 0.01 on the raw-MLP arch, untuned | [#E10](#E10) |
-| `hp=A8_centre` | designs · hp · tier=3 | A11: the prune reverses. Index at the share/avg map reaches 1408.55 ± 8.66 (3 seeds), 96.3% of thompson; Δ vs bayes at the same centre 45.02, so 91% of the old gap was the CENTRE. Raw MLP at the same HP 1060.81 — the arch, not the HP, is the rescuer | [#E29](#E29) |
+| `hp=A8_centre` | escalations · hp · tier=3 | A11: the prune reverses. Index at the share/avg map reaches 1408.55 ± 8.66 (3 seeds), 96.3% of thompson; Δ vs bayes at the same centre 45.02, so 91% of the old gap was the CENTRE. Raw MLP at the same HP 1060.81 — the arch, not the HP, is the rescuer | [#E29](#E29) |
 | `readback=learned_thompson` | §14 readback · tier=2 | the stats twin is a learned THOMPSON, not an index: behavioral c = −0.47, worthless straight (argmax 643.60 / −28.99); all performance lives in a posterior-calibrated sampling anneal 0.31→0.05, stoch−argmax gap 772–1442 vs A8-a's 37. The encoding decides WHERE exploration lives | [#E30](#E30) |
 
 
@@ -1090,6 +1113,132 @@ it be configured.
                         `scenario=cells+grid (34 instances)`), and insert after the
                         COMPLETE `address:` block — 11 back-links first landed inside a
                         wrapped address line and split the sentence in half.
+2026-09-02  MIGRATED    pin v0.9.6 -> v0.10.0 (0752c7e), 35 releases. CONFORMANCE-ONLY: nothing
+                        re-run, no verdict, mark or number moved. "Built and gated at" stays
+                        v0.7.0. Four moves, each forced by a release between the two pins:
+                        (a) §MAP retyped to the v0.9.26 split-kind names, `means` ->
+                        `design-axes` and `designs` -> `escalations` (issue #65); the living
+                        section carries the new spelling, the three append-only sections keep
+                        the old one, and the log header now says so; (b) the solver-layer
+                        `design-axes` split now cites the IR declaration it draws, the root
+                        `benchmarks` block, as #65 requires; (c) v0.10.0 split the skill into
+                        six step skills whose entry gates read two single-writer files that
+                        did not exist when this campaign ran — `mab.signoff.json` and
+                        `mab.runplan.json` BACKFILLED per CONTRACTS.md "Pre-split domains",
+                        reconstructed from the campaign record with no date invented; the
+                        sign-off carries F6's token 5bb25e684405 rather than the 2026-07-24
+                        freeze token, because the freeze check compares against the CURRENT
+                        fingerprint and would otherwise be a permanent false alarm;
+                        (d) README.md and CLAUDE.md rebuilt to spec §1.3's four- and
+                        five-section shapes — CLAUDE.md loses its routing table and its
+                        entire Traps section, both now forbidden by design, with every trap
+                        relocated to the owner §1.3 names for it; (e) mab.restatement.md's
+                        two sample trajectories re-rendered into v0.9.13 `step7b` fences, so
+                        docs.restatement_current re-runs and diffs them instead of SKIPping —
+                        the truncation the old blocks carried is the interpreter's own, not
+                        a hand-trim, so both reproduce verbatim.
+2026-09-02  NARROWED    what counts as a tier-2 RESEARCH QUESTION here, and the IR was left
+                        alone. A first pass this day registered #E32/#E34 (the coefficient
+                        family's horizon-inconsistency) and #E36/#E37 (the grid-trained net
+                        recovering a CONSTANT coefficient) as two new
+                        research_questions.tier2 stances. That was WRONG and is reverted:
+                        spec §14.0 declares a stance at Phase A, "in the same round that
+                        fixes the objective and the mode stance" — it is a commitment made
+                        BEFORE the study, not a label attached to a finding afterwards. Both
+                        are by-products of chasing the two stances that WERE declared, and
+                        registering them retroactively would have made a stumbled-upon result
+                        indistinguishable from a pre-registered one, which is the exact
+                        confusion declaring a stance exists to prevent. `mab_schema.json` is
+                        byte-identical to its committed state; the campaign has and always
+                        had TWO declared stances. The findings keep their weight and are
+                        reported in README's `2-structural` immediately after the two RQs,
+                        under a heading that says they are not declared questions and owe no
+                        §14 deliverable. #E35 likewise stays tier-3 (guide §3.1: which HP
+                        trains best), cited as the confound on the generalist finding.
+2026-09-02  MIGRATED    README.md Results reordered for the reader who wants the number: the
+                        record-cell leaderboard now sits ~38 lines below the Layout section
+                        rather than mid-document, behind only a compacted protocol and the
+                        scenario-role table that spec §1.3 requires before any board. The
+                        `2-structural` block was restructured to put the TWO declared stances
+                        first, as answers, with the #E32/#E34 and #E36/#E37 findings after
+                        them under a heading that marks them as by-products rather than
+                        declared questions — the separation the entry above exists to keep.
+2026-09-02  MIGRATED    every absolute and machine-local reference removed from mab/ ahead of
+                        upstream contribution: no `~/projects/...` paths, no naming of the
+                        local stable-pin worktree, no results/ symlink note. The folder now
+                        names only what travels with it — the installed skill's own
+                        directory, and paths relative to the domain folder.
+2026-09-02  MIGRATED    figures moved `figs/` -> `figures/`, the directory spec §14.3 actually
+                        names as the home of the committed static figure a campaign document
+                        inlines; `mab_plot_policy.py` and `mab_stats_plot.py` write there now.
+                        Ledger text above keeps the old path as written (append-only).
+2026-09-02  INTRODUCED  the rung-0 REPLAY VISUALIZATIONS are committed and inlined, and Part I
+                        now OPENS with them instead of burying them mid-document — watch the
+                        policy before reading a statistic about it. Crown vs thompson on
+                        shared latents at the battery's paired win/median/loss extremes; the
+                        loss seed is #E31/#E34's starvation mechanism visible in one episode.
+                        Three GIFs under `figures/`, downscaled 1000x650 -> 700x455 (ffmpeg
+                        palettegen/paletteuse, dither=none): 4.7 MB -> 2.3 MB with frame
+                        count, 80ms timing and loop preserved exactly and only the pixel grid
+                        changed, verified legible to tick labels and error bars. Rendered
+                        full-width via `<img width="100%">` rather than in a table cell, with
+                        700px chosen to sit just under a typical content column so the
+                        inlined size barely upscales. The artifacts were already on disk from
+                        the original rounds — nothing was re-run and no number moved. Each
+                        section carries its regenerating command rather than a link into
+                        gitignored `results/`. **Part III has no rung-0 and says so**: the
+                        generalist readback renders no trajectory, so its section states the
+                        gap and what closing it would take rather than quietly omitting it.
+2026-09-02  MIGRATED    INTERPRET.md Part II (the stats-twin readback, #E29/#E30) REDUCED to a
+                        reproduction note: ~220 lines, the document's longest section, for a
+                        by-product that answers no declared stance. #E29/#E30 remain the
+                        record and the leaderboard row carries the verdict; the note keeps the
+                        three-sentence finding (the twin is a learned Thompson, not an index —
+                        stochastic-argmax gap 772-1442 against the crown's 37, so the encoding
+                        decides WHERE exploration lives) and the four commands that rebuild
+                        the analysis and its figures. Seven figures orphaned by the cut were
+                        deleted rather than left unreferenced: fig_stats_{gap,explore,mode,
+                        index}.svg and stats_replay_{collapse,median,survive}.gif. INTERPRET.md
+                        ~560 -> 376 lines; `figures/` 12 MB -> 2.5 MB.
+2026-09-02  DECLINED    §CONFIG-REGISTRY (guide §13, a rule since 2026-08-24) is NOT adopted.
+                        This campaign closed 2026-08-11, and guide §3.1 makes the node's
+                        third row conditional on having one — two-row nodes stay conformant.
+                        Retrofitting would mean minting ids for ~40 historical configs from
+                        run-dir names, and guide §8 says a base "cannot be recovered from the
+                        archive at all": that is the phantom-base generation §13 exists to
+                        prevent. Stated rather than silently skipped, so the next reader can
+                        tell a decision from an oversight.
+2026-09-02  RE-GATED    at the v0.10.0 pin, no code changed: laws 7/9, pytest 69 passed,
+                        differential **35/35 MATCH** (base + all 34 instances, 40 episodes
+                        each, bit-exact). `mdp_stage mab` passes every derivable check —
+                        IR, sign-off, freeze, restatement, run plan, escalation log,
+                        interpret-owed — and `build` is READY. In the originating project's
+                        copy, which holds `results/`,
+                        `escalate`/`interpret`/`package` are READY too; in
+                        a CONTRIBUTED copy they block on `baselines.tsv` and `rl.artifacts`
+                        by construction, because a case ships without its run directories.
+                        That is the gate working, not a defect in either copy.
+                        **Zero FAILs anywhere.**
+
+                        Conformance reads differently in the two copies of this case, and the
+                        difference is not drift in the campaign — it is which copy the spec's
+                        own commits edited. The SHIPPED copy gates **28/31**: only
+                        `grids.axes` (inherent to a 20x log-spaced horizon grid),
+                        `scripts.selection_protocol` (the live SelectionEvalCallback, #E33 —
+                        already marked superseded upstream) and `run.provenance` (SKIP: a
+                        contributed case ships no run directories). The DOWNSTREAM copy —
+                        the project this case was built in — gates **25/31**, adding
+                        `scripts.cli_contract`,
+                        `scripts.l1_derived` and `scripts.launch_check` — its
+                        `mab_ppo_train.py` / `_ppo_eval.py` predate the §8.2 tier-1 CLI
+                        sweep, `_L1_DERIVED` and `assert_l1_current`, all of which upstream
+                        issues #56/#58/#61/#62 applied to the shipped copy when they landed.
+                        Denominator 23 -> 31 on new checks either way. The shipped copy read
+                        28/31 BEFORE this round too — v0.9.13 had already given it the step7b
+                        fences the downstream copy only gained now — so nothing in this round
+                        moves a verdict upstream; it moves documents. Porting the script
+                        conventions the other way, back into the originating project, is owed
+                        and not done.
 ```
 
 ---

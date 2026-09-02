@@ -1,0 +1,9 @@
+{
+  "target": "gauss_K10_T1000",
+  "target_kind": "scenario",
+  "strategy": "specialist",
+  "escalation_budget": "spent — the campaign closed 2026-08-11 on #E34 Verdict 3 (every repair of the fixed-quantile rule converges to Thompson), with the policy search stopped by the operator. A1-A12 consumed; no measurement open.",
+  "confirmed": "2026-08-11",
+  "_backfill": "Written 2026-09-02 as a pre-split backfill (CONTRACTS.md, 'Pre-split domains'). Reconstructed from ESCALATION.md §Frontier and §MAP; this records the campaign as it ran, not a new plan.",
+  "_second_target": "#E36 trained a generalist against the GRIDS entry gauss_K10_Tlog (40 log-spaced cells, T in [500,10000]) — a Stage-0 re-entry with target_kind 'grid'. It is reported as its own leaderboard and did not displace the specialist target above, which remains the record cell."
+}

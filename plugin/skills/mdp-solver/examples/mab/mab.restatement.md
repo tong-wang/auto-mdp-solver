@@ -171,6 +171,13 @@ evaluated on the same scenario with a shared eval-seed block; baselines
 
 ## Annotated sample trajectories (interpreter output, episode_seed=3, fixed decision arm=3)
 
+Both blocks are **step-7b round-trip artifacts**: the tagged fence declares the
+render command and the fence after it is that command's verbatim output, which
+`mdp_conformance docs.restatement_current` re-runs and diffs. The commands are
+written relative to this folder's *parent*, which is where the check runs them.
+**Re-render both whenever the model moves** — a stale trajectory is a document
+a human reads to check the model, showing numbers the model no longer produces.
+
 Bernoulli branch (`--instance bernoulli`) — this episode nature drew arm 3's
 success probability $p_3 = 0.97$, which happens to also be the best arm
 (`opt_mean` 0.97); every pull pays 0/1 and increments `pulls[3]` / adds to
@@ -243,17 +250,3 @@ mab v0.4  episode_seed=3 instance=gaussian
 ... (980 more periods)
 episode total = -1219.62   reward total = -1219.62   periods = 1000
 ```
-
-Each block is preceded by the `step7b` fence that produced it, run from
-`examples/`, the parent of `mab/`, and pasted verbatim — which is what lets
-`docs.restatement_current` re-run the command and diff it.
-
-> **Corrected 2026-08-18.** Both blocks previously carried three rows and an
-> ellipsis, and the Bernoulli one was attributed to the bare
-> `mab_schema.json` invocation. The `payout` slot's catalog `default` is
-> `gaussian`, so that command has rendered the *Gaussian* branch since this
-> domain was promoted — the labelled block and the command below it had
-> disagreed the whole time. The numbers were right; the invocation named to
-> reproduce them was not, which is exactly the drift a fingerprint check
-> cannot see (the `mdp` token never moved) and the reason step 7b now declares
-> the command next to its output.

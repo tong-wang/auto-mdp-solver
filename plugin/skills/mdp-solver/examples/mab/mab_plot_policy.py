@@ -1,7 +1,7 @@
 """Spec-§14.3 figures for the mab interpretation round (INTERPRET_PLAN.md).
 
 Reads the probe/battery artifacts under results/{scenario}/interpret/ and
-writes committed SVGs to mab/figs/ (figure contract: committed SVG for
+writes committed SVGs to mab/figures/ (figure contract: committed SVG for
 posting; everything interactive/exploratory stays gitignored in results/).
 
 Figures:
@@ -34,7 +34,7 @@ import numpy as np
 from mab_a5_probe import SCENARIO, T
 
 IN  = Path("results") / SCENARIO / "interpret"
-OUT = Path("figs")
+OUT = Path("figures")
 
 C = {"crown": "#2a78d6", "thompson": "#eb6834", "ucb1": "#1baf7a",
      "oldcrown": "#eda100", "ref": "#8a8a85", "ink": "#33322e",
@@ -148,4 +148,4 @@ if __name__ == "__main__":
     OUT.mkdir(exist_ok=True)
     for f in (fig_bonus, fig_explore, fig_index, fig_critic):
         f()
-        print(f"wrote figs/{f.__name__[4:]}.svg" .replace("fig_", "fig_"))
+        print(f"wrote figures/{f.__name__[4:]}.svg" .replace("fig_", "fig_"))

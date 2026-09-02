@@ -1,0 +1,7 @@
+{
+  "mdp_fingerprint": "5bb25e684405",
+  "signed_off": "2026-08-17",
+  "restatement": "mab.restatement.md",
+  "_backfill": "Written 2026-09-02 as a pre-split backfill (CONTRACTS.md, 'Pre-split domains'), not at a fresh human sign-off. Reconstructed from the campaign record; no date was invented.",
+  "_phase_a": "Human sign-off 2026-07-24 at mdp ad610581f715. The mdp block moved four times since, each re-confirmed and logged in ESCALATION.md §IR-CHANGELOG: F3 (2026-08-06), F4 (2026-08-11), F5 (2026-08-13), F6 (2026-08-17). F6 minted the recorded token, so signed_off carries that re-confirmation date — the value the always-on freeze check must hold to stay meaningful."
+}
