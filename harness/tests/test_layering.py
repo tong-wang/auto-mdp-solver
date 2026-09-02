@@ -66,6 +66,57 @@ def test_load_ir_resolves_a_catalog_from_disk(catalog_doc, tmp_path):
     assert load_ir(p, select={"flow": "fixed"}).selection == {"flow": "fixed"}
 
 
+# -- grids under a selection -------------------------------------------------
+
+
+def _with_a_scoped_instance(doc: dict) -> dict:
+    """`fixed_world` selects the non-default candidate, so every resolution but
+    its own drops it; `pricey` overrides a constant only and survives all."""
+    doc["mdp"]["scenario"]["instances"]["fixed_world"] = {"flow": "fixed", "h": 2.0}
+    return doc
+
+
+def test_a_grid_on_a_scoped_out_instance_still_validates(catalog_doc):
+    """The grid's base instance is pruned under the default selection; that
+    scopes the grid out of this resolution, it does not make the name unknown
+    (upstream #75). The whole file must stay validatable."""
+    doc = _with_a_scoped_instance(catalog_doc)
+    doc["grids"] = [{"name": "sweep", "base_instance": "fixed_world",
+                     "axes": {"h": [1.0, 2.0]}}]
+    ir = resolved(doc)
+    assert ir.pruned_instances == ["fixed_world"]
+    assert "fixed_world" not in ir.mdp.scenario.instances
+
+
+def test_a_grid_applies_under_the_selection_its_base_instance_names(catalog_doc):
+    doc = _with_a_scoped_instance(catalog_doc)
+    doc["grids"] = [{"name": "sweep", "base_instance": "fixed_world",
+                     "axes": {"h": [1.0, 2.0]}}]
+    ir = resolved(doc, instance="fixed_world")
+    assert ir.pruned_instances == []
+    assert len(ir.grids[0].cells()) == 2
+
+
+def test_a_grid_axis_error_is_reported_under_that_selection(catalog_doc):
+    """Skipping a scoped-out grid loses no checking: the resolution the grid
+    does apply to is where its axes are checked, and the CLI walks them all."""
+    doc = _with_a_scoped_instance(catalog_doc)
+    doc["grids"] = [{"name": "sweep", "base_instance": "fixed_world",
+                     "axes": {"no_such": [1.0]}}]
+    resolved(doc)
+    with pytest.raises(ValueError, match="no scenario constant"):
+        resolved(doc, instance="fixed_world")
+
+
+def test_a_grid_on_an_undeclared_instance_is_still_an_error(catalog_doc):
+    doc = _with_a_scoped_instance(catalog_doc)
+    doc["grids"] = [{"name": "sweep", "base_instance": "no_such",
+                     "axes": {"h": [1.0]}}]
+    for kw in ({}, {"instance": "fixed_world"}):
+        with pytest.raises(ValueError, match="unknown base_instance"):
+            resolved(doc, **kw)
+
+
 # -- structural fingerprint --------------------------------------------------
 
 

@@ -559,13 +559,19 @@ def resolve_catalog(
         comp for m in mixtures for _w, comp in m.get("components", []) if comp
     }
     kept: dict[str, dict] = {}
+    pruned: list[str] = []
     for iname, overrides in instances_raw.items():
         sel_keys = {k: v for k, v in overrides.items() if k in slot_names}
         if any(selection[k] != v for k, v in sel_keys.items()) \
                 and iname not in mixture_comps:
+            pruned.append(iname)
             continue
         kept[iname] = {k: v for k, v in overrides.items() if k not in slot_names}
     scenario["instances"] = kept
+    # what was dropped, recorded rather than forgotten: a consumer that must
+    # tell "scoped out by the selection" from "misspelled" cannot recover the
+    # difference from `kept` alone (upstream #75 — grids.base_instance)
+    merged["pruned_instances"] = pruned
 
     # --- mixtures: composition-scoped drawers; component resolutions -------
     slot_ids = {s["stream_id"] for s in slots}

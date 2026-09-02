@@ -2001,6 +2001,11 @@ class MdpIR(_Base):
     # like `selection`; sits outside the mdp block, so mdp_fingerprint is
     # unaffected by the mechanism)
     mixture_resolutions: dict[str, dict[str, ComponentResolution]] | None = None
+    # instances the catalog declared but this resolution dropped as
+    # inconsistent with `selection` (loader-set, like `selection`). Root
+    # level, so no fingerprint moves; it exists so a scoped-out name stays
+    # distinguishable from a misspelled one — see `_grids_resolve`
+    pruned_instances: list[str] | None = None
 
     @model_validator(mode="after")
     def _eval_metric_names(self) -> "MdpIR":
@@ -2100,16 +2105,24 @@ class MdpIR(_Base):
         if clash:
             raise ValueError(f"grid name(s) collide with world-layer names: {sorted(clash)}")
         for g in self.grids:
+            # a grid is scoped to its base instance's selection, exactly as
+            # the instance is: when the base was pruned by the active
+            # selection the grid does not apply to this resolution and is
+            # skipped whole — its axes are checked under the selection the
+            # base instance names, where the constants it sweeps exist
+            # (upstream #75). An unknown name is still an unknown name.
+            if g.base_instance and g.base_instance not in self.mdp.scenario.instances:
+                if g.base_instance in (self.pruned_instances or ()):
+                    continue
+                raise ValueError(
+                    f"grid {g.name!r}: unknown base_instance {g.base_instance!r}"
+                )
             bad = set(g.axes) - consts
             if bad:
                 raise ValueError(f"grid {g.name!r}: axes {sorted(bad)} name no scenario constant")
             empty = [a for a, vals in g.axes.items() if not vals]
             if empty:
                 raise ValueError(f"grid {g.name!r}: empty axis value list for {empty}")
-            if g.base_instance and g.base_instance not in self.mdp.scenario.instances:
-                raise ValueError(
-                    f"grid {g.name!r}: unknown base_instance {g.base_instance!r}"
-                )
         return self
 
     # -- cross-layer invariants (each enforces one downward edge) -----------

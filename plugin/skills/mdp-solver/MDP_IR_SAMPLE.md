@@ -928,6 +928,14 @@ with bit-identical draws.
   generalist training, `{ name, base_instance, axes: {constant: [values]} }`;
   `ScenarioGrid.cells()` yields `(cell_id, overrides)` row-major with
   axis-derived ids. Grids never appear inside the `scenario` node.
+  **A grid is scoped to its base instance's selection**, exactly as the
+  instance is: a base dropped by the active selection makes the grid
+  inapplicable to *that* resolution, so it is skipped whole — its axes are
+  checked under the selection its base names, which is where the constants it
+  sweeps exist. Which names the resolution dropped is loader-set in the root
+  `pruned_instances` (like `selection`), so a scoped-out base stays
+  distinguishable from a misspelled one, which is still an error under every
+  selection (upstream #75).
 - **Differential**: `--seed-salt` defaults to 1 (v2 domains assert
   `seed_salt >= 1`); sampler-bearing instances diff bit-exactly — the
   adapter builds the domain's sampler on the IR sampler's substream
