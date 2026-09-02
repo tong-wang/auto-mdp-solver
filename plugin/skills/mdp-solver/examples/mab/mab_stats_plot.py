@@ -1,7 +1,7 @@
 """Spec-§14.3 figures for the STATS readback (#E30, INTERPRET.md Part II).
 
 Reads the `mab_stats_probe.py` artifacts under results/{scenario}/interpret/
-and writes committed SVGs to mab/figs/ (same figure contract as
+and writes committed SVGs to mab/figures/ (same figure contract as
 `mab_plot_policy.py`: committed SVG for posting, everything exploratory
 stays gitignored under results/).
 
@@ -39,7 +39,7 @@ import numpy as np
 from mab_a5_probe import SCENARIO, T
 
 IN  = Path("results") / SCENARIO / "interpret"
-OUT = Path("figs")
+OUT = Path("figures")
 
 C = {"stats": "#e87ba4", "crown": "#2a78d6", "thompson": "#eb6834",
      "ucb1": "#1baf7a", "oldcrown": "#eda100", "ref": "#8a8a85",
@@ -209,4 +209,4 @@ if __name__ == "__main__":
     for f in (fig_stats_mode, fig_stats_gap, fig_stats_explore,
               fig_stats_index):
         f()
-        print(f"wrote figs/{f.__name__[4:]}.svg")
+        print(f"wrote figures/{f.__name__[4:]}.svg")

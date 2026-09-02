@@ -1,7 +1,10 @@
 # mab — case-close playbook
 
 Digest per `ESCALATION_LOG_GUIDE.md` §10, written at campaign close
-(2026-08-11, revised to the v0.6.0 schema 2026-08-13). Entries carry what is
+(2026-08-11, revised to the v0.6.0 schema 2026-08-13; re-checked against the
+guide at the v0.10.0 pin on 2026-09-02 — §10's entry shape, lever layers and
+`FM`/`MR` sections are unchanged, so no revision was owed and none was made).
+The guide's §-numbers are cited from case logs and never renumber. Entries carry what is
 needed to *reuse* the experience and **cite `ESCALATION.md` for everything
 else** — the log is beside this file; nothing is copied out of it.
 

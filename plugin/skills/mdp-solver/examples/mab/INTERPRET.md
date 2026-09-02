@@ -1,9 +1,30 @@
 # What did the crown learn? — interpretation round (A8-a, #E23/#E24)
 
-*(Artifacts — GIFs, per-policy metric JSONs, index-surface dumps — regenerate
-into `results/gauss_K10_T1000/interpret/` via `mab_interpret.py` and
-`mab_policy_probe.py`; committed figures in `figs/`; `results/` is
-gitignored, this findings document is not.)*
+**What this document is owed by.** Spec §14.0 makes a readback owed by the
+*stance*, not by the problem. `mab_schema.json` declares **two** tier-2
+stances, both fixed at Phase A, and both owe a probe plus this file:
+
+| # | stance | structure | verdict | where |
+|---|---|---|---|---|
+| RQ1 | `confirm` | index policy (posterior mean + coefficient × posterior sd) | **confirmed** | **Part I**, Rung 2 — 98% action agreement, 12-knot fit 1459.56 |
+| RQ2 | `discover` | time-varying quantile coefficient `c(ttg/T)` | **confirmed** | **Part I**, Rungs 2–3 and the c-sweep; scored at protocol as `mab_benchmark_rule_eval.py` (#E26) |
+
+**Part III answers no declared stance**, and **Part II has been reduced to a
+reproduction note**. Both are by-products of chasing RQ1 and RQ2 — structural
+in kind, but never pre-registered, so they owe no §14 deliverable. Part III is
+kept in full because it reads directly against RQ2: the grid-trained net was
+handed both `ttg/T` and `T` and recovered a *constant* coefficient anyway.
+Part II's record lives in `ESCALATION.md` #E29/#E30. `README.md`'s
+`2-structural` section carries the one-line verdict on each declared stance and
+keeps the same separation.
+
+*(**Every part opens with its rung-0 visualization** — watch the policy before
+reading a statistic about it. The inlined figures are committed under
+`figures/` so this document renders in a fresh clone; the full artifact set —
+GIFs, per-policy metric JSONs, index-surface dumps — regenerates into
+`results/gauss_K10_T1000/interpret/` via `mab_interpret.py`,
+`mab_stats_probe.py` and `mab_policy_probe.py`. `results/` is gitignored; the
+regenerating command is given in each rung-0 section, never a link into it.)*
 
 Subject: **A8-a** (plain equivariant index policy @ A3-#6 HP; committed
 3-seed mean 1453.57 ± 4.80, #E23). Deep dives on **a-s3** (1462.39, the ship
@@ -45,9 +66,76 @@ gradient that taught the actor everything above, with `ent_coef` ≈ 0.
 
 ---
 
+## Rung 0 — watch first (side-by-side replays, shared latents)
+
+**Start here.** Before any statistic, watch the policy play: the crown (top)
+against thompson (bottom) on the *same* latent draw, so every visible
+difference is the policy and not the world. Posterior bars ± sd, true means as
+stars, the chosen arm coloured explore/exploit, and a cumulative-regret race
+below. Seeds are the battery's **paired extremes**, not curated — the win, the
+median, and the loss.
+
+**median — seed 3310, the typical episode.** Both lock onto the same arm; the
+crown's posterior bars stop moving earlier, which is the whole
+deterministic-index story the rungs below formalise.
+
+<img src="figures/replay_median_seed3310.gif" width="100%" alt="replay, median seed 3310: crown vs thompson on shared latents">
+
+**win — seed 4891.** The crown identifies early and stops paying for
+information; thompson keeps sampling its posterior and keeps paying. Watch the
+regret race flatten for one and not the other.
+
+<img src="figures/replay_win_seed4891.gif" width="100%" alt="replay, win seed 4891: crown identifies early">
+
+**loss — seed 7003.** The failure mode Rung 3 anatomises: the crown locks onto
+a runner-up and *never revisits*, so the regret race diverges linearly. This is
+the starvation tail, visible in a single episode.
+
+<img src="figures/replay_loss_seed7003.gif" width="100%" alt="replay, loss seed 7003: crown locks on a runner-up and never revisits">
+
+The loss replay is the single most useful frame of this document: it is the
+same mechanism the whole campaign eventually formalised — a fixed quantile
+never grows, so an abandoned arm is never reopened (#E31, #E34).
+
+**Caveat, recorded.** Stochastic policies do not replay their recorded episode
+(fresh action draws), so the loss seed re-lands negative but not at its
+recorded −1406 — itself a demonstration of within-seed draw variance. The
+render gate therefore demands the replay reproduce a *material* effect in
+pseudo-regret rather than merely the recorded sign, and walks down the ranked
+seed list until one does.
+
+**Regenerating them.** The GIFs above are committed under `figures/` so this
+document renders in a fresh clone. **The committed copies are downscaled**
+to 700×455 from the renderer's 1000×650, re-encoded with `ffmpeg`'s
+palettegen/paletteuse at `dither=none` — frame count, 80 ms timing and loop are
+preserved exactly and only the pixel grid changes, which holds `figures/` at
+~2.5 MB against ~5 MB for these three at full size. 700px is chosen to sit just
+under a typical rendered content column, so the inlined `width="100%"` barely
+upscales. Render full-size copies from the run artifacts, which are not
+committed:
+
+```bash
+# needs the metrics battery first — it writes the per-seed npz files the
+# replay picks its extreme seeds from
+OMP_NUM_THREADS=1 python mab_interpret.py --part metrics
+OMP_NUM_THREADS=1 python mab_interpret.py --part replay
+# writes results/gauss_K10_T1000/interpret/replay_{win,median,loss}_seed*.gif
+# plus replay_cases.json recording each seed's recorded and replayed delta
+
+# refresh what this document inlines (downscale, 201 frames @ 80ms preserved):
+ffmpeg -y -i results/gauss_K10_T1000/interpret/replay_win_seed4891.gif \
+  -vf "fps=12.5,scale=700:-1:flags=lanczos,split[s0][s1];\
+       [s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=none" \
+  figures/replay_win_seed4891.gif
+```
+
+Because the seeds are chosen from the battery's paired deltas, a re-run after
+the model changes may select **different** seeds — that is intended, and the
+filename carries the seed so a stale figure is self-identifying.
+
 ## Rung 1 — measure (the metric battery, 8192 seeds, CRN)
 
-![explore](figs/fig_explore.svg)
+![explore](figures/fig_explore.svg)
 
 | policy | reward | explore e→l | regret expl/expl’t | final-ID | lock t | alloc β | Δ vs thompson (paired) |
 |---|---|---|---|---|---|---|---|
@@ -78,8 +166,8 @@ Readings (structure measured during life, per the 2048 rule):
 
 ## Rung 2 — the anchored index readback (spec §14)
 
-![bonus](figs/fig_bonus.svg)
-![index](figs/fig_index.svg)
+![bonus](figures/fig_bonus.svg)
+![index](figures/fig_index.svg)
 
 The actor *is* φ(m, s, ttg) per arm — so we read it directly:
 
@@ -111,7 +199,7 @@ total rounds. See `README.md` for the leaderboard and `PLAYBOOK.md` LV8/LV9.
 
 ## Rung 2b — the critic
 
-![critic](figs/fig_critic.svg)
+![critic](figures/fig_critic.svg)
 
 - **Calibration without the Simpson split**: Pearson(V, realized
   return-to-go) = 0.97 overall and 0.85/0.98/0.89 within early/mid/late —
@@ -120,16 +208,6 @@ total rounds. See `README.md` for the leaderboard and `PLAYBOOK.md` LV8/LV9.
 - **The price of information**: ∂V/∂(Σ sd) = +3.77 early → +0.40 late, a ~9×
   anneal. At ent≈0 this gradient is the only exploration teacher; #E22's
   mechanism, measured. (Normalized-return units; shape meaningful, scale not.)
-
-## Rung 0 — watch (side-by-side replays, shared latents)
-
-`replay_{win,loss,median}_seed{4891,73,3310}.gif` — crown (top) vs thompson
-(bottom) on the same latent draw: posterior bars ± sd, true means as stars,
-chosen arm colored explore/exploit, cumulative-regret race below. Seeds are
-the paired extremes of the battery. Caveat recorded: stochastic policies
-don't replay their recorded episode (fresh action draws) — the loss seed
-re-lands negative but not at its recorded −1406, which is itself a
-demonstration of within-seed draw variance.
 
 ## Rung 3 — the tail is the whole story of the Thompson gap
 
@@ -168,210 +246,46 @@ artifacts** (fixed obligation for `mab_interpret.py`), and a summary file's
 
 ---
 
-# Part II — what did the stats twin learn? (A11-a, #E29/#E30)
+# Part II — the stats-encoding twin (#E29/#E30): not reproduced here
 
-Subject: **A11-a** (the identical recipe — index class, A3-#6 HP, 20M —
-with `obs=stats` through the share/avg feature map; committed 3-seed mean
-1408.55 ± 8.66, #E29). Deep dives on **a-s2** (1417.69, the best seed);
-direction checks on s1/s3. Tool: `mab_stats_probe.py`, which probes the
-scorer in *belief* coordinates by running the (pm, psd) → (share, avg)
-bijection inside torch and autograding through it, and — new instrument —
-fits c **in action space** (the c whose rule argmax best matches the net's
-argmax), because on visited states share and psd are deterministically tied
-and a value-space regression can load the share-dependence with either
-sign. Probe validated on a known answer first (§14.1): a synthetic
-pm + 1.7·psd scorer written in stats coordinates is recovered to 2e-7
-median autograd error, linear R² 1.0, behavioral fit c = 1.69 at 99.9%
-agreement.
+**Removed from this document on purpose.** The stats twin readback answers no
+declared stance — it is a by-product, like Part III — and at ~220 lines it was
+the longest section here while being the one least likely to be read. Its
+findings are not lost: **`ESCALATION.md` #E29 and #E30 are the record**, and
+the one-line verdict rides on the leaderboard row in `README.md`
+(`PPO obs=stats index @ tuned HP`, 1408.55).
 
-## The one-paragraph answer
+What it established, in three sentences. The stats twin is **not an index
+policy — it is a learned Thompson**: its deterministic mode is a near-greedy,
+mildly *pessimistic* rule (best flat c = −0.47), worthless played straight
+(argmax 643.60), and essentially all of its performance lives in a
+posterior-calibrated sampling anneal (0.31 → 0.05). Its stochastic−argmax gap
+is **772–1442** against the bayes crown's **37** — same architecture, different
+observation encoding. The conclusion that survives into the campaign's summary
+is that **the encoding decides *where* exploration lives**, not how much of it
+there is.
 
-The stats twin is **not an index policy — it is a learned Thompson**. Its
-deterministic mode is a near-greedy, mildly *pessimistic* rule (best flat
-c = −0.47; agreement ≈ 98% for any c ∈ [−3, +0.5], collapsing to 79% at
-the bayes crown's c = 1.51 and 20% at the optimal 2.5 — the flat left
-shoulder is itself the finding: late in the episode c is unidentified
-because the sd's are tiny, and nowhere does a *positive* quantile describe
-the mode), and that mode is worthless played straight: argmax evaluation
-scores **643.60** on s2 (below greedy's 1015.69, final-ID 0.267), 83.85 on
-s1, **−28.99 ≈ random** on s3 — stoch−argmax gaps of **772–1442** against
-A8-a's 37. The performance lives entirely in the **sampling channel**: the
-explore-rate anneals **0.31 → 0.05** across the episode — Thompson's shape
-(0.35 → 0.05), the exact opposite of the old subsidized crown's inversion
-(0.22 → 0.31, #E17) — carried by policy entropy falling 0.95 → 0.13 nats,
-and learned at `ent_coef` ≈ 0, so no subsidy pays for it. The same
-architecture, HP, budget, and objective therefore produce **two
-qualitatively different solutions, selected by the encoding alone**:
-handed the posterior, PPO writes exploration into the index surface (a
-deterministic quantile rule, Part I); handed raw counts, it leaves the
-index near-greedy and writes exploration into a posterior-calibrated
-randomization schedule. #E29's reading of the 45.02 deficit sharpens
-accordingly: the net did **not** "construct sd but slightly worse" — it
-never built an uncertainty *bonus* at all; the 45 points are the measured
-premium of randomized (Thompson-style) exploration over index
-(quantile-style) exploration, the same trade Part I measured from the
-other side (+5.1/seed on 98.8% of episodes for the deterministic index,
-against its wrong-lock tail).
+**To regenerate the full analysis and its figures** (nothing is committed for
+it, so this is the only route):
 
-![stats gap](figs/fig_stats_gap.svg)
+```bash
+# the readback itself — belief-coordinate index fit, ablations, the anneal
+OMP_NUM_THREADS=1 python mab_stats_probe.py --part all
 
-![stats explore](figs/fig_stats_explore.svg)
+# its figures -> figures/fig_stats_{gap,explore,mode,index}.svg
+python mab_stats_plot.py
 
-## Instruments and numbers (all on the standard CRN streams)
+# its rung-0 replays: the SAME net sampled vs argmax on shared latents,
+# cases in results/gauss_K10_T1000/interpret/stats_replay_cases.json
+OMP_NUM_THREADS=1 python mab_stats_probe.py --part gif
 
-![stats mode](figs/fig_stats_mode.svg)
+# the three-way race (thompson vs bayes twin vs stats twin, one seed)
+OMP_NUM_THREADS=1 python mab_stats_probe.py --part race
+```
 
-![stats index](figs/fig_stats_index.svg)
-
-*(Figures regenerate via `mab_stats_plot.py` from the probe artifacts; the
-contour figure's off-support band is the region no realizable state reaches
-— n > t or n < 1 — which the free (m, s) grid of Part I's `fig_index`
-does not mark.)*
-
-**Why these come from probes and not from the eval runs.** A spec-§9 eval
-TSV is a single aggregate row (`reward_mean`, `regret_mean`, oracle, the
-semivariances) and these runs carry `gym_log: 0`, so no per-step or
-per-episode trajectory was ever written. Two of the four figures are not
-behavior at all — the c-agreement curve and the contour map probe the
-*scorer's decision surface*, including belief states no episode reaches, so
-no trajectory log of any resolution could contain them. The explore-rate
-curve and the GIFs do need trajectories, and those must be rolled out from
-the artifact: training-time logs would be trajectories of a *changing*
-policy, not of the shipped one. The gap number is the exception that the
-pipeline can produce, and it was checked there rather than assumed:
-`mab_ppo_eval.py --no-stochastic` on the same checkpoint returns
-**643.5999 ± 7.80**, matching the probe's 643.60 exactly (deterministic leg
-⇒ both paths compute the same quantity). The probe substrate itself
-(`VecSim`) is bit-identical to `MabEnv` on forced action sequences —
-payouts and observations agree to 0.0 over six episodes.
-
-**Watch it (rung 0)** — `mab_stats_probe.py --part gif` renders the #E30
-story as Part-I-style replays, but the pair is the **same net, sampled vs
-argmax** on shared latents (gitignored, under
-`results/gauss_K10_T1000/interpret/`, cases in `stats_replay_cases.json`;
-Part I's acceptance discipline — a case must reproduce its claimed
-pseudo-regret effect on replay):
-
-| case | seed | sampled | argmax | what it shows |
-|---|---|---|---|---|
-| `collapse` | 25 | 1060 | **−683** | the mode wrong-locks on a wrong arm while the true best sits unexplored; pseudo-regret climbs linearly. The sampled leg anneals its exploration (H → 0.01 nats) and flattens |
-| `median` | 34 | 1559 | 843 | the typical seed: the mode finds *a* good arm, not the best; sampling buys ~700 |
-| `survive` | 85 | 2205 | 2201 | the honesty case: when the empirical leader is the true best early, the mode is fine — the two legs coincide |
-
-**The three-way race (`--part race`)** — the ablation above answers *which
-channel carries the behavior*; this answers *who wins and why*. Thompson,
-the bayes twin and the stats twin on one seed's latents, each played the
-way it is deployed (Thompson samples its posterior, both nets sample their
-softmax). Selection and acceptance are both on **pseudo-regret**, the
-plotted and means-based quantity — Part I's argument that realized payout
-is a random walk once a policy locks, so a payout-spread scan selects luck.
-The gate earned its keep immediately: an early `spread` candidate selected
-on payout spread (1569) replayed to a three-way tie and was discarded —
-which is what moved both the scan statistic and the gate onto pseudo-regret.
-
-| case | seed | thompson | bayes twin | stats twin | what it shows |
-|---|---|---|---|---|---|
-| `spread` | 194 | 18 | 20 | **1495** | thompson and the bayes twin both lock the best arm within noise of each other; the stats twin wrong-locks and bleeds linear regret for the whole episode |
-| `typical` | 90 | 48 | 18 | 33 | the everyday picture: three routes to the same place, all inside 30 regret, differing only in how much each pays early |
-
-(Final pseudo-regret, one draw each. Single episodes of stochastic
-policies are illustrations, not evidence — the quantitative claims live in
-the battery and the committed evals.)
-
-**The same race on Part I's three seeds** (`--part race --seeds
-7003,3310,4891` — no scan, no gate: the episodes are named in advance, so
-the two rounds can be watched on identical latents). The #E24 labels
-describe the crown-vs-thompson delta that *selected* those seeds in Part I;
-they are provenance, not predictions about this draw:
-
-The bayes leg is given Part I's exact action-draw stream, so these renders
-**reproduce that round's crown episode bit-for-bit** — the thompson−bayes
-pseudo-regret delta comes out at −1143.39 / −3.91 / +127.71, matching
-`replay_cases.json` to the digit. The two rounds are therefore the same
-episodes with a third policy added, not two similar-looking draws:
-
-| #E24 role | seed | thompson | bayes twin | stats twin | this episode |
-|---|---|---|---|---|---|
-| `loss` | 7003 | 34.7 | **1178.1** | **1186.8** | the wrong-lock case, and **both twins fall into it** — thompson locks arm 5 (μ = 3.4) while the two nets settle on ~2.2-arms and bleed in parallel for the whole episode |
-| `median` | 3310 | 81.0 | 84.9 | 62.2 | the everyday picture: all three inside 23 regret of each other, the stats twin marginally ahead on this draw |
-| `win` | 4891 | 144.4 | **16.6** | **5.6** | the crown's win case, and the stats twin wins it too: both nets commit early and cheaply where thompson keeps paying for exploration it does not need |
-
-Across all five race cases the pattern is the one #E29/#E30 quantify: the
-twins agree with each other far more than either agrees with thompson —
-they share both the cheap-exploration edge (4891) and the wrong-lock tail
-(7003, and the stats twin alone at 194). The encoding changes *where the
-exploration lives*, not the risk profile it buys.
-
-> **Harness note, recorded because it cost a wrong claim.** The first
-> version of this race gave all legs one shared generator, so the bayes and
-> stats legs *interleaved* their draws and the bayes leg no longer saw Part
-> I's stream. On seed 7003 that flipped its outcome — same artifact, same
-> latents, same wrapper, regret **37.8 instead of 1178.1** — and the first
-> write-up of this table read that as "the bayes twin locks correctly here."
-> The defect: a leg's trajectory must not depend on which other legs share
-> the render. Fixed with per-leg streams. The accidental perturbation is
-> worth keeping as evidence, though, since it is a clean one: two draws of
-> one policy on one instance, opposite outcomes — the behavioral form of
-> #E24's finding that wrong-lock does not track instance hardness (corr
-> 0.08). What a replay shows is a *(policy, latents, draw)* triple, and the
-> draw is not optional.
-
-| instrument | a11-s2 | bayes crown (Part I) |
-|---|---|---|
-| grid linear R² in belief coords, by ttg | 0.66 → 0.94 | 0.90 → 0.96 |
-| … in the net's raw coords | 0.68 → 0.91 | — (native) |
-| monotone-in-pm fraction | 0.58 → 0.99 | ~1.0 |
-| behavioral c (flat) | **−0.47** @ 97.96% | ≈ +1.5 @ 98% |
-| agreement at c = 1.51 / 2.5 | 79.2% / 19.7% | 98% / — |
-| regression c on visited states | −2.99 → −0.73 (R² 0.65–0.92) | +1.60 → +1.16 |
-| mode as a deterministic rule | knots 1187.83, powerlaw 1297.32 | 1459.56 ≈ net |
-| stoch / argmax / gap | 1415.50 / 643.60 / **771.90** | ≈1462 / — / 37 |
-| ↳ argmax via the eval pipeline (`--no-stochastic`) | **643.5999 ± 7.80** | — |
-| final-ID stoch / argmax | 0.856 / 0.267 | 0.923 / — |
-| explore-rate early → late | **0.309 → 0.051** (anneals) | 0.26 → 0.09 (in-index) |
-| policy entropy early → late | 0.95 → 0.13 nats | ~0 contribution |
-| mode agreement with the bayes crown | 81.8% | — |
-
-s1/s3 robustness: the surface shape replicates (R² 0.61–0.90 / 0.70–0.85);
-the gap direction replicates and is *stronger* (s1 argmax 83.85, s3 argmax
-−28.99 — a seed whose deterministic mode is literally random).
-
-## What this settles
-
-1. **"Did it recover 1/√(1+n)?" — as a bonus, no.** The index surface is
-   not affine in belief coordinates off the manifold, belief coordinates
-   beat the net's own raw coordinates only marginally, and on visited
-   states every description of the mode puts the uncertainty coefficient
-   at ≤ 0. The conjugate transform the bayes obs hands over was not
-   reconstructed as machinery; what was learned instead is a *schedule*.
-2. **Where the 45.02 goes.** Not "worse index" — *different mechanism*.
-   Annealed randomization is a good exploration scheme (Thompson itself is
-   one, and this policy sits 96.3% of Thompson); the deficit is the
-   premium of that mechanism against the tuned deterministic index the
-   bayes twin found, consistent with Part I's tail anatomy.
-3. **The self-annealing schedule, third sighting.** A8-a's bonus rides the
-   shrinking psd (index channel); A8-b's β pegged itself to the posterior
-   through ẑ's shape (shape channel); the stats twin anneals through its
-   softmax temperature (sampling channel). In all three the anneal is
-   *learned from the objective at ent ≈ 0* — the finite-horizon return
-   itself teaches the schedule once the mis-priced subsidy is gone (#E22).
-4. **D5/D7 is load-bearing again.** A8-a made the stochastic-eval
-   convention look moot (gap 37); the stats twin makes it existential
-   (gap 772–1442). Any argmax-scored eval of this artifact would have
-   read it as a catastrophic failure and pruned the encoding a second
-   time — O1's lesson, now at the artifact level.
-5. **Findability, sixth instance, and the sharpest.** The index solution
-   is representable in the stats class — the transform is a smooth map a
-   64×64 scorer approximates easily, and the probe's synthetic-scorer
-   validation *is* that construction — but PPO does not find it from raw
-   counts; it finds the randomized optimum instead. The belief features
-   do not add capacity; they make the index solution *findable*.
-
-Deliverable note: nothing here changes the branch's ship candidate — the
-#E26 formula stands. The stats branch needs no artifact; its value was the
-answer above.
-
----
+The `collapse` seed (25) is the one worth watching: the argmax leg wrong-locks
+on a wrong arm while the true best sits unexplored, and pseudo-regret climbs
+linearly, while the sampled leg anneals and flattens.
 
 # Part III — what did the generalist learn? (#E36 / #E37)
 
@@ -394,6 +308,23 @@ linear R² 1.000, recovering `2.5·r^0.15` to three digits; UCB1 **q = +0.0756**
 The control needed one repair first — with `n = 1/s²−1` floored at 1e-9 the
 untouched-arm corner diverges and the fitted c reached ~1.6e4, so the gate
 "passed" on a singularity; floored at n ≥ 1 it reads 3.33 → 5.06.
+
+## Rung 0 — no replay exists for this part, and that is a gap
+
+Part I opens by watching an episode. **This one cannot**: the
+generalist readback (`mab_generalist_readback.py`) fits a coefficient across
+grid cells and accounts for arm coverage — it renders no trajectory, so there
+is no GIF to inline and none is committed. The finding below is therefore
+carried entirely by fitted numbers, which is weaker evidence of the same kind
+of claim.
+
+What it would take, if someone wants it: the replay machinery in
+`mab_interpret.py` is hard-wired to `VecSim` at the base cell (K=10, T=1000),
+so a generalist replay needs a renderer that accepts the episode's own `T` —
+the same widening `bayes_h` / `index_h` already did for the observation and
+policy. The most informative frame would be a long cell (T=10000) showing the
+runner-up arm receiving its median of 2 pulls, which is #E34's mechanism made
+visible rather than inferred.
 
 ## The one-paragraph answer
 
