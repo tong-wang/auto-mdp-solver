@@ -1085,47 +1085,55 @@ components.
 
 ### 13.4 How this meshes with the L0/L1/L2 ladder
 
-The registry is a taxonomy **of the L2 layer**, and the ladder attaches to it at
-exactly one point — the origin of each axis.
+The registry is a taxonomy **of configurations**, and the derivation attaches
+to it at exactly one point — the origin of each axis.
 
 | level | what it is | how a run cites it |
 |---|---|---|
 | **L0** | faithful defaults: the library's defaults plus only what the *problem* forces. Not configured from the registry at all | `{sc}/L0` — the scenario and nothing else. No axis ids, because there is no derived config to name |
-| **L1** | the derivation's output. It **defines** the origin of each axis: `g0`, `a0`, `h0` | `{sc}/{design axes}/L1`, the canonical spelling of the all-origin tuple **within that cell** |
-| **L2+** | every escalation: a non-origin id on a **non-design** knob, or a declared deviation | `sc0/g2/a0/h0`, `sc0/g0/a0/h0_lam0.9` |
+| **L1** | the best configuration statable without search on this target (§8.6). The *derivation's* output defines the origin of each axis — `g0`, `a0`, `h0` — but an L1 sourced from the campaign's own findings sits above the origins and is still L1 | `{sc}/{design axes}/L1` where it sat at the origins, the canonical spelling of the all-origin tuple **within that cell**; otherwise the ids it actually cites, tagged `L1` |
+| **L2+** | every escalation: a configuration that came from a search on this target | `sc0/g2/a0/h0`, `sc0/g0/a0/h0_lam0.9` |
 
 **A design axis names a cell, not a level.** The `g` axis carries the design
 axes (`observation_mode`, `action_mode`, `reward_mode`) as well as the wrapper
 stack, and §8.6's ladder is per-cell — *"Δ(L1−L0) measures the configuration
-layer per case"*. So the level is the set of layers moved off the complete
-origin **among non-design knobs**; a non-origin id that differs only in a
-design axis is a different *cell*, whose own ladder starts again at L1.
+layer per case"*. So the **distance** a tuple records is the set of layers
+moved off the complete origin **among non-design knobs**; a non-origin id that
+differs only in a design axis is a different *cell*, whose own ladder starts
+again at L1.
 
 This was measured. The first faithful implementation read the clause as *any*
 non-origin id, and produced **33 disagreements in 105 runs** against the
-knob-derived level — every `vec_mip` arm reading `L2(gym)`, relabelling half of
-a declared research instrument as an escalation, all in the direction that
-inflates levels. Worked example from that tree: `sc0/g1/a0/h0` — the `vec_mip`
+knob-derived layer set — every `vec_mip` arm reading `L2(gym)`, relabelling
+half of a declared research instrument as an escalation, all in the direction
+that inflates. Worked example from that tree: `sc0/g1/a0/h0` — the `vec_mip`
 arm, wrapper and hp at the derivation — is **L1 in its own cell**, spellable
 `sc0/vec_mip/L1`; `sc0/g2/a0/h0`, with `norm_obs` moved, is `L2(gym)`; and an
 explicit `-o vec` against a citation that fixes `vec_mip` is refused at launch
 by §3.1's write-once rule rather than recorded as a deviation.
 
 The quieter half of the same correction: a knob **no** §8.6 row derives
-(`vf_coef`) still makes a level when it moves, per §8.6's own invariant — *more
-than one training configuration was tried*. Derivation coverage decides what
-the origin must contain; it does not decide what counts as an escalation.
+(`vf_coef`) still moves the tuple when it moves, and a *search* over it is an
+escalation like any other — §8.6's invariant is *more than one training
+configuration was tried*, which says nothing about which knob was searched.
+Derivation coverage decides what the origin must contain; it decides neither
+what the tuple records nor what counts as a search.
 
 Three properties follow:
 
-1. **L1 keeps its status as a derivation rather than a choice.** `g0`/`a0`/`h0`
-   are not entries anyone picked; they are what the derivation emitted. The
-   registry's append-only ids begin *after* it, which is why every row above an
-   origin is L2 permanently, and why the obvious objection — giving L1 a config
-   id makes it look chosen — does not bite.
-2. **The level stops being authored and becomes derivable.** Origin ids on
-   every axis with no deviations is L1; anything else is L2, and which axes
-   moved says which sub-layer. An authored tag is a claim nothing checks: one
+1. **The origins keep their status as a derivation rather than a choice.**
+   `g0`/`a0`/`h0` are not entries anyone picked; they are what the derivation
+   emitted, so the obvious objection — giving L1 a config id makes it look
+   chosen — does not bite. The registry's append-only ids begin *after* the
+   origins, and an id above one records permanently that the run moved off the
+   derivation, whether a search put it there or the campaign's own findings
+   did.
+2. **The layer tags stop being authored and become derivable.** Origin ids on
+   every axis with no deviations is the L1 centre; anything else names how far
+   the run moved and which axes moved it. That distance is not the level —
+   §8.6's level asks whether a search ran on this target — but it is what makes
+   a claimed level, and its layer tags, auditable rather than taken on trust.
+   An authored tag is a claim the name itself cannot check: one
    campaign's `L1_onehot_CNN` names an L2(gym) arm in ~90 run dirs, and another
    found 66 of 126 training runs carrying a `solve_level` their own knobs
    contradict — 24 of them "L2(hp)" rounds that had opened the gym layer.
@@ -1211,5 +1219,5 @@ training launch and its rows were verified knob-for-knob against a completed
 study's winners, but it has not yet been the launcher of a *new* tuning study.
 The axes collide most where a study returns a config differing from its parent
 on more than one of them (§8.6's `core` tier reaches the arch layer, `breadth`
-and `all` reach gym), and the rule there is §13.4's: **read the level off the
-knobs that actually moved**, never off the fact that a study produced it.
+and `all` reach gym), and the rule there is §13.4's: **read the layer tags off
+the knobs that actually moved**, never off the tier the study named.

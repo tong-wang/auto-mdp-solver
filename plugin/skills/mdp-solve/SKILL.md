@@ -117,8 +117,10 @@ but the domain directory.
 Training runs are **leveled** (spec §8.6): **L0** = faithful defaults
 (`PPO("MlpPolicy", env, gamma=β, seed=s).learn(2M)`, no VecNormalize — the
 control run and the ruler for agent contribution; reporting only, never a
-gate), **L1** = the spec-§8.6 derivation table applied — the mandatory run,
-with every derived knob logged with its one-line rationale — and **L2+** =
+gate), **L1** = the best config statable without search on this target — the
+spec-§8.6 derivation table where the campaign has nothing better, its own
+recorded findings where it has, every value logged with its one-line
+rationale — and **L2+** =
 escalations (hp / gym / arch), only after the L1 gate shows a gap. A tuned
 result is always L2: level ≥ L2 ⟺ more than one training config was tried.
 Run L0 by default (it is usually the cheapest run on the board); put both on

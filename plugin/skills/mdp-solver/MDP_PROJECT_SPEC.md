@@ -1778,11 +1778,15 @@ Three consequences, none of which the default-relative rule has:
   quieter half of the same gap closes with it: a knob sitting at a default that
   is wrong for the current scale appears in no run name, no leaderboard row and
   no ledger citation, recoverable only by reading a train log by hand.
-- **The level stops being authored and becomes derivable.** An empty
-  hyperparameter tier means the run sat at the L1 centre; any tag means the hp
-  layer moved, and which tags appear says how far. An authored `L1_…` token is
-  a claim nothing checks — one campaign carries it in ~90 run dirs of an
-  L2(gym) arm.
+- **Distance from the derivation stops being authored and becomes derivable.**
+  An empty hyperparameter tier means the run sat at the L1 centre; any tag
+  means the run moved off the §8.6 table, and which tags appear says how far.
+  That distance is not the *level* — §8.6's level asks whether a search ran on
+  this target, and a campaign citing its own findings deviates without
+  escalating — but it is what makes either question answerable from the run
+  name instead of from a train log. An authored `L1_…` token in the name is a
+  claim the name itself cannot check: one campaign carries it in ~90 run dirs
+  of an L2(gym) arm, which the tags would have caught.
 - **Re-deriving is distinguishable from tuning.** §8.6 already mandates
   re-derivation when "the instance, scale, or measured T̄ moves". That is an
   edit to `_L1_DERIVED` with a logged basis — a new L1 generation, whose
@@ -1855,10 +1859,21 @@ result is always an escalation.
   line: `PPO("MlpPolicy", env, gamma=β, seed=s).learn(2_000_000)` — anything
   that can't fit in that line is L1+. Record the SB3 version in args.txt.
   L0 is the ruler: Δ(L1−L0) measures the configuration layer per case.
-- **L1 — the derived config** (the mandatory backbone). Every row below is a
-  *forced move* — a hard rule reading the IR, logged with a one-line
-  rationale (the `obs_normalization` decision pattern, generalized).
-  Judgment beyond these rules is L2.
+- **L1 — the best configuration the campaign can state without search on
+  this target** (the mandatory backbone). Exactly one configuration is
+  trained; the post-hoc checkpoint screen (§9.7) happens inside that single
+  run. Its sources, in increasing order of specificity: general guidance from
+  the literature; **the derivation table below**, which is the fallback and
+  all a first campaign has; and the project's own recorded findings, cited by
+  ledger entry — including a tuned value carried from a related instance,
+  where the knob's own row permits it (`gae_lambda` does not: it is
+  per-instance, and a λ carried across a horizon change silently changes what
+  it means). Whatever the source, every value is logged with its one-line
+  rationale (the `obs_normalization` decision pattern, generalized), so what
+  an L1 claims stays readable. **Deviating from the table is not what makes a
+  run an escalation — searching is.** A campaign that has learned something
+  is still at L1 when it spends no search on this target, and its run name
+  carries the distance as deviation tags (§8.4).
 - **L2+ — escalations**, one level per round, tagged with the layer(s)
   opened: `L2(hp)`, `L2(gym)`, `L2(arch)`, `L3(hp+arch)`, … **Levels are
   per-family.** A *family* is the set of algorithm classes sharing one L0 form
@@ -1874,7 +1889,19 @@ result is always an escalation.
   levels. Budget extension
   ("still climbing at ceiling") is the cheapest L2 move.
 
-**The L1 derivation table** (signal → knob):
+**Adopting this reading mid-campaign.** Labels already written stay valid
+under the reading that produced them, and run directories are immutable —
+never rename one. A domain that switches records the switch the way §8.4
+records a re-derivation: a new L1 generation with a logged basis, from which
+point the level answers the search question. Old and new labels stay
+distinguishable by that line, and the deviation tags in the run names read the
+same either way.
+
+**The L1 derivation table** (signal → knob) — L1's second source above: what a
+campaign with no findings of its own derives, and the floor every later
+campaign answers to. Each row is a *forced move* against that state of
+knowledge, not against a better one — a campaign that has measured the knob
+cites its own result and stays at L1:
 
 | knob | rule |
 |---|---|
@@ -1988,8 +2015,8 @@ which this table derives from the IR's observation structure and objective and
 which §8.3 makes part of the saved artifact's input contract, so it is a
 **gym**-layer knob, not an optimizer setting. A winner that moved one of those
 is `L3(hp+arch)` or `L3(hp+gym)` in the notation above, and the escalation
-entry says so: **read the level off the knobs that actually moved**, never off
-the fact that a study produced it. Two flags make this answerable rather than
+entry says so: **read the layer tags off the knobs that actually moved**,
+never off the tier the study named. Two flags make this answerable rather than
 archaeological — `--show-space` prints the resolved tunable set before launch,
 and `--fix` holds a knob at its derived value, so a study that means to stay
 inside one layer can say so (`--fix norm_obs`, `--fix embed_dim`).
