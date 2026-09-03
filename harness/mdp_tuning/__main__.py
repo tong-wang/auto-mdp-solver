@@ -413,6 +413,35 @@ def train_assignment(scripts: DomainScripts, args: argparse.Namespace,
     return assign
 
 
+def crash_penalty(trial: optuna.Trial, err: Exception) -> float | None:
+    """Value for a crashed trial (e.g. NaN divergence): the worst completed
+    value so far. Returning a value — rather than failing the trial — is
+    what teaches TPE to avoid divergent regions instead of resampling them.
+
+    ``None`` means *do not score this trial at all*, and the invariant behind
+    it is that a crashed trial must never become ``study.best_trial``. The
+    worst-completed rule holds that on its own, but only while a completed
+    trial exists to take a worst value from. With none, the old fallback
+    returned a direction-blind ``0.0`` — below every attainable cost in a
+    MINIMIZE study, so a crash on trial 0 was recorded as the study's best and
+    no later trial could displace it (upstream #76). There is also nothing to
+    teach in that state: with no completed trial there is no scale on which
+    "avoid this region" could be expressed. So the caller re-raises and
+    ``study.optimize(catch=...)`` marks the trial FAIL, which optuna excludes
+    from both ``best_trial`` and the TPE model. The rule resumes unchanged as
+    soon as one trial completes.
+    """
+    trial.set_user_attr("failed", f"{err.__class__.__name__}: {err}"[:500])
+    done = [t.value for t in trial.study.trials
+            if t.state == optuna.trial.TrialState.COMPLETE
+            and t.value is not None]
+    if not done:
+        return None
+    if trial.study.direction == optuna.study.StudyDirection.MAXIMIZE:
+        return min(done)
+    return max(done)
+
+
 def make_objective(scripts: DomainScripts, args: argparse.Namespace,
                    scenario: str, study_dir: Path,
                    fixed_train: dict, fixed_eval: dict):
@@ -428,18 +457,6 @@ def make_objective(scripts: DomainScripts, args: argparse.Namespace,
         raise SystemExit(
             f"FATAL: {scripts.train_script.name} derives a value its own CLI "
             f"cannot carry, so no trial can run the derivation — {err}")
-
-    def _penalty(trial: optuna.Trial, err: Exception) -> float:
-        """Value for a crashed trial (e.g. NaN divergence): the worst completed
-        value so far. Returning a value — rather than failing the trial — is
-        what teaches TPE to avoid divergent regions instead of resampling them."""
-        trial.set_user_attr("failed", f"{err.__class__.__name__}: {err}"[:500])
-        done = [t.value for t in trial.study.trials
-                if t.state == optuna.trial.TrialState.COMPLETE
-                and t.value is not None]
-        if trial.study.direction == optuna.study.StudyDirection.MAXIMIZE:
-            return min(done) if done else 0.0
-        return max(done) if done else 0.0
 
     def objective(trial: optuna.Trial) -> float:
         cfg = space.sample(trial, tunable, **sample_kw)
@@ -460,7 +477,14 @@ def make_objective(scripts: DomainScripts, args: argparse.Namespace,
             model = resolve_model(trial_dir, scenario=scenario, algo=args.algo,
                                   mode=args.score_checkpoint)
         except (RuntimeError, FileNotFoundError) as err:
-            value = _penalty(trial, err)
+            value = crash_penalty(trial, err)
+            if value is None:
+                print(f"[trial {trial.number}] training FAILED "
+                      f"({err.__class__.__name__}) with no completed trial to "
+                      f"penalize against -> trial FAILED, left unscored so it "
+                      f"cannot become the study best; "
+                      f"see {trial_dir / 'train.log'}", flush=True)
+                raise
             print(f"[trial {trial.number}] training FAILED "
                   f"({err.__class__.__name__}) -> penalized value {value:.4f}; "
                   f"see {trial_dir / 'train.log'}", flush=True)
@@ -637,12 +661,22 @@ def main() -> None:
         # not the study
         catch=(RuntimeError, FileNotFoundError, ValueError),
     )
-    failed = sum(1 for t in study.trials
-                 if t.state == optuna.trial.TrialState.FAIL
-                 or "failed" in t.user_attrs)
-    if failed:
-        print(f"{failed} trial(s) crashed (typically NaN divergence) and were "
-              f"penalized — see their train.log")
+    crashed = [t for t in study.trials
+               if t.state == optuna.trial.TrialState.FAIL
+               or "failed" in t.user_attrs]
+    # the two crash outcomes are not the same row and must not be reported as
+    # one: a penalized trial carries the worst completed value, an unscored one
+    # carries no value at all because nothing had completed to take it from
+    unscored = [t for t in crashed if t.state == optuna.trial.TrialState.FAIL]
+    penalized = [t for t in crashed if t.state != optuna.trial.TrialState.FAIL]
+    if penalized:
+        print(f"{len(penalized)} trial(s) crashed (typically NaN divergence) "
+              f"and were penalized — see their train.log")
+    if unscored:
+        print(f"{len(unscored)} trial(s) crashed with no completed trial to "
+              f"penalize against and are FAILED/unscored — trials "
+              f"{', '.join(str(t.number) for t in unscored)}; "
+              f"see their train.log")
     print_summary(study, eval_seeds=args.eval_seeds)
     report_importances(study, study_dir)
 

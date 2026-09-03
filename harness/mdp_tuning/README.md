@@ -92,6 +92,16 @@ a failed trial carries no signal, so TPE would happily resample the divergent
 region — observed as 8 consecutive failures next to a high-scoring trial
 before this behavior was added.
 
+The one case that rule cannot cover is a crash **before any trial has
+completed**, where there is no worst value to take. Such a trial is left
+FAILED and unscored, and the summary names it separately from the penalized
+ones. The invariant is that a crashed trial must never become the study's
+`best_trial`: the earlier direction-blind fallback of `0.0` broke it outright
+in any MINIMIZE study, where 0.0 beats every attainable cost (upstream #76).
+Nothing is taught by the omission, correctly — with no completed trial there
+is no scale on which "avoid this region" could be expressed — and the
+worst-completed rule resumes the moment one trial finishes.
+
 ## Limitations / future work
 
 - **No mid-trial pruning yet.** Train scripts are single-shot subprocesses,

@@ -465,3 +465,75 @@ def test_summary_labels_the_best_value_as_a_trial_layer_score(capsys):
     assert "TRIAL-LAYER score, 512 seeds" in out
     assert "not comparable to a protocol number" in out
     assert "maximum over 3 trials" in out       # the selection effect, named
+
+
+# --- the crashed-trial penalty (upstream #76) -----------------------------
+
+def _crash_study(direction: str, crash_on: set[int], values: dict[int, float]):
+    """A study whose objective crashes on the named trials. Routes through the
+    real `crash_penalty`, so what is exercised is the contract optuna sees."""
+    import optuna
+
+    from mdp_tuning.__main__ import crash_penalty
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    study = optuna.create_study(direction=direction)
+
+    def objective(trial):
+        trial.suggest_float("x", 0.0, 1.0)
+        if trial.number in crash_on:
+            err = RuntimeError("NaN divergence")
+            value = crash_penalty(trial, err)
+            if value is None:
+                raise err
+            return value
+        return values[trial.number]
+
+    study.optimize(objective, n_trials=len(crash_on) + len(values),
+                   catch=(RuntimeError,))
+    return study
+
+
+def test_a_crash_before_any_completion_cannot_become_the_study_best():
+    """The defect: with no completed trial there was no worst value to take and
+    both directions fell back to 0.0. In a MINIMIZE study over cost that is
+    below anything attainable, so the crash was recorded as the best trial and
+    nothing could ever displace it — for the study's whole life, and in the
+    `best_value` a watcher or a downstream selection step reads.
+    """
+    import optuna
+
+    study = _crash_study("minimize", crash_on={0}, values={1: 452.0, 2: 470.0})
+
+    assert study.trials[0].state == optuna.trial.TrialState.FAIL
+    assert study.trials[0].value is None
+    assert study.best_trial.number == 1
+    assert study.best_value == 452.0
+    # the reason still reaches the DB — a FAIL trial keeps its user attrs
+    assert "RuntimeError" in study.trials[0].user_attrs["failed"]
+
+
+def test_the_maximize_mirror_holds_for_a_negative_objective():
+    """0.0 anchors a MAXIMIZE study too, whenever the attainable range is
+    negative — a reward-minus-cost objective, or a regret carried as a negative
+    number."""
+    import optuna
+
+    study = _crash_study("maximize", crash_on={0}, values={1: -20.0, 2: -5.0})
+
+    assert study.trials[0].state == optuna.trial.TrialState.FAIL
+    assert study.best_value == -5.0
+
+
+def test_the_worst_completed_rule_is_unchanged_once_a_trial_completes():
+    """The design intent this does not touch: a later crash is still *scored*
+    at the worst completed value, which is what teaches TPE to avoid the
+    region rather than resample it."""
+    import optuna
+
+    study = _crash_study("minimize", crash_on={2}, values={0: 452.0, 1: 470.0})
+
+    crashed = study.trials[2]
+    assert crashed.state == optuna.trial.TrialState.COMPLETE
+    assert crashed.value == 470.0          # the worst completed, not 0.0
+    assert study.best_trial.number == 0
