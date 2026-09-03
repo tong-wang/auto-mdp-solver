@@ -44,7 +44,9 @@ so nothing downstream learns a new shape:
   namespace **derived** from :mod:`mdp_ir.families` (lazily, per attribute,
   composing through the latent hierarchy) — never hand-authored; a
   candidate's ``read_api`` block is the explicit override for underivable
-  cases. Only the *stats* resolve here: what a bound reads from
+  cases, and may name an attribute outside the derived set (a law's own
+  ``probs``/``support``, say) — it is consulted before the derived vocabulary,
+  not gated by it. Only the *stats* resolve here: what a bound reads from
   ``scenario.constants`` stays symbolic and resolves per instance at the
   schema's read API, so the two halves of ``"N * demand.max"`` track the
   selection and the instance respectively (#53).
@@ -168,16 +170,27 @@ def _slot_namespace(slot: dict, cand: dict, const_values: dict, where: str):
 
     class _Slot:
         def __getattr__(self, item: str) -> Any:
-            if item not in READ_API:
-                raise LayeringError(
-                    f"{where}: slot {slot_name!r} has no read-API attribute "
-                    f"{item!r}; available: {list(READ_API)}"
-                )
+            # the candidate's own declaration is consulted FIRST. `read_api` is
+            # the escape hatch for what the registry cannot derive, so it has to
+            # be able to carry an attribute the registry has no notion of at all
+            # — a law's `probs`/`support` (upstream #77) being the case that
+            # exposed this. Gating on READ_API first made the hatch reachable
+            # only for the five attributes that never need it.
             if item in explicit:
                 raw = explicit[item]
                 return (
                     _eval_expr(raw, dict(const_values), f"{where}:{slot_name}.{item}")
                     if isinstance(raw, str) else raw
+                )
+            if item not in READ_API:
+                # a sibling candidate may declare what this one does not: say so
+                # rather than resolving to something that is not this law
+                declared = (f"; declared by candidate {cand.get('generator', '?')!r}: "
+                            f"{sorted(explicit)}" if explicit
+                            else "; this candidate declares no read_api block")
+                raise LayeringError(
+                    f"{where}: slot {slot_name!r} has no read-API attribute "
+                    f"{item!r}; derived: {list(READ_API)}{declared}"
                 )
             try:
                 if item in _FAMILY_FNS:
@@ -208,9 +221,17 @@ def _mixture_namespace(slot: dict, comp_infos: list, where: str):
     class _Mix:
         def __getattr__(self, item: str) -> Any:
             if item not in READ_API:
+                # only the derived five compose across components; a
+                # candidate-declared `read_api` attribute is a statement about
+                # one law and has no composition rule over a mixture of them,
+                # so it is refused here rather than silently taking one
+                # component's answer for the mixture's
                 raise LayeringError(
                     f"{where}: slot {slot_name!r} has no read-API attribute "
-                    f"{item!r}; available: {list(READ_API)}"
+                    f"{item!r} under a mixture; derived: {list(READ_API)}. A "
+                    f"candidate-declared read_api attribute does not compose "
+                    f"across mixture components — reference the slot under a "
+                    f"selection that is not a mixture"
                 )
             weights, vals, means = [], [], []
             for w, comp_sel, cvals in comp_infos:

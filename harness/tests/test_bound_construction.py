@@ -140,6 +140,104 @@ def test_an_unknown_read_api_attribute_still_lists_what_exists(catalog_doc):
         bounded(catalog_doc, "flow.variance")
 
 
+# -- the escape hatch outside the derived set (upstream #77) -----------------
+
+
+def _law_doc(on: str = "poisson") -> dict:
+    """The catalog fixture with one candidate declaring the law itself. The
+    slot-aligned pmf is what an observation over a grid of laws must condition
+    on, and no family derivation produces it."""
+    doc = minimal_catalog()
+    doc["mdp"]["uncertainty_slots"][0]["candidates"][on]["read_api"] = {
+        "probs": [0.25, 0.5, 0.25],
+        "support": [1.0, 2.0, 3.0],
+    }
+    doc["mdp"]["scenario"]["instances"].update(
+        {"poisson_c": {"flow": "poisson"}, "fixed_c": {"flow": "fixed"}})
+    return doc
+
+
+def test_a_candidate_can_declare_a_stat_the_registry_cannot_derive():
+    """The defect: `read_api` is documented as the escape hatch for what the
+    family registry cannot derive, but the READ_API membership test ran BEFORE
+    the override was consulted — so the hatch reached only the five attributes
+    that never need it, and a law could not be named at all."""
+    doc = _law_doc()
+    assert "probs" not in layering.READ_API
+    assert bounded(doc, "sum(flow.probs)", instance="poisson_c")         == pytest.approx(1.0)
+    assert bounded(doc, "flow.support[1]", instance="poisson_c")         == pytest.approx(2.0)
+
+
+def test_a_declared_stat_folds_as_a_vector_into_a_bound():
+    doc = _law_doc()
+    assert bounded(doc, "flow.probs[0] + flow.probs[2]", instance="poisson_c")         == pytest.approx(0.5)
+
+
+def test_a_sibling_that_declares_nothing_fails_loudly_rather_than_wrongly():
+    """The trap the hatch has to avoid being: under a candidate that does not
+    declare the law, the reference must not resolve to something that is not
+    this law. It raises, and names whose vocabulary it checked."""
+    doc = _law_doc(on="poisson")
+    with pytest.raises(layering.LayeringError) as exc:
+        bounded(doc, "sum(flow.probs)", instance="fixed_c")
+    msg = str(exc.value)
+    assert "no read-API attribute" in msg
+    assert "declares no read_api block" in msg
+
+
+def test_the_derived_vocabulary_is_unchanged_and_typos_still_caught():
+    """Consulting the override first must not open the namespace: a name
+    neither derived nor declared is still an error, under both candidates."""
+    doc = _law_doc()
+    for inst in ("poisson_c", "fixed_c"):
+        with pytest.raises(layering.LayeringError, match="no read-API attribute"):
+            bounded(doc, "flow.variance", instance=inst)
+    # and a derived attribute still derives on the candidate that also declares
+    assert bounded(doc, "flow.mean", instance="poisson_c") == pytest.approx(3.0)
+
+
+def _law_mixture_doc(both: bool) -> dict:
+    doc = _law_doc()
+    if both:
+        doc["mdp"]["uncertainty_slots"][0]["candidates"]["fixed"]["read_api"] = {
+            "probs": [1.0], "support": [30.0],
+        }
+    doc["mdp"]["uncertainty_slots"][0]["candidates"]["fixed"]["settings"] = \
+        {"value": "10 * rate"}
+    doc["mdp"]["scenario"]["mixtures"] = [{
+        "name": "mix", "substream_id": 1,
+        "components": [[0.5, "poisson_c"], [0.5, "fixed_c"]],
+        "desc": "half Poisson(3), half a point mass at 30",
+    }]
+    return doc
+
+
+def test_a_declared_stat_does_not_compose_across_a_mixture():
+    """A mixture's envelope rules cover the derived five, each with a §5.3
+    composition (max of maxes, law of total variance). A declared attribute is
+    a statement about one law and has no such rule, so taking either
+    component's answer for the mixture would be a fiction — refused, with the
+    reason, even when every component can answer."""
+    with pytest.raises(layering.LayeringError, match="does not compose"):
+        bounded(_law_mixture_doc(both=True), "sum(flow.probs)", instance="mix")
+
+
+def test_a_mixture_component_that_cannot_answer_fails_at_its_own_resolution():
+    """The earlier guard: a mixture resolves each component in turn, so a
+    component whose candidate declares nothing fails there — before any
+    composition question is reached."""
+    with pytest.raises(layering.LayeringError) as exc:
+        bounded(_law_mixture_doc(both=False), "sum(flow.probs)", instance="mix")
+    assert "declares no read_api block" in str(exc.value)
+
+
+def test_the_derived_five_still_compose_across_a_mixture():
+    """The declared-attribute refusal must not touch the envelope rules."""
+    doc = _law_mixture_doc(both=True)
+    assert bounded(doc, "flow.mean", instance="mix") \
+        == pytest.approx(0.5 * 3.0 + 0.5 * 30.0)
+
+
 # -- under a mixture ---------------------------------------------------------
 
 

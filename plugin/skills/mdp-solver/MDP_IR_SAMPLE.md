@@ -961,7 +961,14 @@ legacy resolved form and still loads unchanged.
   envelope(gamma))`). Derivation is lazy per attribute — a slot nothing
   references may use state-dependent settings (dynamic_pricing's
   price-dependent rate). Escape hatch: an explicit `read_api` block on the
-  candidate. `sd` is the spread `max`'s 4-sigma convention is built from, so a
+  candidate — consulted *before* the derived vocabulary, not gated by it, so
+  it may also name an attribute the registry has no notion of at all (a law's
+  own `probs`/`support`, say). What one candidate declares its siblings need
+  not: a reference under a candidate that declares nothing raises and names
+  whose vocabulary it checked, rather than resolving to a law that is not in
+  force. Only the derived five compose across a mixture; a declared attribute
+  is a statement about one law and has no composition rule over a mixture of
+  them (upstream #77). `sd` is the spread `max`'s 4-sigma convention is built from, so a
   site can state its own multiple or bound a sum (`"n*mean + 4*sqrt(n)*sd"`,
   never `n * max` — the spread grows as `sqrt(n)`, spec §4.1); it refuses under
   a world latent, where the marginal spread carries the latent's variance too
