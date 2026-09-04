@@ -2,8 +2,9 @@
 
 Both were accepted and deferred at v0.9.23 for one reason: they resolve against
 the config registry's data half, `{domain}_configs.py`, which existed in no
-worktree. It does now (`adi_flex`, 38 ids, with the log's §CONFIG-REGISTRY
-asserted against it), so the tripwire has fired and the checks land.
+worktree. It does now — the `adi_flex` campaign built one, with the log's
+§CONFIG-REGISTRY asserted against it — so the tripwire has fired and the checks
+land.
 
 The subject is not "are the knobs derived" — that is check 1–3 next door — but
 *is this run the run it says it is*. Every incident these close is one where
