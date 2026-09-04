@@ -34,8 +34,9 @@ cannot load this IR.
 
 - **Built and gated at: v0.9.11** for the leaderboards through `#E18`; the
   ordinal-head cells (`#E22`–`#E25`) were trained under v0.9.33–v0.9.35 and
-  re-gated under v0.10.4. This line moves only when numbers are re-measured.
-- **Conformance maintained through: v0.10.4** (2026-09-04: conformance 24/30 no
+  re-gated under v0.10.4/v0.10.5. This line moves only when numbers are re-measured.
+- **Conformance maintained through: v0.10.5** — the release that ships the case;
+  its harness is byte-identical to v0.10.4, where the gates ran (2026-09-04: conformance 24/30 no
   FAIL, laws 7/9, differential 31 MATCH, 63 tests, head gate G1–G5) — how far
   declarations, drawing conventions and gate compatibility have been carried
   forward. Every move is logged in `ESCALATION.md` §FRAME-CHANGELOG.
@@ -84,7 +85,9 @@ PYTHONSAFEPATH=1 python -m mdp_ir.differential adi_flex/adi_flex_schema.json \
                      --episodes 40 --all-instances
 cd adi_flex && pytest -q adi_flex_test.py
 cd adi_flex && python adi_flex_ordinal_head_probe.py     # a1 acceptance gate G1–G5
-cd adi_flex && python adi_flex_action_mode_probe.py      # action-mode decode acceptance
+cd adi_flex && python adi_flex_action_mode_probe.py      # action-mode decode acceptance — needs the
+#   solved tables homog_L0_T2/dp, homog_L0_Tdl1/dp, het_exp4/ap and het_exp7/ap
+#   (README §4's benchmark commands; heterogeneous instances solve under `ap`)
 ```
 
 The §9.9 **role gate** is a check too, so it lives here rather than in the

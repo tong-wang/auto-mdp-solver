@@ -570,6 +570,15 @@ noise in isolation; the −1.84 horizon rule remains hand-written.
 ## FRAME-CHANGELOG
 
 ```
+2026-09-04  PR #79 REVIEWED AND SUPERSEDED BY PR #80, same day. Five findings: scipy had
+            become an undeclared hard dependency (12 of 24 modules failed to import
+            under the documented install) — replaced by local Poisson helpers, DP and
+            AP tables re-solved bitwise identical; the cases index still said the case
+            had no campaign record; spec §5.0's two worked examples cited symbols the IR
+            no longer has (re-framed as the first revision, citing F3/F13; plugin
+            0.10.5); the het3 table's sort key; the workspace/worktree names in this
+            log (reworded here too, F52-era text). Fresh single-commit branch, #79
+            closed with a pointer
 2026-09-04  CONTRIBUTED UPSTREAM — auto-mdp-solver PR #79 re-contributes the case whole
             (tier 1: IR, domain chain, benchmarks, train/eval/select/policy, configs,
             ESCALATION #E1–#E26 / F1–F59, PLAYBOOK, INTERPRET + figures, tests),
