@@ -1,166 +1,204 @@
-"""Deployable AdiFlex policy: a trained model behind a small, stable interface.
+"""Deployable policy wrapper for a trained ADI-flex MaskablePPO model.
 
-A caller needs no SB3 or Gymnasium knowledge — construct it with the paths from
-a training run and call `act(obs)`.
+Bundles the trained model's I/O contract behind a small interface with no
+SB3/Gym knowledge required of the caller:
 
-OBSERVATION CONTRACT
---------------------
-`act()` takes a sequence of floats in exactly this order. The observation is
-read at the *pre-order* point of the period: after the previous period's
-fulfilment, before this period's order is placed and before this period's
-demand arrives.
+1. the MaskablePPO model (.zip), loaded on CPU;
+2. the VecNormalize observation stats (vecnormalize.pkl next to the model by
+   default) — mandatory at inference, the policy was trained on normalized
+   inputs;
+3. the per-step action mask — under ``seq_mask`` the caller passes the
+   feasible range's upper bound (from ``adi_flex_mdp.valid_allocation`` at the
+   allocation phase, or None at the order phase for the full range); under the
+   protection modes every point of the action box is feasible and no mask
+   information is needed.
 
-observation_mode="vec"  (4 features, the default)
-    0  period      current period index, 0-based, 0..11
-    1  inventory   net inventory in units; NEGATIVE means overdue backlog
-    2  due_now     unsatisfied advance orders due by the current period
-    3  due_next    unsatisfied advance orders due by the next period
+Action contract — read off the loaded model's action space, so a wrapper can
+never decode a model in the wrong encoding:
 
-observation_mode="vec_mip"  (3 features)
-    0  period      as above
-    1  mip         modified inventory position = inventory - due_now - due_next
-    2  due_next    as above
+- ``seq_mask`` (Discrete): one call per AGENT step, two per period on the
+  heterogeneous branch; ``act`` returns an int (the order quantity, then the
+  allocation).
+- ``order_protection`` and the other protection modes (MultiDiscrete): ONE call
+  per PERIOD at the pre-demand information set; ``act`` returns an integer
+  vector ``[order, sigma_1, ..., sigma_{n_sigma}]`` — the cascade in
+  ``adi_flex_gym`` turns the protection levels into the allocation. Every
+  crowned artifact since #E18 is in this encoding (#E25).
 
-All quantities are whole units. `due_now` / `due_next` are the *unsatisfied*
-remainders carried in the state, not the totals ever ordered.
+Observation contract (must match the model's observation_mode at training) —
+the F7 two-phase layout; see adi_flex_gym.AdiFlexEnv:
 
-ACTION
-------
-`act()` returns `(order_quantity, hold_back)` as ints:
-    order_quantity  units to order now; arrives immediately (supply lead time 0)
-    hold_back       units of stock to reserve before shipping against orders
-                    that are not yet due, protecting against next period's
-                    urgent arrivals
+- "vec" (default):
+    [inv, pipe(L), adv(2), time_to_go, phase, d(3), surplus, outstanding]
+  where phase is 0 at the order step, 1 at the allocation step; `d` is the
+  most recently realized demand vector; surplus/outstanding are the
+  allocation's feasible-set coordinates (0 at the order phase).
+- "vec_mip": [mip, adv(2), time_to_go, phase, d(3), surplus, outstanding],
+  mip = inv + sum(pipe) - sum(adv).
 
-Both are committed before demand is observed, matching the model that was
-trained. Bounds come from adi_flex_gym (ORDER_MAX, HOLD_BACK_MAX) and are not
-duplicated here.
+Usage:
+    policy = AdiFlexPolicy(model_path=".../het3_exp2_ppo_final.zip",
+                           scenario_name="het3_exp2")      # mode inferred
+    order, *sigmas = policy.act(obs)          # order_protection: one call/period
 
-DEPENDENCIES
-------------
-This file is intentionally not standalone: it imports the action bounds from
-`adi_flex_gym` so the decode cannot drift from the trained action space. The
-VecNormalize observation statistics are part of the model's input contract, not
-an optimization — the policy was trained on normalized inputs and will behave
-incorrectly without them.
+    policy = AdiFlexPolicy(model_path=".../seq_mask_model.zip")
+    order    = policy.act(order_obs)                    # order phase
+    allocate = policy.act(alloc_obs, feasible_max=fmax) # allocation phase
 """
 
 from __future__ import annotations
 
-import pickle
 from pathlib import Path
-from typing import Sequence
 
+import gymnasium as gym
 import numpy as np
-from stable_baselines3 import PPO
+from sb3_contrib.ppo_mask import MaskablePPO
 from stable_baselines3.common.vec_env import VecNormalize
 
-from adi_flex_gym import HOLD_BACK_MAX, ORDER_MAX
+from adi_flex_scenarios import SCENARIOS
 
 
 class AdiFlexPolicy:
-    """Trained AdiFlex policy: observation in, (order, hold-back) out."""
+    """Trained ADI-flex ordering + allocation policy behind act(obs)."""
 
     def __init__(
         self,
-        model_path: str | Path,
-        vecnorm_path: str | Path | None = None,
-        observation_mode: str = "vec",
-        action_mode: str = "joint",
-        scenario_name: str = "exp4",
+        model_path: str,
+        vecnorm_path: str | None = None,
+        action_mode: str | None = None,
+        scenario_name: str = "homog_L0_T2",
     ) -> None:
-        model_path = Path(model_path)
-        self.model = PPO.load(model_path, device="cpu")
-        self.observation_mode = observation_mode
+        """``action_mode`` may be omitted: the encoding is read off the model's
+        action space (Discrete -> ``seq_mask``, MultiDiscrete ->
+        ``order_protection``). When given, it is checked against that space —
+        a model cannot be decoded in an encoding it was not trained in."""
+        from adi_flex_gym import ACTION_MODES, PROTECT_MODES
+        model_path_p = Path(model_path)
+        self.model = MaskablePPO.load(str(model_path_p), device="cpu")
+        space = self.model.action_space
+        self._multi = isinstance(space, gym.spaces.MultiDiscrete)
+        if action_mode is None:
+            action_mode = "order_protection" if self._multi else "seq_mask"
+        assert action_mode in ACTION_MODES, f"unknown action_mode {action_mode!r}"
+        if (action_mode in PROTECT_MODES) != self._multi:
+            raise ValueError(
+                f"action_mode {action_mode!r} does not match the model's action "
+                f"space {space}: protection modes are MultiDiscrete, the others "
+                f"a shared Discrete")
         self.action_mode = action_mode
-        self.scenario_name = scenario_name
+        self.alloc_enabled = SCENARIOS[scenario_name].alloc_enabled
+        # the ORDER head's width, whichever encoding: nvec[0] under a
+        # MultiDiscrete box, n under the shared Discrete
+        self._order_head = int(space.nvec[0]) if self._multi else int(space.n)
 
-        path = Path(vecnorm_path) if vecnorm_path else model_path.parent / "vecnormalize.pkl"
+        vp = Path(vecnorm_path) if vecnorm_path else model_path_p.parent / "vecnormalize.pkl"
         self._obs_rms = None
         self._clip_obs = 10.0
-        self._epsilon = 1e-8
-        if path.exists():
-            # The saved artifact is a pickled VecNormalize. Unpickle it directly
-            # rather than VecNormalize.load(), which requires a live venv — this
-            # wrapper deliberately has no Gym env, only the normalization stats.
-            with open(path, "rb") as fh:
-                saved: VecNormalize = pickle.load(fh)
-            self._obs_rms = saved.obs_rms
-            self._clip_obs = float(saved.clip_obs)
-            self._epsilon = float(saved.epsilon)
-        else:
-            raise FileNotFoundError(
-                f"VecNormalize stats not found at {path}. They are part of the "
-                f"model's input contract, not optional — pass vecnorm_path "
-                f"explicitly if they live elsewhere."
-            )
+        if vp.exists():
+            # the .pkl is a pickled VecNormalize; unpickle for the stats only
+            # (no venv attach needed — act() applies the normalization itself)
+            import pickle
+
+            with open(vp, "rb") as fh:
+                vn: VecNormalize = pickle.load(fh)
+            # read the pickled fields directly: an unpickled VecNormalize has
+            # no venv attached, and attribute access on it falls into SB3's
+            # VecEnvWrapper.__getattr__ forwarding, which recurses without end
+            vn_fields = vars(vn)
+            # norm_obs=False (every crowned cell since #E8) pickles no obs
+            # statistics; the raw observation is then what the policy saw
+            self._obs_rms  = vn_fields.get("obs_rms") if vn_fields.get("norm_obs", True) else None
+            self._clip_obs = vn_fields.get("clip_obs", 10.0)
 
     def _normalize(self, obs: np.ndarray) -> np.ndarray:
-        mean, var = self._obs_rms.mean, self._obs_rms.var
+        if self._obs_rms is None:
+            return obs
+        rms = self._obs_rms
         return np.clip(
-            (obs - mean) / np.sqrt(var + self._epsilon),
+            (obs - rms.mean) / np.sqrt(rms.var + 1e-8),
             -self._clip_obs, self._clip_obs,
-        ).astype(np.float32)
+        )
 
-    def act(self, obs: Sequence[float], deterministic: bool = True) -> tuple[int, int]:
-        """Map one observation to (order_quantity, hold_back)."""
-        raw = np.asarray(obs, dtype=np.float32).reshape(1, -1)
-        action, _ = self.model.predict(self._normalize(raw), deterministic=deterministic)
-        flat = np.asarray(action).reshape(-1)
-        return (int(np.clip(flat[0], 0, ORDER_MAX)),
-                int(np.clip(flat[1], 0, HOLD_BACK_MAX)))
+    def act(self, obs, feasible_max: int | None = None, order_max: int | None = None):
+        """Deterministic action for one raw observation vector.
+
+        Returns an ``int`` under ``seq_mask`` and an integer vector
+        ``[order, sigma_1, ..., sigma_{n_sigma}]`` under the protection modes —
+        in both cases exactly what ``AdiFlexEnv.step`` takes.
+
+        ``feasible_max`` (``seq_mask`` only): at the allocation phase, the
+        largest feasible allocation (``adi_flex_mdp.valid_allocation``); None
+        (order phase, or the single-phase homogeneous env) leaves the full
+        range live. Under a protection mode every point of the box is feasible
+        (IR feasibility_strategy="none"), so the argument must be None.
+        ``order_max``: the order head's width (``scenario.order_max``); defaults
+        to the loaded policy's own, which is what it was trained on.
+        """
+        if order_max is None:
+            order_max = self._order_head - 1
+        x = np.asarray(obs, dtype=np.float32).reshape(1, -1)
+        x = self._normalize(x)
+        if self._multi:
+            if feasible_max is not None:
+                raise ValueError("feasible_max applies to seq_mask only: under a "
+                                 "protection mode every action is feasible")
+            # MaskablePPO's MultiDiscrete mask is the concatenation of one
+            # boolean vector per component — all live, as the gym emits it
+            mask = np.ones(int(sum(self.model.action_space.nvec)), dtype=bool)
+            action, _ = self.model.predict(x, action_masks=mask[np.newaxis],
+                                           deterministic=True)
+            return np.asarray(action, dtype=np.int64).reshape(-1)
+        mask = np.zeros(order_max + 1, dtype=bool)
+        if feasible_max is None:
+            mask[:] = True
+        else:
+            mask[: min(int(feasible_max), order_max) + 1] = True
+        action, _ = self.model.predict(x, action_masks=mask[np.newaxis], deterministic=True)
+        return int(np.asarray(action).reshape(-1)[0])
 
 
 # ---------------------------------------------------------------------------
-# Module smoke test — replays against the raw MDP loop, not the gym
+# Module self-test: replay through the gym (the obs contract's owner)
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     import argparse
 
-    import adi_flex_mdp as mdp
-    from adi_flex_scenarios import SCENARIOS
+    from adi_flex_gym import AdiFlexEnv
 
-    ap = argparse.ArgumentParser(description="Smoke-test the deployable policy.")
+    ap = argparse.ArgumentParser(description="Smoke-test a trained ADI-flex policy.")
     ap.add_argument("--model-path", type=str, required=True)
     ap.add_argument("--vecnorm-path", type=str, default=None)
-    ap.add_argument("-s", "--scenario_name", type=str, default="exp4")
-    ap.add_argument("-o", "--observation_mode", type=str, default="vec")
+    ap.add_argument("-s", "--scenario_name", type=str, default="homog_L0_T2",
+                    choices=list(SCENARIOS.keys()))
+    ap.add_argument("-o", "--observation_mode", type=str, default="vec",
+                    help="the model's observation contract (vec / vec_mip / ...)")
+    ap.add_argument("-a", "--action_mode", type=str, default=None,
+                    help="default: inferred from the model's action space")
     ap.add_argument("--episodes", type=int, default=5)
+    ap.add_argument("--first-seed", type=int, default=0)
     args = ap.parse_args()
 
-    scenario = SCENARIOS[args.scenario_name]
     policy = AdiFlexPolicy(
         model_path=args.model_path,
         vecnorm_path=args.vecnorm_path,
-        observation_mode=args.observation_mode,
+        action_mode=args.action_mode,
         scenario_name=args.scenario_name,
     )
+    env = AdiFlexEnv(scenario=SCENARIOS[args.scenario_name],
+                     action_mode=policy.action_mode,
+                     observation_mode=args.observation_mode)
+    print(f"action_mode={policy.action_mode}  action_space={env.action_space}")
 
-    def observe(state) -> list[float]:
-        """Build the documented observation straight off the MDP state."""
-        if args.observation_mode == "vec_mip":
-            return [float(state.period),
-                    float(state.inventory - state.due_now - state.due_next),
-                    float(state.due_next)]
-        return [float(state.period), float(state.inventory),
-                float(state.due_now), float(state.due_next)]
-
-    print(f"scenario: {args.scenario_name}  ({scenario.desc})")
-    totals = []
-    for ep_seed in range(args.episodes):
-        state, _ = mdp.init_state(scenario=scenario, episode_seed=ep_seed)
-        total, orders, holds = 0.0, [], []
-        while not state.terminated:
-            state1 = mdp.advance1(scenario, state)
-            order_quantity, hold_back = policy.act(observe(state1))
-            state, info = mdp.advance2(
-                scenario, state1,
-                order_quantity=order_quantity, hold_back=hold_back,
-            )
-            total += info["cost"]["total"]
-            orders.append(order_quantity)
-            holds.append(hold_back)
-        totals.append(total)
-        print(f"  seed {ep_seed}: cost={total:8.2f}  orders={orders}  hold_back={holds}")
-    print(f"mean cost over {args.episodes} episodes: {np.mean(totals):.2f}")
+    costs = []
+    for ep_seed in range(args.first_seed, args.first_seed + args.episodes):
+        obs, _ = env.reset(seed=ep_seed)
+        terminated = False
+        while not terminated:
+            mask = env.action_masks()
+            fmax = (None if mask.all()
+                    else int(np.flatnonzero(mask)[-1]))
+            obs, _, terminated, _, _ = env.step(policy.act(obs, feasible_max=fmax))
+        costs.append(-env.total_reward)
+        print(f"episode_seed={ep_seed}  total cost={-env.total_reward:.2f}")
+    print(f"mean cost over {len(costs)} episodes: {np.mean(costs):.4f}")

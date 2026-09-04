@@ -1,32 +1,18 @@
-"""AdiFlex stochastic primitives.
+"""ADI-flex stochastic primitives.
 
-Defines the SamplingContext protocol and the generator classes for the three
-demand streams — orders arriving due immediately, due next period, and due two
-periods out. These are the stochastic building blocks that AdiFlexScenario is
-composed from; they have no dependency on the MDP dynamics.
+Defines the SamplingContext protocol and the segment-demand generator for the
+advance-demand-information model of Wang & Toktay (2008). These are the
+stochastic building blocks that AdiFlexScenario is composed from; they have no
+dependency on the MDP dynamics.
 
-Seed scheme v2 (spec §6.3): intrinsic draws key leaf-first on
-
-    [(draw,) period, source_id, 1, episode_seed, seed_salt]
-
-Every generator *instance* carries a `source_id` — the child id under branch 1
-of the seed tree. AdiFlex composes three demand generators into one scenario,
-so their source ids are distinct (0, 1, 2), one per due date; they must draw
-independently.
-
-Dependency order: adi_flex_uncertainty  <-  adi_flex_scenarios  <-  adi_flex_mdp
+Dependency order: adi_flex_uncertainty  ←  adi_flex_scenarios  ←  adi_flex_mdp
 """
 
 from __future__ import annotations
 
-import math
 from typing import Protocol
 
 import numpy as np
-
-SEED_SCHEME = "v2"
-
-_INTRINSIC_BRANCH = 1
 
 
 # ---------------------------------------------------------------------------
@@ -46,103 +32,108 @@ class SamplingContext(Protocol):
     seed_salt:    int
 
 
-def intrinsic_key(
-    source_id: int, ctx: SamplingContext, draw: int | None = None
-) -> list[int]:
-    """v2 intrinsic seed key: [(draw,) period, source_id, 1, episode_seed, seed_salt].
-
-    Leaf-first so the trailing word is always seed_salt (>= 1): SeedSequence
-    zero-pads entropy lists shorter than its 4-word pool, so routinely-zero
-    leaf ids (period 0, source 0, draw 0) must never sit in trailing position.
-    """
-    key = [ctx.period, source_id, _INTRINSIC_BRANCH, ctx.episode_seed, ctx.seed_salt]
-    if draw is not None:
-        key.insert(0, draw)
-    return key
-
-
 # ---------------------------------------------------------------------------
 # Demand generators
 # ---------------------------------------------------------------------------
 
 
 class DemandGenerator:
-    """Abstract per-period demand model for one due-date class.
-
-    Unlike single-stream domains, AdiFlex composes *three* demand generators
-    into one scenario — one per due date. They must draw independently, so the
-    source id is an instance attribute set at construction (0, 1, 2) rather
-    than a class constant — the child id under branch 1 of the v2 seed tree.
-    """
-
-    source_id: int
-    is_discrete: bool
-
-    def sample(self, state: SamplingContext) -> int:
-        raise NotImplementedError
-
-    def mean(self) -> float:
-        raise NotImplementedError
-
-    def max(self) -> float:
-        raise NotImplementedError
-
-    def phi(self, d: float) -> float:
-        """PMF evaluated at d — used by the dynamic-programming benchmarks."""
-        raise NotImplementedError
-
-
-class PoissonDemand(DemandGenerator):
-    """Independent Poisson demand on its own branch-1 source.
-
-    A rate of zero is legitimate and common here: it is how the scenario ladder
-    switches a due-date class off entirely (e.g. exp7 = (0, 0, 6) puts all mass
-    two periods out, recovering the homogeneous model of the paper's section 3).
-    A zero-rate generator still draws — it must not be short-circuited, or the
-    domain and the IR interpreter would disagree on stream consumption.
-    """
+    """Abstract base for per-segment demand generators."""
 
     is_discrete = True
 
-    def __init__(self, rate: float, source_id: int) -> None:
-        assert rate >= 0, "rate must be non-negative (0 switches the stream off)."
-        assert source_id >= 0, "source_id is a branch-1 child id (>= 0)."
-        self.rate      = float(rate)
-        self.source_id = source_id
-
-    def sample(self, state: SamplingContext) -> int:
-        # v2 seed tree (spec §6.3): the key is built by intrinsic_key(), matching
-        # the IR interpreter's derived key so trajectories diff bit-exactly.
-        rng = np.random.default_rng(
-            np.random.SeedSequence(intrinsic_key(self.source_id, state))
-        )
-        return int(rng.poisson(lam=self.rate))
+    def sample(self, ctx: SamplingContext) -> int:
+        """Draw one sample, fully reproducible given ctx.period / episode_seed."""
+        raise NotImplementedError
 
     def mean(self) -> float:
-        return self.rate
+        """Expected value, for deterministic planners (LP/DP baselines)."""
+        raise NotImplementedError
 
     def max(self) -> float:
-        return self.rate + 4.0 * self.rate ** 0.5
+        """Practical upper bound on the sampled value (space construction)."""
+        raise NotImplementedError
 
-    def phi(self, d: float) -> float:
-        k = int(d)
-        if k < 0:
-            return 0.0
-        if self.rate == 0.0:
-            return 1.0 if k == 0 else 0.0
-        # log-form: the direct rate**k / k! overflows for large k
-        return math.exp(k * math.log(self.rate) - self.rate - math.lgamma(k + 1))
 
-    def support_max(self, tail: float = 1e-9) -> int:
-        """Smallest k with P(X > k) <= tail — the truncation point the DP
-        benchmarks enumerate over."""
-        if self.rate == 0.0:
-            return 0
-        k, cum = 0, 0.0
-        while cum < 1.0 - tail and k < 1000:
-            cum += self.phi(k)
-            k += 1
-        return k
+class DemandVector(DemandGenerator):
+    """The demand vector D_i — all due-offsets in ONE draw.
+
+    There is one demand process, indexed by its due-offset τ — the customer
+    base is a *mix* over offsets (Wang & Toktay 2008 §4), not a set of separate
+    demands. This draws the whole vector at once: component τ is Poisson at
+    ``rates[τ]``, independent across components but **not identically
+    distributed**, which is the IR's `independent` family (proposed from this
+    campaign as auto-mdp-solver#49, usable at stage level from v0.9.10).
+
+    The seed key is the plain period key
+    ``[_STREAM_ID, period, episode_seed, seed_salt]``, and the components are
+    drawn **in index order from that one rng** — matching
+    ``mdp_ir.runtime.sample_family``'s `independent` branch, which is what keeps
+    interpreter and simulator trajectories bit-identical so the differential is
+    a real check rather than a coincidence.
+
+    **The key has moved twice, and this is the last time.** Originally
+    ``[stream_id(=1+τ), period, …]`` (one source per offset); then
+    ``[τ, _STREAM_ID, period, …]`` at F3, when the three sources collapsed into
+    one indexed source and τ entered through the stage's ``key_exprs``; now the
+    period key alone, because a single vector draw needs no component index. F8
+    therefore re-seeds — same distribution, different realization — which cost
+    nothing only because the solution stage was reset and held for this pin.
+
+    A rate of 0 is a degenerate always-zero component (the one-hot homogeneous
+    instances); it still consumes its draw, so trajectories stay comparable
+    across instances.
+    """
+
+    _STREAM_ID = 1
+
+    def __init__(self, rates: tuple[float, ...]) -> None:
+        assert len(rates) > 0, "at least one due-offset."
+        assert all(r >= 0 for r in rates), "rates must be non-negative."
+        self.rates = tuple(float(r) for r in rates)
+
+    def sample(self, ctx: SamplingContext) -> tuple[int, ...]:
+        ss = np.random.SeedSequence(
+            [self._STREAM_ID, ctx.period, ctx.episode_seed, ctx.seed_salt]
+        )
+        rng = np.random.default_rng(ss)
+        # in index order from the one rng — `independent`'s documented contract
+        return tuple(int(rng.poisson(r)) for r in self.rates)
+
+    def mean(self) -> tuple[float, ...]:
+        """Per-component means. Deliberately not a scalar: an inid vector has
+        no meaningful average, and the aggregate a bound wants is the sum —
+        the same reasoning that makes `independent.mean` raise upstream."""
+        return self.rates
+
+    def max(self) -> float:
+        """Mean + 6 sigma of one period's TOTAL, at least 1 — an observation
+        bound, so generous (space construction, spec §4.1)."""
+        return self.max_total(1)
+
+    def max_total(self, periods: int, sigmas: float = 6.0) -> float:
+        """Practical upper bound on the demand arriving over ``periods``
+        periods — mean + ``sigmas`` sigma of the SUM.
+
+        Not ``periods * max()``. A sum of independent Poissons is Poisson at
+        the summed rate, so the aggregate's spread grows as sqrt(periods)
+        while its mean grows linearly; multiplying a per-period bound by a
+        count inflates the tail term by sqrt(periods) and runs 2.5x loose over
+        a 30-period horizon. Exact for this family, not an approximation.
+
+        ``sigmas`` is a call-site choice because the two consumers pay
+        different prices for slack. An **observation** bound costs nothing when
+        it is loose — the Box is an indication, and nothing at runtime reads it
+        — so those sites take the generous default. An **action** bound is a
+        discrete space the policy must explore, where slack is paid for in
+        sample efficiency, so `AdiFlexScenario.order_max` asks for 4 (spec
+        §4.1's own example): at the horizon total that still clears the largest
+        order any solved policy places by ~2x, and it is drawn once per
+        episode rather than once per period.
+        """
+        assert periods >= 1, "periods must be at least 1."
+        total = sum(self.rates) * periods
+        return float(np.ceil(total + sigmas * np.sqrt(total) + 1.0))
 
     def __repr__(self) -> str:
-        return f"PoissonDemand(rate={self.rate}, source_id={self.source_id})"
+        return f"DemandVector(rates={self.rates})"

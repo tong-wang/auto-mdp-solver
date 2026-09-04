@@ -1,5 +1,5 @@
-"""Differential adapter for the ``adi_flex`` domain (portable-domain contract:
-lives with the domain, discovered from the IR file's directory by
+"""Differential adapter for the ``adi_flex`` domain (portable-domain
+contract: lives with the domain, discovered from the IR file's directory by
 ``mdp_ir.differential.load_adapter_factory``)."""
 
 from __future__ import annotations
@@ -17,38 +17,29 @@ def make_adapter(
     domain_dir: Path | None = None,
 ) -> DomainAdapter:
     """Builds the ``AdiFlexScenario`` from the IR's scenario constants and
-    drives the ``init_state`` -> ``advance1`` -> ``advance2`` loop."""
-    unc, scen, mdp = _import_domain(
+    drives the two-step ``init_state`` → ``advance1``/``advance2`` loop (F7:
+    order and allocation sit at different information sets; the adapter, like
+    the gym, composes the pair — one period per decision dict)."""
+    (scen, mdp) = _import_domain(
         domain_dir or Path(__file__).resolve().parent,
-        ["adi_flex_uncertainty", "adi_flex_scenarios", "adi_flex_mdp"],
+        ["adi_flex_scenarios", "adi_flex_mdp"],
     )
 
     consts = {c.name: c.value for c in ir.mdp.scenario.constants}
     if instance is not None:
         consts.update(ir.mdp.scenario.instances[instance])
 
-    # source ids must match the IR's uncertainty_sources, or the two sides draw
-    # from different branch-1 sources and diverge for reasons unrelated to the
-    # dynamics
-    sources = {s.name: s.stream_id for s in ir.mdp.uncertainty_sources}
-
     scenario = scen.AdiFlexScenario(
         scenario_name=f"ir_differential_{instance or 'base'}",
-        horizon=ir.mdp.horizon_T(instance),
-        demand_now=unc.PoissonDemand(
-            rate=consts["lambda_now"], source_id=sources["demand_now"],
-        ),
-        demand_next=unc.PoissonDemand(
-            rate=consts["lambda_next"], source_id=sources["demand_next"],
-        ),
-        demand_later=unc.PoissonDemand(
-            rate=consts["lambda_later"], source_id=sources["demand_later"],
-        ),
-        holding_cost=consts["holding_cost"],
-        backorder_cost=consts["backorder_cost"],
-        order_cost_fixed=consts["fixed_order_cost"],
-        supply_leadtime=consts["supply_leadtime"],
-        demand_window=consts["demand_window"],
+        lambda_seg=tuple(consts["lambda_seg"]),
+        L=consts["L"],
+        N=consts["N"],
+        K=consts["K"],
+        h=consts["h"],
+        p=consts["p"],
+        # beta lives on the objective, not in scenario.constants (spec Objective)
+        discount=ir.mdp.objective.discount_factor,
+        alloc_enabled=consts["alloc_enabled"],
         seed_salt=seed_salt,
     )
 
@@ -58,25 +49,34 @@ def make_adapter(
         for acts in decisions:
             if state.terminated:
                 break
-            state1 = mdp.advance1(scenario, state)
-            state, info = mdp.advance2(
-                scenario, state1,
-                order_quantity=acts["order_quantity"],
-                hold_back=acts["hold_back"],
-            )
+            mid, info1 = mdp.advance1(scenario, state, order=int(acts["order"]))
+            # `allocate` is a vector decision (IR dim n_alloc) — pass it through
+            # rather than scalarizing it (F10: int() here was a second site
+            # frozen at T_dl = 2, and would raise on a wider instance)
+            state, info2 = mdp.advance2(scenario, mid, allocate=acts["allocate"])
+            info = mdp.merge_info(info1, info2)   # one record, two halves
             rows.append({
                 "t": info["action_period"],
-                "order_quantity": info["order_quantity"],
-                "hold_back": info["hold_back"],
-                "demand_now": info["demand_now"],
-                "demand_next": info["demand_next"],
-                "demand_later": info["demand_later"],
-                "region": info["region"],
-                "action_period": info["action_period"],
-                "inventory": state.inventory,
-                "due_now": state.due_now,
-                "due_next": state.due_next,
-                **info["cost"],   # order_fixed, holding, shortage, total
+                "order": info["order"],
+                # the interpreter renders a dim-1 decision as a scalar and a
+                # wider one as a list; mirror that so the comparison is on the
+                # value, not on the container
+                "allocate": (list(info["allocate"]) if len(info["allocate"]) != 1
+                             else info["allocate"][0]),
+                "d": list(info["d"]),
+                "received": info["received"],
+                # the REALIZED allocation, per class — the IR computes `fills`
+                # as a comprehension, so it renders as a list on both sides.
+                # Declaring it in info_fields is not enough to gate it; the
+                # differential compares the rows this adapter builds (F20)
+                "fills": list(info["fills"]),
+                "early_fill": info["early_fill"],
+                "surplus": info["surplus"],
+                "outstanding": info["outstanding"],
+                "inv": state.inv,
+                "pipe": list(state.pipe),
+                "adv": list(state.adv),
+                **info["cost"],   # order_fixed, holding, backorder, total
             })
         return rows
 
