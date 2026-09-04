@@ -1,237 +1,387 @@
-# `adi_flex` — inventory with advance demand information and flexible delivery
+# adi_flex — Inventory with Advance Demand Information and Flexible Delivery
 
-A joint **ordering + allocation** policy for the heterogeneous-customer model of
+An RL study of Wang & Toktay (2008), *Inventory Management with Advance Demand
+Information and Flexible Delivery*, **Management Science 54(4), 716–732**.
+Generated from the IR `adi_flex_schema.json` by **auto-mdp-solver**.
 
-> Tong Wang and Beril L. Toktay (2008), "Inventory Management with Advance
-> Demand Information and Flexible Delivery", *Management Science* 54(4),
-> 716–732 — §4.
+**TL;DR**
 
-Customers order ahead and differ in how long they will wait: an order placed
-now may be due **now**, **next period**, or **two periods out**, and you see it
-the moment it is placed. You may ship any time up to the due date, so shipping
-early converts your holding cost into the customer's.
+- **RL is competitive with the paper's analytic policies, and the split tracks
+  how much room the reference leaves.** Where the reference is an exact DP, RL
+  lands **0.95%** above the optimum; where it is the paper's protection-level
+  heuristic, RL **beats it by 2.7%** on the general board (`het3_exp2`, 97.3% of
+  the bar) and falls **0.36%** short on the tight one (`het_exp4`), where the
+  heuristic itself sits only 1.5% above the AP lower bound (§3, tier 1).
+- **RL identifies the paper's policy structure and improves on it in one
+  constant, not one class.** It *bypasses* the modified inventory position — a
+  policy from the raw state matches one handed the paper's sufficient statistic
+  on every board — and *recovers* the (s(V̂), S) order rule with the paper's own
+  trigger, holding about 5 less stock than the analytic policy; it *confirms*
+  the protection-level rule for fulfillment, which the shipped encoding builds
+  in; and it does **not** learn a rule beyond a constant protection level — the
+  one such rule worth having, a horizon boundary condition, is hand-written and
+  beats every learned policy's protection (§3, tier 2; `INTERPRET.md`).
 
-The difficulty is **demand crossover**: an order arriving next period may be due
-before one you are already holding, so stock spent today shipping a not-yet-due
-order may be stock you needed tomorrow for someone urgent. The manager
-therefore chooses not only *how much to buy* but *how much to withhold*.
+## 1. The problem
 
-The paper cannot solve that joint problem. It brackets it instead — a relaxation
-(`AP`) bounds the optimum from below, and three protection-level heuristics
-bound it from above, the best (`PL(σ)`) averaging a 2.08% gap. **This domain
-asks whether a learned policy can do better**, which is the improvement the
-paper itself points at: its σ is a constant, and §4.2 notes the rule "could be
-further refined by incorporating the effect of the fixed-ordering cost K, ...,
-inventory level `x_i`, or even the whole system state."
+Customers order **in advance**, with due dates up to `T_dl` periods out, and
+stock may be shipped **early**. Each period:
 
-## Layout
+1. place a replenishment order — fixed cost `K`, supply lead time `L` —
+   **before** the period's demand is observed;
+2. receive the pipeline and observe the new demand, split by due date;
+3. serve the forced fills (overdue backlog, then due-now — nothing arriving
+   later may cross them);
+4. **allocate**: decide how much of each not-yet-due class to pre-fill early
+   from what is left.
+
+Backlog costs `p` per unit per period, stock `h`; minimise expected total cost
+over a finite horizon. The two decisions sit at **two different information
+sets** — the order before the draw, the allocation after — which is the
+structural feature the domain exists to study.
+
+The paper's protection level `σ` parameterises its §4.2 *heuristics* for the
+allocation. It is a policy family, not the decision itself.
+
+Two quantities from the paper recur throughout this file:
+
+- **`u`, the modified inventory position** — on-hand plus the supply pipeline
+  minus everything already promised: `u = inv + Σpipe − Σadv`. Wang & Toktay's
+  central structural result is that the state collapses onto it (eq. 7).
+- **`V̂`** — the advance-demand still outstanding beyond the lead time, the one
+  component `u` does not absorb when the horizon is long enough to need it
+  (eq. 11). The order policy is `(s(V̂), S)`: order when `u` falls below a
+  trigger `s` that depends on `V̂`, and order up to a level `S` that does not.
+
+Section references are to **the paper** where they say "paper §" and to the
+**auto-mdp-solver spec** where they say "spec §".
+
+**Two branches, reported separately and never head-to-head:**
+
+| branch | paper | the allocation | reference available |
+|---|---|---|---|
+| **homogeneous** | paper §3 | not live — maximal early fill is provably optimal, so RL decides ordering only | an **exact** DP |
+| **heterogeneous** | paper §4 | live — RL decides `(order, allocation)` jointly | the paper §4.1 AP **relaxation** (a lower bound, not attainable) plus the PL heuristics |
+
+## 2. Layout
+
+### Documents
+
+| file | what it holds |
+|---|---|
+| `README.md` | this overview: the problem, the results by research question, and how to run things |
+| [`ESCALATION.md`](ESCALATION.md) | the campaign record — **57 formalization reversals (F1–F57)**, 25 numbered findings (`#E1`–`#E25`), the design tree, the config registry, and the frame/IR changelogs |
+| [`INTERPRET.md`](INTERPRET.md) | the spec §14 policy readback of the crowned artifacts `sc4/g6/a1/h4` / `sc4/g7/a1/h5` (`#E26`), with four figures; the 2026-08-31 readback of the categorical crowns is kept inside it as labelled comparisons |
+| [`PLAYBOOK.md`](PLAYBOOK.md) | operator lessons that generalise beyond this domain |
+| `adi_flex.restatement.md` | the frozen Phase-A problem statement |
+| `adi_flex_schema.json` | **the IR — authoritative** for the problem definition |
+| `CLAUDE.md` | pointer file and technical instructions for agents working here |
+| `figures/` | committed SVGs cited by `INTERPRET.md` (`figures/a0/`: the same four for the retired categorical crowns) |
+| `results/` | the run archive (gitignored) — every `select.tsv` and eval TSV the log cites |
+
+### Code
 
 | file | role |
 |---|---|
-| `adi_flex_schema.json` | frozen MDP-IR (`seed_scheme: v2`; `mdp` fingerprint `602b284da491`) |
-| `adi_flex.restatement.md` | Phase-A round-trip artifact: plain-English model + annotated trajectory |
-| `adi_flex_uncertainty.py` | the three Poisson demand streams (one per due date) |
-| `adi_flex_scenarios.py` | `AdiFlexScenario` + the eight-instance ladder |
-| `adi_flex_mdp.py` | `AdiFlexState` and the five-region fulfilment dynamics |
-| `adi_flex_gym.py` | Gymnasium wrapper; `MultiDiscrete([61, 21])` joint action |
-| `adi_flex_ir_adapter.py` | differential adapter (portable-domain contract) |
-| `adi_flex_benchmark_ap.py` | the `AP` relaxation, solved exactly by DP |
-| `adi_flex_benchmark_pl.py` | `PL(0)` / `PL(σ)` / `PL(Σ)` protection-level heuristics |
-| `adi_flex_benchmark_myopic.py` | synthesised single-period order-up-to |
-| `adi_flex_benchmark_random.py` | uniform over the action space |
-| `adi_flex_benchmark_common.py` | shared §9 seed loop and TSV writer |
-| `adi_flex_ppo_train.py` | SB3 PPO training |
-| `adi_flex_ppo_eval.py` | §9 eval, incl. the `--force-hold-back` ablation |
-| `adi_flex_policy.py` | deployable wrapper: observation in, (order, hold-back) out |
+| `adi_flex_uncertainty.py` | the demand generator — the whole vector in **one** draw, components in index order (F8) |
+| `adi_flex_scenarios.py` | `AdiFlexScenario`, the 30 declared instances and 3 samplers, `SCENARIOS` |
+| `adi_flex_mdp.py` | the two-step core (F7): `advance1` (order → demand → forced fills), `advance2` (allocation → costs), `valid_allocation` |
+| `adi_flex_gym.py` | `AdiFlexEnv` — six action modes, five observation modes, reward on the period's last step |
+| `adi_flex_policy.py` | the deployable policy — `act(obs)` decodes whichever action space the model was trained in (`seq_mask` → int; `order_protection` → `[order, σ…]`), mode read off the model |
+| `adi_flex_ir_adapter.py` | the differential adapter (portable-domain contract) |
+| **benchmarks** | |
+| `adi_flex_benchmark_common.py` | the shared `(u, v̂)` backward induction and `ObsView` |
+| `adi_flex_benchmark_dp.py` / `_dp_eval.py` | role **`exact`** — the homogeneous branch, where the recursion is tight |
+| `adi_flex_benchmark_ap.py` / `_ap_eval.py` | role **`relaxed`** — the heterogeneous branch, where it is the AP lower bound |
+| `adi_flex_benchmark_rule.py` | role **`feasible`** — `myopic` and the paper's `pl0` / `plsigma` / `plmax` |
+| **RL** | |
+| `adi_flex_ppo_train.py` / `_ppo_eval.py` / `_ppo_select.py` | train (`--config sc…/g…/a…/h…`, `--order-head {categorical,ordinal}`), protocol eval, and the spec §9.7 three-layer checkpoint screen |
+| `adi_flex_ordinal_head.py` | the ordinal order head (`a1`): a trigger probability plus a discretized-Gaussian location/width over the same MultiDiscrete space — the campaign's largest lever (`#E22`–`#E25`) |
+| `adi_flex_configs.py` | the §CONFIG-REGISTRY data half; run it for the archive audits |
+| `adi_flex_fixed_order.py` | the RQ2 isolation instrument — order from AP, protection learned |
+| **gates and readback** | |
+| `adi_flex_test.py` | the spec-§1.2 gates: laws, differential, model/rendering boundary, negative controls |
+| `adi_flex_action_mode_probe.py` | paired acceptance for the action-mode decodes no harness gate covers |
+| `adi_flex_ordinal_head_probe.py` | the head's acceptance gate G1–G5: exactness, point masses, trigger/magnitude gradient separation, masking, σ passthrough |
+| `adi_flex_order_gap_probe.py` | the `#E21` instrument — per-period / per-seed decomposition of the order gap against `y*` |
+| `adi_flex_policy_probe.py` | the spec §14 probe — `--identified` first, then `--decompose` |
+| `adi_flex_readback_score.py` | every scored number in `INTERPRET.md`, reproducible |
+| `adi_flex_plot_policy.py` | regenerates `figures/` |
 
-## The model
+## 3. Results
 
-| | |
-|---|---|
-| Horizon | 12 periods, finite, undiscounted (α = 1) |
-| State | `inventory` (negative = overdue backlog), `due_now`, `due_next`, `period` |
-| Decisions | `order_quantity` ∈ {0…60}, `hold_back` ∈ {0…20}, both integer, both committed before demand arrives |
-| Uncertainty | three independent Poisson streams, one per due date |
-| Objective | minimise `100·1{ordered} + 1·on-hand + 9·overdue` |
+### Protocol
 
-**Structural boundaries** (moving either requires re-entering Phase A):
-supply lead time `L = 0`, so there is no pipeline; demand window `T = 2`, so the
-advance profile is exactly `(due_now, due_next)`. `T > 2` additionally changes
-the *decision dimension* — §4.2 needs one order plus `T−1` protection levels —
-so it would need an `mdp_ir` extension, not just a new instance.
+Every number below is quoted at **8192 seeds from `first_seed 0`, CRN across
+arms**, reference bar = each board's own best heuristic, record eval =
+**deterministic argmax** — the deployment mode is a masked argmax over a
+discrete action, and no exploration mechanism lives in this policy's entropy.
+RL rows are **6-seed means** with the across-seed SE (seeds 21–26; `het_exp4`'s
+`vec` arm 11–16) unless a row says otherwise.
+The other mode appears only as a labelled figure, never as a record. Lower cost
+is better; because the seeds are shared, differences between rows are paired.
 
-## Scenarios
+Symbols used in the tables below:
 
-The paper's Experiments 0–7 (§4.3), holding total arrival rate at 6 and sliding
-mass between due dates. `L=0, K=100, h=1, p=9, N=12`.
+- **`u`, the modified inventory position** and **`V̂`**, the advance demand
+  outstanding beyond the lead time — both defined in §1.
+- **`sc…/g…/a…/h…`** — a configuration id, addressing the scenario, the
+  environment as presented, the algorithm and the hyperparameters in
+  `ESCALATION.md` §CONFIG-REGISTRY.
+- **`RQ1`–`RQ4`** — the four tier-2 research questions declared in the IR's
+  `research_questions` block, numbered in declaration order: RQ1 the
+  protection-level allocation rule (`confirm`), RQ2 a rule beyond a constant
+  protection level (`discover`), RQ3 the state-dependent `(s(V̂), S)` order
+  policy (`confirm`), RQ4 the modified inventory position as sufficient
+  statistic (`bypass`; declared `confirm` until 2026-09-04, F58). The tier-1
+  question is `1-comparative` itself.
+- **action encodings** — `seq_mask`, the original two-phase quantity action, and
+  `order_protection`, this campaign's one-shot encoding (see *The shipped
+  policies*).
+- the comparison columns are a **percentage of** the named arm, except
+  "vs AP bound" which is a **percentage above** it.
 
-| instance | (λ₀,λ₁,λ₂) | what it is | crossover |
+Each table lists one row per *arm* — a policy with a declared **role**:
+`exact` (provably optimal), `relaxed` (a bound, not attainable by any real
+policy), or `feasible` (a policy you could actually run). **★ marks the
+shipped RL artifact** on that board, and the `sc…/g…/a…/h…` beside it is its
+configuration id.
+
+**The shipped policy on every board is the `vec` observation arm**, which sees
+the raw state. Its `vec_mip` sibling is handed `u` precomputed — the transform
+the paper had to prove — so it is reported as a **reference row**, never as the
+artifact. Shipping the arm that was given a hand-derived feature would answer a
+different question than the one the study asks. The two tie closely, and that
+tie *is* the `2-structural` sufficient-statistic finding: the network rebuilds `u` when
+it is not given it.
+
+### `1-comparative` — how does RL compare with the existing solutions?
+
+The question every scenario asks. **Three boards carry it**, and no number
+crosses between them — they are different problems with different references.
+Other instances in the registry are probes for specific questions rather than
+study boards, and are reported where they are used, not here.
+
+**The answer is split.** RL beats the analytic policy on one board and loses on
+the other two, and the split is not about RL: it tracks how much room the
+reference leaves. Where the reference is an *exact* DP there is by definition
+nothing to win, and RL lands 0.95% above it (1.4% before the ordinal head). Where the reference is a
+*relaxation*, RL takes whatever slack the relaxation's own policy carries —
+little on `het_exp4`, a great deal on `het3_exp2`.
+
+| scenario | `N` | `T_dl` | `L` | demand mix `λ` | allocation | reference | role in the study |
+|---|---|---|---|---|---|---|---|
+| `homog_L0_T2` | 30 | 2 | 0 | (0, 0, 6) | not live | exact DP | the correctness fixture — the branch where optimality is known |
+| `het_exp4` | 12 | 2 | 0 | (2, 1, 3) | **live** | AP bound + PL | the headline branch — joint order and allocation |
+| `het3_exp2` | 12 | 3 | 1 | (2, 1, 1, 2) | **live** | AP bound + PL | the general case: a two-component protection cascade and `L > 0` |
+
+Costs are `K = 100`, `h = 1`, `p = 9` on every board.
+
+#### `homog_L0_T2` — the exact branch
+
+| policy | role | mean cost | SE | vs optimum |
+|---|---|---|---|---|
+| DP | `exact` | **685.33** | 0.34 | — (DP value 685.2363) |
+| PPO — `order_protection`/`vec_mip` + ordinal head (`sc0/g7/a1/h3`), *reference* | `feasible` | 690.87 | 0.73 | 100.82% |
+| **★ PPO** — `order_protection`/`vec` + ordinal head (`sc0/g6/a1/h6`) | `feasible` | **691.78** | 0.15 | **100.95%** |
+| PPO — `seq_mask`/`vec`, categorical head (`sc0/g2/a0/h2`), *the crown it replaced* | `feasible` | 694.89 | 0.67 | 101.4% |
+| myopic | `feasible` | 2162.82 | 0.92 | 315.6% |
+
+Best single artifact 688.74 = 100.51% (`vec_mip`, seed 23). The crowned
+artifacts carry the protection-cap width from before F54 (`MultiDiscrete([236,
+2])` against today's `[236, 1]`; the component is inert here), so the eval
+script and the wrapper size the action mask from the model (F57).
+
+#### `het_exp4` — the headline branch
+
+| policy | role | mean cost | SE | vs AP bound | vs the bar |
+|---|---|---|---|---|---|
+| AP relaxation | `relaxed` | **336.19** | — | — (lower bound, not attainable) | 98.5% |
+| PL(σ), σ=4 — **the bar** | `feasible` | **341.26** | 0.33 | +1.51% | — |
+| PPO — tuned `order_protection`/`vec_mip` + ordinal head, *reference* | `feasible` | 342.12 | 0.27 | +1.76% | 100.25% |
+| **★ PPO** — tuned `order_protection`/`vec` + ordinal head | `feasible` | **342.48** | 0.26 | **+1.87%** | **100.36%** |
+| PL(Σ), Σ=8 | `feasible` | 344.60 | 0.33 | +2.50% | 101.0% |
+| PL(0) | `feasible` | 352.40 | 0.37 | +4.82% | 103.3% |
+| myopic | `feasible` | 736.24 | 0.74 | +119.0% | 215.7% |
+
+**RL loses here**, at 100.36% of the bar (100.7% before the ordinal head). The
+`vec_mip` reference gets closer — 100.25%, 0.86 above the bar — but neither arm
+reaches it; what remains is order-magnitude noise below the training signal's
+resolution (`#E21`).
+The PL ordering reproduces the paper's §4.3 result (PL(σ) best, PL(0) worst).
+
+#### `het3_exp2` — the general case, and the campaign's best result
+
+| policy | role | mean cost | SE | vs AP bound | vs the bar |
+|---|---|---|---|---|---|
+| AP relaxation | `relaxed` | **332.82** | — | — (lower bound) | 95.9% |
+| **★ PPO** — tuned `order_protection`/`vec` + ordinal head (`sc4/g6/a1/h4`) | `feasible` | **337.74** | 0.19 | **+1.48%** | **97.3%** |
+| PPO — tuned `order_protection`/`vec_mip` + ordinal head (`sc4/g7/a1/h5`), *reference* | `feasible` | 337.75 | 0.16 | +1.48% | 97.3% |
+| PPO — tuned `order_protection`/`vec`, categorical head (`sc4/g6/a0/h4`), *the crown it replaced* — one artifact (placed by its 6-seed control, 338.87) | `feasible` | 337.40 | — | +1.38% | 97.2% |
+| PPO — the **derived rung** (spec §8.6 defaults, no tuning) | `feasible` | 345.90 | 0.56 | +3.93% | 99.6% |
+| PL(σ) + terminal σ=0 (off-bar variant) | `feasible` | 346.00 | — | +3.96% | 99.7% |
+| **PL(σ), ladder (4, 1) — the bar** | `feasible` | **347.17** | — | +4.31% | — |
+| PL(Σ) | `feasible` | 350.88 | — | +5.43% | 101.1% |
+| PL(0) | `feasible` | 364.78 | — | +9.60% | 105.1% |
+
+There is no `myopic` row: that heuristic is derived for `L = 0` and refuses to
+run on this board.
+
+Sorted by mean cost, two decimals; the retired categorical-crown row is placed
+by its 6-seed control on the same seeds (338.87), not by its single-artifact
+number. Scope: the ★ and reference rows are **6-seed means** at the protocol (seeds
+21–26; best artifact 337.166, `vec` seed 21). The categorical-head row is a
+**single artifact** re-scored after its search (spec §9.7 ships a tuning winner
+without a retrain, so it carries no across-seed SE); its own configuration's
+6-seed control on the same seeds is 338.87 ±0.20, so the head's paired gain is
+−1.13 (`vec`) / −1.85 (`vec_mip`) even though the single-artifact number reads
+below the new mean. The derived rung is a 3-seed mean. The σ=0 variant is **not a bar** — the
+benchmarks stay as the paper published them.
+
+#### The shipped policies
+
+All three ship **MaskablePPO** — the algorithm is fixed by the IR, because the
+original action encoding needs a per-step action mask. What differs by board is
+the encoding, the observation, and how far up the tuning ladder the artifact
+came from:
+
+| board | action encoding | order head | observation | rung | config |
+|---|---|---|---|---|---|
+| `homog_L0_T2` | `order_protection` | ordinal | `vec` | `L4(hp+gym+arch)`, hp tuned for the head (`h6`) | `sc0/g6/a1/h6` |
+| `het_exp4` | `order_protection` | ordinal | `vec` | `L4(hp+gym+arch)`, hp from `#E16` | no id — the cell loses to its bar |
+| `het3_exp2` | `order_protection` | ordinal | `vec` | `L4(hp+gym+arch)`, hp from `#E18` (`h4`) | `sc4/g6/a1/h4` |
+
+**`order_protection` is the campaign's own encoding**, and it is what changed
+the heterogeneous branch. The order and the protection levels `σ₁…σ_{T_dl−1}`
+are chosen together at the **pre-demand** information set, and the allocation
+then follows mechanically from a priority cascade. It replaces a masked
+two-phase quantity action, collapses a period from four agent steps to one, and
+needs no mask at all, because every action in its box is feasible by
+construction. It beat the quantity encoding at every rung on both heterogeneous
+boards; `homog_L0_T2` was later re-run on it with the ordinal head, where the
+two encodings are behaviourally identical because the allocation is not live.
+
+**The ordinal order head** (`--order-head ordinal`, id `a1`) is the campaign's
+second own component. The order's one-logit-per-quantity head is replaced by a
+trigger probability and a discretized-Gaussian location and width, so the
+magnitude gradient pools across quantities instead of splitting over adjacent
+logits. Measured against the categorical head at identical hyperparameters and
+seeds on all three boards — six paired contrasts, all negative — and adopted on
+2026-09-04 (`#E22`–`#E25`). It is a policy-architecture knob: same action
+space, same cascade, same algorithm, no change to the problem statement.
+
+`het3_exp2`'s hyperparameters came from a 379-trial search over the spec's
+`breadth` knob tier, and the head was then added at those hyperparameters
+(`het_exp4`'s from a separate study on its own board; `homog_L0_T2`'s `h6` from
+a study run for the head). `het_exp4`'s
+artifact carries **no configuration id**: an id marks a promotion, and a cell
+that loses to its bar was not promoted.
+
+**Why the boards disagree:** the AP relaxation's *policy* sits +1.51% above its
+own bound on `het_exp4` and +4.31% on `het3_exp2`. RL takes what the relaxation
+leaves — little on the first board, a great deal on the second. On the two
+homogeneous boards the reference is an exact DP, so there is nothing to take.
+
+**Details** — the ladder from `L0` to the crowned rung, the tuning studies, the
+screening protocol, and the config registry that addresses every run — are in
+[`ESCALATION.md`](ESCALATION.md): `#E9`–`#E12` (het_exp4), `#E15`–`#E18`
+(het3_exp2), `#E21`–`#E25` (the ordinal head and its adoption), and
+§CONFIG-REGISTRY for the ids.
+
+### `2-structural` — does the learned policy have the structure the paper proves?
+
+All four declared stances are closed. Evidence, scope and two retracted
+readings: **[`INTERPRET.md`](INTERPRET.md)**.
+
+**Scope.** Read back on the crowned artifacts `sc4/g6/a1/h4` (ships) and
+`sc4/g7/a1/h5` on 2026-09-04 (`#E26`), 8192-seed CRN scoring; the 2026-08-31
+readback of the categorical crowns (`#E19`, `#E20`) is kept in `INTERPRET.md` as
+labelled comparisons, and where the two disagree the crown's number is the
+verdict (F59).
+
+| id | stance | the claim as declared | finding |
 |---|---|---|---|
-| `exp0` | (6,0,0) | no ADI — the traditional model (homogeneous, T=0) | none |
-| `exp1` | (5,1,0) | nothing ever due two periods out | none |
-| `exp2`–`exp5` | (4,1,1)→(1,1,4) | the crossover ladder | **yes** |
-| `exp6` | (0,1,5) | no urgent arrivals to protect against | none |
-| `exp7` | (0,0,6) | full ADI — exactly §3's homogeneous model at T=2 | none |
+| **RQ1** (primary) | `confirm` | on the heterogeneous branch the learned allocation is PL-shaped: allocated ≈ clip(surplus − σ, 0, outstanding) for a recoverable protection level σ | **Not answerable on this arm** — `order_protection` makes `σ` the action, so it is true by construction; the shipped encoding *is* the structure |
+| **RQ2** (primary) | `discover` | the learned allocation varies where a fixed-σ PL policy cannot (with state and time-to-go), and the extracted rule scores as a feasible policy | **No, on the shipped policy.** Its protection component, in isolation, is worth −0.06 against the paper's ladder and **+0.42 behind the best constant**; the categorical crown's 0.63 ± 0.05 did not survive the change of order head. The one rule beyond a constant that is worth having — zero protection in the last period, −1.18 alone, −1.84 with the best constant — is hand-written and learned by no head |
+| **RQ3** (secondary) | `confirm` | on the homogeneous branch the learned policy recovers Prop 2's `(s(V̂), S)`: `S` independent of the advance-demand profile, `s` decreasing in it | **Confirmed, and the trigger is the paper's.** `S` ≈ 29.5 is flat in `V̂`; `s` falls at slope −1 and **equals AP's at every `V̂`** (the categorical crown sat one unit high). Measured on `het3_exp2` against the AP policy, so closed as supported, not as declared |
+| **RQ4** (secondary) | `bypass` | the state collapses onto the modified inventory position `u` (eq. 7): a `vec` arm that must rebuild `u` does as well as a `vec_mip` arm handed it | **Bypassed — the tie is the success.** The arms tie on every board (a dead heat on `homog_L0_T2`, +0.01 on `het3_exp2` under the head), so the paper's transform is not needed as an input; the readback shows why — `vec` rebuilds `u` exactly on the supply side, while the demand profile adds 4–6 points beyond it. Declared `confirm` until 2026-09-04, under which the same tie read only "consistent" (F58) |
 
-## Reproducing
+**In one paragraph.** The paper's structures survive, and the ordinal head
+brought the learned policy closer to them: `(s(V̂), S)` ordering with the paper's
+own `s`, a protection-level allocation at the paper's near-class level, `u` as
+the statistic both run on. The learned policy differs from the analytic one in
+**one constant** — `S` about 5 lower — and **one boundary condition on each
+side**: it stops ordering when a delivery can no longer serve the horizon, which
+AP never does, and it never zeroes its protection in the last period, which the
+paper's ladder never does either. The ordering is **93% of the −10.0 edge**; two
+integers applied to AP recover **90%** of it. Both analytic policies are
+stationary approximations of a finite-horizon problem, drawn from a relaxation
+that over-values inventory.
+
+## 4. Technical appendix
+
+The commands that run the code, each verified to run as written and together
+sufficient to reproduce `results/` from an empty folder. **The gate commands are
+not here** — validation, conformance, laws, differential and pytest are in
+`CLAUDE.md`, because they are run by whoever is changing the folder rather than
+reading it.
+
+### Benchmarks
+
+From `adi_flex/`, and **without** `PYTHONSAFEPATH` — these scripts import their
+siblings by name and need the working directory on `sys.path`.
 
 ```bash
-PY=../../.venv/bin/python        # or $MDP_SOLVER_PYTHON
+# homogeneous: the exact DP
+python adi_flex_benchmark_dp.py -s homog_L0_T2
+python adi_flex_benchmark_dp_eval.py -s homog_L0_T2 \
+       --dp-solutions results/homog_L0_T2/dp/homog_L0_T2_policy.npz
 
-# --- correctness gates -----------------------------------------------------
-$PY -m mdp_ir            adi_flex_schema.json          # IR validates
-$PY -m mdp_conformance   .                             # 14/16 (2 SKIP: no samplers/grids)
-for i in 0 1 2 3 4 5 6 7; do                           # bit-exact vs interpreter
-  $PY -m mdp_ir.differential adi_flex_schema.json --episodes 40 --instance exp$i
+# heterogeneous: the AP bound, then the PL heuristics against it
+python adi_flex_benchmark_ap.py      -s het3_exp2
+python adi_flex_benchmark_ap_eval.py -s het3_exp2
+for pol in pl0 plsigma plmax myopic; do
+  python adi_flex_benchmark_rule.py -s het3_exp2 --policy $pol \
+         --dp-solutions results/het3_exp2/ap/het3_exp2_policy.npz
 done
-
-# --- benchmarks (exp4 is the Stage-0 target) -------------------------------
-$PY adi_flex_benchmark_ap.py --check-tables             # reproduces paper Tables 2 & 3
-$PY adi_flex_benchmark_ap.py        -s exp4
-$PY adi_flex_benchmark_ap_eval.py   -s exp4
-for pol in pl0 plsigma plmax; do
-  $PY adi_flex_benchmark_pl_eval.py -s exp4 --policy $pol --n-seeds 8192
-done
-$PY adi_flex_benchmark_myopic_eval.py -s exp4 --n-seeds 8192
-$PY adi_flex_benchmark_random_eval.py -s exp4 --n-seeds 8192
-
-# --- train + evaluate ------------------------------------------------------
-OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 $PY adi_flex_ppo_train.py \
-    -s exp4 --total_timesteps 500000 --n_envs 8 --n_steps 512 --seed 42
-$PY adi_flex_ppo_eval.py --model-path results/exp4/<RUN>/exp4_ppo.zip \
-    -s exp4 --n-seeds 8192            # ~345.3 (single seed; ~1 unit run-to-run)
 ```
 
-`results/` is gitignored; the commands above regenerate it.
+### Training, evaluation, selection
 
-## Results
+`--total-timesteps` counts **agent** steps, and a period is `1 + n_alloc` of
+them under `seq_mask` but **one** under `order_protection`. Budgets are set in
+episodes, not steps, so the two encodings stay comparable.
 
-Instance `exp4` = (2,1,3), the split where the paper reports `PL(σ)`'s
-optimality gap peaks. All rows are 8192 episodes on identical seeds (0…8191),
-same simulator, same TSV protocol. Cost — **lower is better**.
+```bash
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 
-The PPO rows are a **single training seed** (42); the benchmarks are analytic
-or seed-averaged. Cost — **lower is better**.
-
-| policy | cost | % over AP | SE |
-|---|---|---|---|
-| `AP` — relaxation lower bound (*not attainable*) | **336.19** | — | exact |
-| `PL(σ)` — the paper's best heuristic | **341.33** | 1.53% | 0.33 |
-| `PL(Σ)` | 344.65 | 2.52% | 0.33 |
-| **PPO, `obs=vec`** ← shipped | **345.33** | 2.72% | 0.37 |
-| PPO, `obs=vec_mip` (failed repair axis) | 346.11 | 2.95% | 0.34 |
-| `PL(0)` | 352.43 | 4.83% | 0.37 |
-| myopic | 1203.25 | 257.9% | 0.21 |
-| random | 3059.15 | 810.0% | 5.08 |
-
-Pairwise against the shipped `vec` model (positive z = PPO cheaper; z from
-marginal SEs, so conservative — the protocol is paired on seeds 0…8191):
-
-| comparison | z | verdict |
-|---|---|---|
-| PPO vs `PL(σ)` | **−8.10** | PPO significantly **worse** |
-| PPO vs `PL(Σ)` | −1.37 | statistically tied |
-| PPO vs `PL(0)` | **+13.64** | PPO significantly better |
-
-**Eval gate: PASS** — the candidate beats both mandatory baselines by far more
-than 2 SE (random z ≈ 533, myopic z ≈ 2040). But the gate's baselines are not
-the interesting bar: **the learned policy did not beat the paper's best
-heuristic.** It reached 102.7% of the AP bound where `PL(σ)` reaches 101.5%,
-and lands essentially on `PL(Σ)`.
-
-## Validation
-
-The benchmarks are checked against the paper rather than only against
-themselves:
-
-- **Table 3** — the `AP` dynamic program reproduces the period-1
-  `(s(v̂), S(v̂))` policy for all eight instances exactly, and independently
-  recovers both structural propositions (`S` constant in `v̂`, `s` decreasing).
-- **Table 2** — all ten protection levels for `PL(σ)` and `PL(Σ)` match.
-- **No-crossover instances** — the paper proves the heuristics attain the bound
-  where crossover is absent. Simulated `PL(0)` matches the DP value to within
-  ±0.1% at `exp0`, `exp1`, `exp6`, `exp7`, which jointly validates the DP, the
-  policy extraction, the simulator, and the `v̂` bookkeeping.
-- **Differential gate** — the generated dynamics reproduce the IR interpreter
-  bit-exactly across all eight instances (4,320 periods, 15 fields including
-  the fulfilment `region`, so the branch *selection* agrees and not merely the
-  resulting state).
-
-## Findings
-
-**1. PPO rediscovered the paper's policy structure without being told it.**
-Replaying the shipped model episode by episode:
-
-```
-orders    = [0, 31, 0, 0, 0, 0, 41, 0, 0, 0, 0, 0]
-hold_back = [5, 10, 2, 5, 5, 11, 1, 4, 4, 4, 4, 4]
+# the crowned cells, by config id (the id fixes action/observation mode, the
+# ordinal head and every hp; the level is derived and named in the run dir)
+python adi_flex_ppo_train.py -s het3_exp2   --config sc4/g6/a1/h4 --total-timesteps 666672  --seed 21
+python adi_flex_ppo_train.py -s homog_L0_T2 --config sc0/g6/a1/h6 --total-timesteps 1500000 --seed 21
+# the derived rung, for a ladder floor
+python adi_flex_ppo_train.py -s het3_exp2 -a order_protection -o vec \
+       --level L1 --total-timesteps 666672
+python adi_flex_ppo_eval.py  -s het3_exp2 -a order_protection -o vec \
+       --model-path results/het3_exp2/PPO_<run>/het3_exp2_ppo_final.zip \
+       --n-seeds 8192 --first-seed 0
+python adi_flex_ppo_select.py -s het3_exp2 --runs results/het3_exp2/PPO_<run>/ \
+       --screen-seeds 2048 --screen-first 100000 \
+       --protocol-seeds 8192 --protocol-first 0 --topk 3
 ```
 
-Two large batches rather than steady replenishment — the economic order
-quantity here is `sqrt(2Kd/h) ≈ 34.6` and the DP's order-up-to level is 30, and
-the two batches (31, 41) bracket both — and, off the order periods, a protection
-level sitting at ≈4, which is exactly `PL(σ)`'s newsvendor value (Table 2). Both
-structures were learned from reward alone (pattern consistent across seeds).
+### Readback and audits
 
-**2. The learned allocation is no better than the paper's constant.** This
-domain existed to test the opening in §4.2, that σ "could be further refined by
-incorporating ... inventory level `x_i`, or even the whole system state". The
-`--force-hold-back` ablation overrides the policy's allocation while leaving its
-ordering intact (4096 matched seeds, SE ≈ 0.52):
-
-| allocation | cost |
-|---|---|
-| forced σ = 4 (the paper's constant) | 345.11 |
-| **learned** | 345.16 |
-| forced σ = 8 (`PL(Σ)`'s value) | 348.54 |
-| forced σ = 0 (no protection) | 359.05 |
-
-Learned and constant-σ are **statistically indistinguishable** (0.05 apart on a
-paired comparison). Forcing σ=0 costs 14 units, so the policy did learn that
-protecting matters — it simply found no state-dependent refinement worth
-anything. On this instance, the answer to the paper's open question is *no*.
-
-**3. Handing the policy the paper's sufficient statistic made it (weakly)
-worse.** `vec_mip` exposes `(period, u, due_next)` where `u = inventory −
-due_now − due_next`, the statistic Propositions 1–2 prove the optimal *ordering*
-policy depends on. Under v2 it came out **0.8 units worse** than the raw `vec`
-state (z ≈ 1.6) — nominally worse but within single-seed training noise, so a
-much weaker signal than the pre-v2 run's 3.2-unit gap suggested. The *direction*
-matches the mechanism below and it is still recorded as a failed design axis,
-but the magnitude is not robust to the training seed.
-
-The reason is instructive rather than incidental: `u` is sufficient for the
-**ordering** sub-problem under the AP relaxation, but this domain also decides
-**allocation**, and that decision needs `due_now` — how much is due right now —
-which `u` has already summed away. Compressing to the paper's statistic is
-lossless for the problem the paper solves and lossy for the joint problem. A
-sufficient statistic is only sufficient for the question it was derived for.
-
-**4. Where the remaining gap is.** PPO sits 2.72% above the AP bound against
-`PL(σ)`'s 1.53%. Since the allocation is already at parity (finding 2), the
-entire deficit is in **ordering** — unsurprising, given `PL(σ)` orders using an
-exactly-solved dynamic program while PPO must learn the same non-stationary
-`(s,S)` structure from returns. The honest summary is that the learned policy
-matched the easier half of the problem and lost the half the paper had already
-solved optimally.
-
-## Known limitations
-
-- Only `exp4` was trained and evaluated (the Stage-0 target). The other seven
-  instances have gated dynamics but no trained policy.
-- **The PPO rows are a single training seed (42).** Re-training the same config
-  shifts the result by ≈1 cost unit (observed directly across the v1→v2
-  re-keying), which is comparable to the gaps *between* `PPO`, `PL(Σ)`, and
-  `vec_mip`. So the coarse ranking — PPO ≈ `PL(Σ)`, below `PL(σ)`, far above
-  `PL(0)` — is robust, but fine distinctions among the middle rows are not
-  resolved without multi-seed averaging.
-- **Hyperparameter tuning was explored but yielded no reproducible gain.** An
-  Optuna study (~690 trials, 500k steps/trial) found a best config ~1 unit under
-  the default, but that config, retrained cleanly, regressed to 344.8 —
-  indistinguishable from the default. The apparent gain was winner's curse (the
-  best-of-690 order statistic under single-seed noise), so the shipped result is
-  the default configuration and tuning is not reported as a result.
-- The two homogeneous corners use N=12 (§4's horizon), so they do not reproduce
-  Figure 4's N=30 costs.
-- The delivery-flexibility comparison (the paper's Δ, ≈14% average saving) is
-  out of scope: no exact-delivery dynamics exist in this IR.
+```bash
+python adi_flex_configs.py                                   # archive audits
+python adi_flex_action_mode_probe.py                         # decode acceptance
+python adi_flex_ordinal_head_probe.py                        # a1 acceptance gate G1–G5
+python adi_flex_policy_probe.py --validate                   # the instrument against a known constant
+python adi_flex_policy_probe.py --identified --decompose     # the crown (default --config sc4/g6/a1/h4); a0 ids reproduce #E19/#E20
+python adi_flex_readback_score.py --all --n-seeds 8192       # every scored number in INTERPRET.md
+python adi_flex_readback_score.py --n-seeds 8192 --fig4 figures/fig4_order_sS.svg
+python adi_flex_plot_policy.py --head a1                     # figures 1–3 (--head a0 --outdir figures/a0 for the retired crowns)
+# the deployable wrapper, replaying the crowned artifact; the mode is read off the model
+python adi_flex_policy.py -s het3_exp2 -o vec --episodes 5 \
+       --model-path results/het3_exp2/PPO_<run>/het3_exp2_ppo_final.zip
+```

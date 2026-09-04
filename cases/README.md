@@ -20,13 +20,21 @@ changes; **gated** is the tag its conformance has been carried through.
 |---|---|---|---|---|
 | `clark_scarf` — serial multi-echelon inventory | Andrew J. Clark and Herbert Scarf, "Optimal Policies for a Multi-Echelon Inventory Problem", *Management Science* **6**(4), 1960 — read from the 2004 reprint, *Management Science* **50**(12S), 1782–1790. Model is §2–§3, generalized to N levels. | A **coupled multi-stage decision**: N simultaneous shipments per period, each clipped to what its source holds, so the top of the chain anticipates demand it never sees. Carries an `exact` DP verified against a brute-force joint-state solve rather than taken on the theorems' word — the first draft was 30% suboptimal and entirely convincing. | v0.9.5 | v0.9.5 |
 | `fnv` — fresh-newsvendor sequential ordering under MMFE | Tong Wang, Atalay Atasu, Mümin Kurtuluş (2012), "A Multiordering Newsvendor Model with Dynamic Forecast Evolution", *Manufacturing & Service Operations Management* **14**(3), 472–484, [doi:10.1287/msom.1120.0387](https://doi.org/10.1287/msom.1120.0387). Forecast process is the MMFE of Heath & Jackson (1994). | **Progressive information revelation**: a martingale signal refines while cost rises, so the decision is when to commit rather than how much. Two demand transforms are separate leaderboards. Demoted from `examples/` 2026-08-13 for shipping no train/eval pair; the solve leg and record were contributed after. | v0.8.0 | v0.9.5 |
-| `dynamic_pricing` — finite-horizon revenue management | Guillermo Gallego and Garrett van Ryzin (1994), "Optimal Dynamic Pricing of Inventories with Stochastic Demand over Finite Horizons", *Management Science* **40**(8), 999–1020. | **Continuous price control over a depleting stock**: price sets the arrival intensity, so the decision shapes the demand it then faces, and the episode can end early when inventory hits zero. Carries an exact DP and the paper's fluid policies; PPO reaches within 0.6% of DP. Demoted from `examples/` 2026-09-01 — the shape is one `inv_single` already teaches, not a defect in the folder. Its numbers predate the version stamps and it carries no `built` tag, but unlike `adi_flex` it does meet the contract below. | — | v0.9.37 |
-| `adi_flex` — inventory with advance demand information and flexible delivery | Tong Wang and Beril L. Toktay (2008), "Inventory Management with Advance Demand Information and Flexible Delivery", *Management Science* **54**(4), 716–732 — §4. | A **joint ordering + allocation** decision under **demand crossover**: orders are seen when placed but due now, next period, or two out, so stock spent shipping a not-yet-due order may be stock an urgent one needs tomorrow — the manager chooses how much to buy *and* how much to withhold. The one case whose optimum is **bracketed rather than exact**: a relaxation bounds it from below and heuristics from above — the shape the `relaxed`/`feasible` roles exist for, though this case declares no `benchmarks` block and its four benchmark files carry no role. **Predates the contribution contract** — see below. | — | v0.9.5 |
+| `dynamic_pricing` — finite-horizon revenue management | Guillermo Gallego and Garrett van Ryzin (1994), "Optimal Dynamic Pricing of Inventories with Stochastic Demand over Finite Horizons", *Management Science* **40**(8), 999–1020. | **Continuous price control over a depleting stock**: price sets the arrival intensity, so the decision shapes the demand it then faces, and the episode can end early when inventory hits zero. Carries an exact DP and the paper's fluid policies; PPO reaches within 0.6% of DP. Demoted from `examples/` 2026-09-01 — the shape is one `inv_single` already teaches, not a defect in the folder. Its numbers predate the version stamps and it carries no `built` tag, but it meets the contract below. | — | v0.9.37 |
+| `adi_flex` — inventory with advance demand information and flexible delivery | Tong Wang and Beril L. Toktay (2008), "Inventory Management with Advance Demand Information and Flexible Delivery", *Management Science* **54**(4), 716–732 — §4. | A **joint ordering + allocation** decision under **demand crossover**: orders are seen when placed but due now, next period, or further out, so stock spent shipping a not-yet-due order may be stock an urgent one needs tomorrow — the manager chooses how much to buy *and* how much to withhold. The case whose optimum is **bracketed rather than exact** on its headline boards: an AP relaxation (`relaxed`) bounds it from below and the paper's protection-level heuristics (`feasible`) from above, with an exact DP (`exact`) on the homogeneous branch. What it stresses that the pipeline had not met: a decision that is a **policy parameter** (protection levels chosen pre-demand, the constraint dissolved rather than masked), and an **arch-layer lever** — an ordinal, zero-inflated order head — measured against the categorical head at identical hp and seeds on three boards and crowned (`a1`, #E22–#E25); a §14 readback re-run on the crown (#E26), four figures, a §10 playbook. Re-contributed whole on 2026-09-04, replacing the 2026-07-23 Phase-A folder. | v0.9.11 (leaderboards); v0.9.33–v0.9.35 (the head cells) | v0.10.4 |
 
 **No paper PDF is in this repository, at any revision** — the root
 `.gitignore`'s `*.pdf` covers every case folder, and no PDF has ever been
 committed. Read the sources via their DOI or a library. What a case reimplements
 from one are mathematical facts, attributed at the call site.
+
+`adi_flex` re-gated at **v0.10.4** on 2026-09-04 with its re-contribution:
+conformance 24/30 with zero FAILs (23/30 here, where `run.provenance` SKIPs
+without a `results/` tree), `mdp_ir.laws` 7/9 (both un-passed are SKIPs),
+differential 31 MATCH on every instance, 63 domain tests, plus the case's own
+head gate G1–G5; every module imports under the documented install (the case
+carries its own Poisson helpers — the repository stays scipy-free). The
+paragraphs below are the record of the earlier state.
 
 Gates green at v0.9.6, **zero FAILs on all three**: conformance `clark_scarf`
 18/22, `fnv` **20/23**, `adi_flex` 15/22; `mdp_ir.laws` 8/9, 7/9, 7/9. Every
@@ -52,12 +60,13 @@ whose results have been left alone. The three checks it turns from SKIP to PASS
 are the ones a bare conformance count hides: a SKIP is not a pass, and
 `model.boundary` in particular cannot fire at all until the theory layer exists.
 
-**`adi_flex` does not meet the contract below** and is kept because it gates,
-not as an exemplar of a contribution. It has no `CLAUDE.md`, no `ESCALATION.md`,
-no `PLAYBOOK.md` and no `adi_flex_test.py`, so it carries no campaign record and
-no claim about its own numbers — which is why it has no `built` tag. It is the
-one entry here to read *last*: `clark_scarf` is the current reference for what a
-case looks like.
+**`adi_flex` meets the contract below since 2026-09-04** (PR #79's
+re-contribution): `CLAUDE.md`, `ESCALATION.md`, `PLAYBOOK.md`, `INTERPRET.md`
+and `adi_flex_test.py` ship with it, and its `built`/`gated` tags are in the
+table. Before that date it was kept because it gated, not as an exemplar, and
+carried no campaign record. `clark_scarf` remains the compact reference for the
+shape of a case; `adi_flex` is the full-length one — read it for what a
+campaign record, a §14 readback and a §10 playbook look like at scale.
 
 ## Contributing a case
 
