@@ -332,7 +332,62 @@ this exact trap, and #E3 flags it in its own note).
 2026-08-24  RETYPED     L1/L1' are L1 generations on a chain, not P-ranked rivals (v0.9.26 §13.4)
 2026-08-24  INTRODUCED  §CONFIG-REGISTRY — the log's spine is five sections       (v0.9.26 #60)
 2026-08-24  INTRODUCED  node config addresses; method=ppo (a) shows an sc0/L0 arm (v0.9.27 #66)
+2026-09-14  PIN v0.9.27 -> v0.10.9, re-gated: IR OK, both fingerprints unmoved; conformance
+            24/31 no FAIL; laws 7/9; differential MATCH ×2; 19 tests. No number re-measured
+2026-09-14  RESHAPED    README.md to spec §1.3 — lead, TL;DR block, the four sections; CLAUDE.md
+            to the five sections, traps retired to their owners   (v0.10.0 #72, v0.10.6 #81, v0.10.9)
+2026-09-14  FIXED       fnv_policy.py recursed on any --no-norm-obs artifact (every L0 seed) (#E12)
 ```
+
+**The 2026-09-14 lines are a pin move, a document reshape and one code fix; no
+number, verdict or crown moved.** The gates were re-run at v0.10.9 first (by
+the author, from the downstream repo root at its pin): IR OK with `mdp d415b34e8c33` and
+structural `36f5c3aaf7a6` unmoved, so no §IR-CHANGELOG entry is owed;
+conformance **24/31, zero FAIL** — the denominator grew by one because
+v0.10.x added `schema.no_hardcode`, which WARNs on the two `benchmarks[].tolerance`
+literals (`2.4e-05`, the measured `dp`/`prop2` agreement; naming a constant for
+it is a schema edit and is left for the next IR change); the other WARNs are
+the standing five (`run.provenance` on the 18 pre-§8.4 runs,
+`schema.no_enumeration` on `mmmfe.signal_stdevs`, `scripts.cli_contract`,
+`scripts.l1_derived`, `scripts.launch_check`). `mdp_stage fnv` reads
+`signoff.readable` and `runplan.readable` as FAIL: the two state files
+(`fnv.signoff.json`, `fnv.runplan.json`) were introduced by v0.10.0's skill
+split and this case predates it; nothing is owed until an op is re-entered
+here, at which point the op's entry gate writes them.
+
+What the twelve releases between the pins bring to this folder, and what
+they moved: **v0.10.0** (#72) fixes the two documents' shapes — `README.md`
+four sections in a stated order, `CLAUDE.md` five and no traps section —
+**v0.10.6** (#81) adds the README's `**TL;DR**` block, and **v0.10.9** puts
+a one- or two-sentence lead above it saying what the file is; both documents
+were rewritten to the templates today (the pin moved v0.10.8 → v0.10.9 while
+the rewrite was in progress, and the battery was re-run at v0.10.9 with the
+same result). Every trap the old `CLAUDE.md` carried was
+checked for an owner before it went: the gate-enforced ones (`no_param`,
+`--check-invariants`, `--cross-check`, `model.boundary`) are owned by the gate;
+the campaign-paid ones live in `PLAYBOOK.md` LV1–LV8 and `#E1`, `#E5`, `#E7`,
+`#E9`–`#E11`; the grouped-layout read and the model/design boundary in F2; the
+DP extrapolation rule in `fnv_benchmark_dp.py`'s own docstring; the `L1′`/`L1b`
+spelling, the `g0` kwarg-name note and the config-address vocabulary in
+§CONFIG-REGISTRY; the record-eval stance above the leaderboards in
+`README.md`. What survives in `CLAUDE.md` is the trigger and the address. The
+downstream README's old "Upstream parity" section is retired with it: its four drift
+rows all resolved (three synced down 2026-08-24, the fourth carried up in
+#17), upstream took the log migration in auto-mdp-solver #67, and v0.9.28's
+rule (`2652c0b`) now forbids a release from editing an author-owned case at
+all — a spec change *names* what it invalidated in its commit body and leaves
+the folder to its author — so the structural drift the section argued from no
+longer exists. The `202506/` archive it and the old traps cited is not in the
+tree. The remaining releases are harness-side: **v0.10.7** (#77) derives a
+slot's law at load and no feature here reads one; the run-state files, the
+`read_api` hatch and the grid-scoping fix (v0.10.2–v0.10.4) touch nothing
+this closed campaign launches. Diff against `cases/fnv/` at v0.10.9 before
+today's edits: four files differ (`CLAUDE.md`, `ESCALATION.md`, `README.md`,
+`fnv.restatement.md`), every hunk a provenance wording that reads from the
+other tree's point of view or the two 2026-08-24 sync passages; nothing to
+adopt. The `fnv_policy.py` fix (#E12) was found by the README rule that every
+appendix command is verified to run as written, and goes upstream with the
+documents.
 
 The three 2026-08-17 lines are one **retype**, not a re-framing: no number, no
 verdict and no crown moved. They are logged because §3.1 makes REPARENTED and
@@ -865,3 +920,30 @@ missing: nothing for this claim; the ladder contrasts were re-checked against
 plan: report median + sign test beside every grid mean; use seeds as the
   replication unit for any grid-mean SE. Both now stated in README and
   PLAYBOOK LV8.
+
+<a id="E12"></a>
+### #E12  2026-09-14 — DEFECT: the deployable wrapper could not load an L0 artifact
+address: package layer (`fnv_policy.py`, spec §12); no tree node — a diagnosis
+  of the shipped code, not a score.
+reads: the README rule that every technical-appendix command is verified to
+  run as written, applied during the §1.3 reshape.
+observed: `python fnv_policy.py -s FNV-aMMFE --model-path <ckpt>` raised
+  `RecursionError` on every artifact trained with `--no-norm-obs` — all six
+  `L0` seeds across the two branches, including the a-MMFE best-of-9 headline
+  (`sc0/L0` seed 2). Such a run still saves `vecnormalize.pkl`, but the
+  pickled `VecNormalize` carries no `obs_rms` attribute, and reading one
+  through SB3's `VecEnvWrapper.__getattr__` on an unpickled wrapper (its
+  `venv` is `None`) recurses without end. `L1`/`L1′` artifacts (`norm_obs`
+  on) loaded and ran; `fnv_ppo_eval.py` had guarded the same read with the
+  `norm_obs` flag since the campaign, which is why no leaderboard number was
+  ever affected — only the §12 wrapper, which no gate exercises.
+fix: the wrapper asks `norm_obs` before touching `obs_rms`, the eval script's
+  idiom; five lines, no behaviour change on a normalised artifact. Verified on
+  the a-MMFE `L0` seed-2 checkpoint (step 1.4M) and terminal model, the a-MMFE
+  `L1′` seed-2 terminal model and the m-MMFE `L1′` seed-3 checkpoint (step
+  1.7M): each reproduces the gym's observations and actions while driving the
+  raw MDP. `fnv_test.py` 19 passed.
+status: ✓ closed. The file also ships in `cases/fnv/`; the fix travels with
+  the 2026-09-14 contribution.
+lesson: a wrapper the campaign never deployed is a command the README never
+  ran. The §1.3 verification rule is what found it, three weeks after close.

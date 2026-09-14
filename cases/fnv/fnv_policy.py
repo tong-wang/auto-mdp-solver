@@ -90,7 +90,12 @@ class FnvPolicy:
         if vecnorm_path and Path(vecnorm_path).exists():
             with open(vecnorm_path, "rb") as f:
                 vecnorm = pickle.load(f)
-            self._obs_rms  = vecnorm.obs_rms
+            # A run trained with --no-norm-obs still saves a VecNormalize, but
+            # one with no obs_rms at all; reading it through the wrapper's
+            # __getattr__ recurses forever (SB3's VecEnvWrapper), so ask the
+            # flag first — the same idiom as fnv_ppo_eval.load_obs_rms.
+            if getattr(vecnorm, "norm_obs", True):
+                self._obs_rms = vecnorm.obs_rms
             self._clip_obs = float(vecnorm.clip_obs)
 
     @staticmethod
