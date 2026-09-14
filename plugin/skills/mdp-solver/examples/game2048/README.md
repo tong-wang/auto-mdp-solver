@@ -5,6 +5,27 @@ The 2048 sliding-tile game as an MDP, generated from
 bit-for-bit by the differential. Built to fill the case set's
 **spatial-board / action-masking** gap.
 
+**TL;DR**
+
+- **At 3×3 the learned policy beats every search reference on the board.** The
+  shipped PPO arm scores 2688.37 merge points against 1154.25 for depth-3
+  expectimax — 233% of the bar and 187% of the strongest search reference,
+  snake-leaf expectimax at depth 3 (`3x3_20`, tier 1).
+- **At 4×4 it clears depth-2 expectimax and falls short of depth 3.** 17084.31
+  against 13155.04 (130%) and 20804.48 (82%). The arm shipped is the best arm
+  of this case, not the best arm the campaign measured (`4x4_20`, tier 1).
+- **The strategy gap is the open result.** A three-ply search over a
+  hand-shaped monotone-chain leaf scores 51652.03 with no training at all —
+  3.0× the shipped 4×4 arm. The structure the learned policy does not find is
+  worth more than every lever reported here (tier 1).
+- **The policy anchors a home corner and holds a monotone ordering off it; the
+  fitted rule is still owed.** Corner occupancy 0.970 against a myopic
+  control's 0.714 (tier 2, `discover`).
+- **It does not build the snake.** Its chain length, 4.83 of 9, equals the
+  snake reference's, so the chain metric cannot separate them — and the two
+  play differently at the same length, home-corner share 0.986 against 0.344
+  (tier 2, `confirm`).
+
 ## The problem
 
 Slide the board in one of four directions; equal tiles merge and double; a new
