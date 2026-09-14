@@ -7,8 +7,16 @@ Pass no_cache=True to force a full re-solve and overwrite the cache.
 
 State variable:
   - inventory              when leadtime.max() == 0  (exact)
-  - inventory position     when leadtime.max() >  0  (exact for deterministic
-    (IP = inv + pipeline)  LT=1; approximation for LT>1 or stochastic LT)
+  - inventory position     when leadtime.max() >  0  (exact for ANY deterministic
+    (IP = inv + pipeline)  LT under backlog + linear costs; approximation only
+                           for stochastic LT, where orders can cross)
+
+Exactness at deterministic LT > 1 was verified against an independently derived
+exact DP over the full pipeline state — see `inv_single_dp_exactness.py`, which
+reduces `(inv, p0, p1)` to `(inv + p0, p1)` and shows the optimal order depends
+on the state only through IP. At `lt` (LT=2) the two tables agree on every
+action in every period. An earlier version of this docstring called LT > 1 an
+approximation; that was wrong.
 
 Usage:
     dp = FiniteHorizonDP(scenario)

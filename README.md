@@ -156,8 +156,10 @@ violation.
 
 Under `plugin/skills/mdp-solver/examples/`:
 
-- `inv_single` — single-echelon inventory control with stochastic
-  lead times (two-step advance, episode-support demand, exact-DP benchmark).
+- `inv_single` — single-item periodic-review inventory control: two-step
+  advance, episode-support demand, exact-DP benchmarks on both sides of the
+  fixed-cost and lost-sales lines, a generalist over a cost × lead-time grid
+  tested on a held-out grid, and a §14 readback.
 - `mab` — the standard multi-armed bandit: exploration against exploitation
   over an equivariant state, with a per-episode latent inferred from censored
   feedback, and a fitted structural rule scored as a first-class benchmark.

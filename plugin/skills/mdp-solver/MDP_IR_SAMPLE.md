@@ -409,9 +409,6 @@ verifying rather than dictating.
     // horizon symbol, so the expr resolves per instance; spec §7 recommends
     // this counting-down form over the raw period index, and states the
     // horizon-proportional case where relative forward is right instead.
-    // (The shipped `inv_single/` renders the raw `period`: it predates the
-    // rule, so this one field is what a NEW domain writes, not what that
-    // folder's code does.)
     "observation_modes": [
       { "name": "vec", "default": true,
         "features": [ {"derived": "time_to_go", "expr": "T - period"},
@@ -659,7 +656,7 @@ Two distinct concepts, now in two different *layers*:
   `rl.requires_memory` and baseline tractability; may appear in **no** mode.
 - **Mode selection** (`gym.observation_modes`) — among the *observable*
   quantities, which subset a given mode exposes. An interface choice (cf.
-  `inv_single`'s `vec`/`vec_d`/`vec_ip` modes).
+  `inv_single`'s `vec`/`vec_ip`/`vec_ctx` modes).
 
 Features reference a **state var**, an **info field** (`info.demand`), or a
 **derived expression** (`inventory_position`). Validation: refs resolve, exprs

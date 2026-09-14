@@ -293,7 +293,7 @@ scenario_simple = InvSingleScenario(
 )
 
 scenario_simple_k = InvSingleScenario(
-    scenario_name="simple-k",
+    scenario_name="simple_k",
     desc="simple with fixed ordering cost K=20",
     horizon=30,
     demand=PoissonDemand(rate=10.0),
@@ -343,6 +343,31 @@ scenario_lost_sales = dataclasses.replace(
     stockout_mode="lost_sales",
 )
 
+# Campaign rungs (twins of the IR's `slt` / `lt_lost_sales` instances).
+#
+# `slt`: stochastic lead time L ~ uniform{1,2,3}. E[L] = 2 matches scenario_lt's
+# deterministic L=2 exactly, so lt -> slt varies lead-time VARIABILITY at a
+# constant protection-interval mean (and admits order crossing: an L=1 order can
+# overtake an outstanding L=3 one, so inventory position stops being sufficient).
+# {1,2,3} uniform is now the IR's BASE leadtime_values/leadtime_probs — the slt
+# instance restates no vector (schema.no_enumeration) — and probabilities=[1,1,1]
+# normalizes to the same doubles, keeping the differential bit-exact.
+scenario_slt = dataclasses.replace(
+    scenario_simple,
+    scenario_name="slt",
+    desc="simple with stochastic lead time L~uniform{1,2,3} (E[L]=2 = lt's L)",
+    leadtime=DiscreteLeadtime(values=[1, 2, 3], probabilities=[1, 1, 1]),
+)
+
+# `lt_lost_sales`: deterministic L=2 with lost sales — inventory position is not
+# a sufficient statistic (Zipkin) and no optimal policy structure is known.
+scenario_lt_lost_sales = dataclasses.replace(
+    scenario_lt,
+    scenario_name="lt_lost_sales",
+    desc="lt (deterministic L=2) with lost sales: unmet demand dropped",
+    stockout_mode="lost_sales",
+)
+
 
 # ---------------------------------------------------------------------------
 # Demand-latent family: scenario_simple with a per-episode latent demand
@@ -356,11 +381,13 @@ scenario_lost_sales = dataclasses.replace(
 
 _discrete_demand = LatentDiscreteDemand(support_size=3, support_low=8, support_high=12)
 _poisson_demand = LatentPoissonDemand(alpha=9.0, beta=0.3)
-_slt = DiscreteLeadtime(values=[2, 3, 4, 5], probabilities=[1, 3, 3, 1])
+# the ONE stochastic-lead-time support, shared by every leadtime="slt" instance
+# (the IR's base leadtime_values/leadtime_probs): {1,2,3} uniform, E[L] = 2
+_slt = DiscreteLeadtime(values=[1, 2, 3], probabilities=[1, 1, 1])
 
 source_discrete = InvSingleScenarioSource(dataclasses.replace(
     scenario_simple, scenario_name="discrete",
-    desc="3-point discrete demand, stochastic lead time L~{2,3,4,5}",
+    desc="3-point discrete demand, stochastic lead time L~uniform{1,2,3}",
     demand=_discrete_demand, leadtime=_slt,
 ))
 
@@ -452,6 +479,8 @@ SCENARIOS: dict[str, ScenarioSource] = {
         scenario_rdo,
         scenario_rod,
         scenario_lost_sales,
+        scenario_slt,
+        scenario_lt_lost_sales,
         source_discrete,
         source_poisson,
         source_discrete_lost_sales,
