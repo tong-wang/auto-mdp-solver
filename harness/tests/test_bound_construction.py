@@ -144,13 +144,14 @@ def test_an_unknown_read_api_attribute_still_lists_what_exists(catalog_doc):
 
 
 def _law_doc(on: str = "poisson") -> dict:
-    """The catalog fixture with one candidate declaring the law itself. The
-    slot-aligned pmf is what an observation over a grid of laws must condition
-    on, and no family derivation produces it."""
+    """The catalog fixture with one candidate declaring stats the registry
+    has no notion of — quantiles and an entropy. (The law itself, `probs` /
+    `support`, was the motivating case and has since joined the derived
+    vocabulary; see test_observation_law.py.)"""
     doc = minimal_catalog()
     doc["mdp"]["uncertainty_slots"][0]["candidates"][on]["read_api"] = {
-        "probs": [0.25, 0.5, 0.25],
-        "support": [1.0, 2.0, 3.0],
+        "quantiles": [1.0, 2.0, 3.0],
+        "entropy": 1.04,
     }
     doc["mdp"]["scenario"]["instances"].update(
         {"poisson_c": {"flow": "poisson"}, "fixed_c": {"flow": "fixed"}})
@@ -163,14 +164,14 @@ def test_a_candidate_can_declare_a_stat_the_registry_cannot_derive():
     the override was consulted — so the hatch reached only the five attributes
     that never need it, and a law could not be named at all."""
     doc = _law_doc()
-    assert "probs" not in layering.READ_API
-    assert bounded(doc, "sum(flow.probs)", instance="poisson_c")         == pytest.approx(1.0)
-    assert bounded(doc, "flow.support[1]", instance="poisson_c")         == pytest.approx(2.0)
+    assert "quantiles" not in layering.READ_API
+    assert bounded(doc, "sum(flow.quantiles)", instance="poisson_c")     == pytest.approx(6.0)
+    assert bounded(doc, "flow.entropy", instance="poisson_c")            == pytest.approx(1.04)
 
 
 def test_a_declared_stat_folds_as_a_vector_into_a_bound():
     doc = _law_doc()
-    assert bounded(doc, "flow.probs[0] + flow.probs[2]", instance="poisson_c")         == pytest.approx(0.5)
+    assert bounded(doc, "flow.quantiles[0] + flow.quantiles[2]", instance="poisson_c") == pytest.approx(4.0)
 
 
 def test_a_sibling_that_declares_nothing_fails_loudly_rather_than_wrongly():
@@ -179,7 +180,7 @@ def test_a_sibling_that_declares_nothing_fails_loudly_rather_than_wrongly():
     this law. It raises, and names whose vocabulary it checked."""
     doc = _law_doc(on="poisson")
     with pytest.raises(layering.LayeringError) as exc:
-        bounded(doc, "sum(flow.probs)", instance="fixed_c")
+        bounded(doc, "sum(flow.quantiles)", instance="fixed_c")
     msg = str(exc.value)
     assert "no read-API attribute" in msg
     assert "declares no read_api block" in msg
@@ -200,7 +201,7 @@ def _law_mixture_doc(both: bool) -> dict:
     doc = _law_doc()
     if both:
         doc["mdp"]["uncertainty_slots"][0]["candidates"]["fixed"]["read_api"] = {
-            "probs": [1.0], "support": [30.0],
+            "quantiles": [30.0], "entropy": 0.0,
         }
     doc["mdp"]["uncertainty_slots"][0]["candidates"]["fixed"]["settings"] = \
         {"value": "10 * rate"}
@@ -219,7 +220,7 @@ def test_a_declared_stat_does_not_compose_across_a_mixture():
     component's answer for the mixture would be a fiction — refused, with the
     reason, even when every component can answer."""
     with pytest.raises(layering.LayeringError, match="does not compose"):
-        bounded(_law_mixture_doc(both=True), "sum(flow.probs)", instance="mix")
+        bounded(_law_mixture_doc(both=True), "sum(flow.quantiles)", instance="mix")
 
 
 def test_a_mixture_component_that_cannot_answer_fails_at_its_own_resolution():
@@ -227,7 +228,7 @@ def test_a_mixture_component_that_cannot_answer_fails_at_its_own_resolution():
     component whose candidate declares nothing fails there — before any
     composition question is reached."""
     with pytest.raises(layering.LayeringError) as exc:
-        bounded(_law_mixture_doc(both=False), "sum(flow.probs)", instance="mix")
+        bounded(_law_mixture_doc(both=False), "sum(flow.quantiles)", instance="mix")
     assert "declares no read_api block" in str(exc.value)
 
 

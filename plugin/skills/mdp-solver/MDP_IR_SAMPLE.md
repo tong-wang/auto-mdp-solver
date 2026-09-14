@@ -665,6 +665,22 @@ Features reference a **state var**, an **info field** (`info.demand`), or a
 **derived expression** (`inventory_position`). Validation: refs resolve, exprs
 resolve, and no mode touches anything latent.
 
+A derived expression may also read a slot's read-API (§7) — and the case that
+needs it is **the law in force**: a generalist trained across a grid of laws
+must condition on which one it is being asked to adapt to, so it declares
+`{"derived": "leadtime_law", "expr": "leadtime.probs", "dim": 3}` and sees the
+selected candidate's pmf under every selection (the one-point law under a
+deterministic candidate, the marginal under a mixture) — never a constant that
+parameterises one candidate and silently keeps a value under the others. The
+read is **folded at load**, like a bound: left symbolic, the interpreter would
+evaluate `leadtime` at runtime against the period's realized draw, the leak
+the latent guard exists to stop, arriving by a different door. That guard is
+about the *realization*: a hidden draw's name may not appear in a feature, but
+a slot's law is its prior, which a policy may know (upstream #77). `dim`
+declares a vector feature's width so the domain's own test can check what the
+gym renders against the IR; `desc` on the mode says why it exists (a mode
+narrowed to one family, or one carrying the law for a generalist).
+
 Note what validation does **not** cover, because the asymmetry is easy to
 mistake for coverage: a latent variable's *absence* from every mode is checked,
 while a rendered feature's absence from the list it belongs to is not. The list
@@ -958,17 +974,24 @@ legacy resolved form and still loads unchanged.
   against `mean`/`max`/`min`/`sd`/`is_discrete` computed by `mdp_ir.families`
   from the selected candidate's family + settings, composing through the
   latent hierarchy (a Gamma-latent Poisson gets `max = envelope(poisson,
-  envelope(gamma))`). Derivation is lazy per attribute — a slot nothing
+  envelope(gamma))`), and against the **law itself** — `support`/`probs` —
+  for finite-support families (`deterministic` is the one-point law,
+  `categorical` its declared values/probabilities, `bernoulli` `{0, 1}`; an
+  unbounded or continuous family, and a law parameterised by a latent, refuse
+  and name the hatch). Derivation is lazy per attribute — a slot nothing
   references may use state-dependent settings (dynamic_pricing's
   price-dependent rate). Escape hatch: an explicit `read_api` block on the
   candidate — consulted *before* the derived vocabulary, not gated by it, so
-  it may also name an attribute the registry has no notion of at all (a law's
-  own `probs`/`support`, say). What one candidate declares its siblings need
-  not: a reference under a candidate that declares nothing raises and names
-  whose vocabulary it checked, rather than resolving to a law that is not in
-  force. Only the derived five compose across a mixture; a declared attribute
-  is a statement about one law and has no composition rule over a mixture of
-  them (upstream #77). `sd` is the spread `max`'s 4-sigma convention is built from, so a
+  it may also name an attribute the registry has no notion of at all (a
+  quantile, an entropy) or state the marginal law under a latent by hand.
+  What one candidate declares its siblings need not: a reference under a
+  candidate that declares nothing raises and names whose vocabulary it
+  checked, rather than resolving to a law that is not in force. The derived
+  attributes compose across a mixture — the moments by the §5.3 envelope
+  rules, the law as the mixture's marginal pmf over the union support; a
+  declared attribute outside that vocabulary is a statement about one law
+  with no composition rule, and is refused under a mixture (upstream #77).
+  `sd` is the spread `max`'s 4-sigma convention is built from, so a
   site can state its own multiple or bound a sum (`"n*mean + 4*sqrt(n)*sd"`,
   never `n * max` — the spread grows as `sqrt(n)`, spec §4.1); it refuses under
   a world latent, where the marginal spread carries the latent's variance too

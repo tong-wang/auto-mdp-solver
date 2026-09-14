@@ -5,7 +5,10 @@ family read-API blocks from the IR: ``mean`` / ``max`` / ``sd`` /
 ``is_discrete`` of a slot's selected candidate are *derived* here from the
 distribution family and its settings, composing through the latent
 hierarchy — a setting that is itself a draw spec contributes its
-draw-family's mean/envelope. Example::
+draw-family's mean/envelope. The law itself — ``support`` / ``probs`` — is
+derived too, for finite-support families only (upstream #77): it is what an
+observation feature reads when a policy must know which law is in force, and
+it does not compose through a latent. Example::
 
     poisson(rate ~ gamma(shape=9, scale=1/0.3))
     mean = E[rate] = 30
@@ -24,7 +27,8 @@ the convention is built from and a bound site states its own (upstream #54).
 The ``resolve(raw_value, attr)`` callback is supplied by the caller
 (``layering``): it turns a raw setting value — literal, expr string over
 scenario constants, or nested draw spec — into a number/list for the
-requested attr (``"mean"``, ``"max"``, ``"min"`` or ``"sd"``). A setting
+requested attr (``"mean"``, ``"max"``, ``"min"``, ``"sd"``, ``"support"`` or
+``"probs"``). A setting
 this module cannot resolve (e.g. an expr over *state*, like a price-dependent
 rate) surfaces as a :class:`FamilyError`; the caller reports it only if the structure actually
 references the attribute (lazy derivation), with the ``read_api`` candidate
@@ -449,3 +453,74 @@ def max_value(family: str, settings: dict, resolve: Resolver) -> float:
     if family == "normalized_uniform_weights":
         return 1.0
     raise FamilyError(f"no max derivation for family {family!r}")
+
+
+# ---------------------------------------------------------------------------
+# The law itself — finite-support families only (upstream #77)
+# ---------------------------------------------------------------------------
+
+
+def _law_latent(settings: dict, family: str, key: str) -> None:
+    """Refuse a world latent in a law derivation. The marginal law under a
+    latent is E_θ[P(X|θ)], which needs the latent's whole distribution, not a
+    moment — not derivable family-generically. A candidate that wants the
+    marginal states it in ``read_api.probs`` / ``read_api.support``."""
+    raw = settings.get(key)
+    if isinstance(raw, dict) and "draw" in raw:
+        raise FamilyError(
+            f"{family}.{key} is a world latent, so the law in force is a "
+            f"marginal over it and not derivable here; declare the marginal "
+            f"you mean as read_api.probs / read_api.support on the candidate"
+        )
+
+
+def law(family: str, settings: dict, resolve: Resolver) -> tuple[list[float], list[float]]:
+    """``(support, probs)`` of one draw — the pmf a policy conditions on when
+    it must know *which* law is in force (a generalist over a grid of laws).
+
+    Defined for finite-support families only: ``deterministic`` is the
+    one-point law, ``categorical`` its declared values/probabilities in
+    declared order, ``bernoulli`` ``{0, 1}``, ``iid`` its base family per
+    component. An unbounded or continuous family has no pmf to hand back and
+    raises, naming the escape hatch; so does a latent setting, since the
+    marginal law needs the latent's whole distribution.
+    """
+    if family == "iid":
+        return law(*_iid_parts(settings), resolve)
+    if family == "independent":
+        raise FamilyError(
+            "independent has no single law — its components are not "
+            "identically distributed; read a component's law or declare "
+            "read_api.probs / read_api.support on the candidate"
+        )
+    if family == "deterministic":
+        _law_latent(settings, family, "value")
+        return [_num(resolve(settings.get("value"), "support"), family, "value", "support")], [1.0]
+    if family == "categorical":
+        _law_latent(settings, family, "values")
+        _law_latent(settings, family, "probabilities")
+        vals = resolve(settings.get("values"), "support")
+        probs = resolve(settings.get("probabilities"), "probs")
+        if not (isinstance(vals, list) and isinstance(probs, list)):
+            raise FamilyError("categorical law needs explicit values and probabilities")
+        if len(vals) != len(probs):
+            raise FamilyError("categorical values/probabilities length mismatch")
+        return [float(v) for v in vals], [float(p) for p in probs]
+    if family == "bernoulli":
+        _law_latent(settings, family, "p")
+        p = _get(settings, family, "p", resolve, "probs")
+        return [0.0, 1.0], [1.0 - p, p]
+    raise FamilyError(
+        f"no law derivation for family {family!r} (infinite or continuous "
+        f"support); declare read_api.probs / read_api.support on the candidate"
+    )
+
+
+def support(family: str, settings: dict, resolve: Resolver) -> list[float]:
+    """Support points of a finite-support law; see :func:`law`."""
+    return law(family, settings, resolve)[0]
+
+
+def probs(family: str, settings: dict, resolve: Resolver) -> list[float]:
+    """Probability over :func:`support`, same length; see :func:`law`."""
+    return law(family, settings, resolve)[1]

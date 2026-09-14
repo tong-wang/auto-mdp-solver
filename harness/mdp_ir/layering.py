@@ -44,12 +44,23 @@ so nothing downstream learns a new shape:
   namespace **derived** from :mod:`mdp_ir.families` (lazily, per attribute,
   composing through the latent hierarchy) — never hand-authored; a
   candidate's ``read_api`` block is the explicit override for underivable
-  cases, and may name an attribute outside the derived set (a law's own
-  ``probs``/``support``, say) — it is consulted before the derived vocabulary,
-  not gated by it. Only the *stats* resolve here: what a bound reads from
-  ``scenario.constants`` stays symbolic and resolves per instance at the
-  schema's read API, so the two halves of ``"N * demand.max"`` track the
-  selection and the instance respectively (#53).
+  cases, and may name an attribute outside the derived set — it is consulted
+  before the derived vocabulary, not gated by it. The law itself is derived
+  for finite-support families (``leadtime.support`` / ``leadtime.probs``,
+  the one-point law under a deterministic candidate) and composes across a
+  mixture as the marginal pmf over the union support. Only the *stats*
+  resolve here: what a bound reads from ``scenario.constants`` stays symbolic
+  and resolves per instance at the schema's read API, so the two halves of
+  ``"N * demand.max"`` track the selection and the instance respectively
+  (#53);
+- observation-feature ``expr``s fold their ``slot.attr`` reads the same way,
+  at load (upstream #77): a policy that must know **which law is in force**
+  reads ``leadtime.probs`` and sees the selected candidate's law under every
+  selection, never a constant that parameterises one of them. Folding here
+  is what keeps it a law: left symbolic, the interpreter would evaluate the
+  reference at runtime against the realized draw. The latent guard on
+  features is about the *realization* — a hidden draw's name is still barred
+  — and a slot's law is its prior, which a policy may know.
 
 What is frozen is computed, not tagged: :func:`structural_fingerprint`
 hashes the structural core plus the constant *names* its expressions
@@ -69,11 +80,12 @@ from mdp_ir import exprs, families
 
 # read-API a slot exposes to symbolic bounds; derived via mdp_ir.families,
 # overridable per candidate via its `read_api` block
-READ_API = ("max", "mean", "min", "sd", "is_discrete")
+READ_API = ("max", "mean", "min", "sd", "is_discrete", "support", "probs")
 
-# moment/envelope derivations per read-API attribute
+# moment/envelope/law derivations per read-API attribute
 _FAMILY_FNS = {"mean": families.mean, "max": families.max_value,
-               "min": families.min_value, "sd": families.sd}
+               "min": families.min_value, "sd": families.sd,
+               "support": families.support, "probs": families.probs}
 
 # a slot read-API reference inside an expression, e.g. `demand.mean`
 _STAT_REF = re.compile(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)")
@@ -238,9 +250,29 @@ def _mixture_namespace(slot: dict, comp_infos: list, where: str):
                 cand = slot["candidates"][comp_sel[slot_name]]
                 sub = _slot_namespace(slot, cand, cvals, where)
                 weights.append(float(w))
+                if item in ("support", "probs"):
+                    vals.append((list(sub.support), list(sub.probs)))
+                    continue
                 vals.append(getattr(sub, item))
                 if item == "sd":
                     means.append(float(sub.mean))
+            if item in ("support", "probs"):
+                # the marginal law of the mixture — what an episode's law is
+                # in expectation before nature picks the component, and so
+                # the prior a policy may know (upstream #77): pmf over the
+                # union support, each point weighted across components
+                total = sum(weights)
+                mass: dict[float, float] = {}
+                for w, (sup, pr) in zip(weights, vals):
+                    if len(sup) != len(pr):
+                        raise LayeringError(
+                            f"{where}: slot {slot_name!r} component law has "
+                            f"{len(sup)} support points and {len(pr)} probs"
+                        )
+                    for x, q in zip(sup, pr):
+                        mass[float(x)] = mass.get(float(x), 0.0) + w * float(q) / total
+                points = sorted(mass)
+                return points if item == "support" else [mass[x] for x in points]
             if item == "mean":
                 return sum(w * v for w, v in zip(weights, vals)) / sum(weights)
             if item == "max":
@@ -352,6 +384,36 @@ def _resolve_bounds(
         else:
             out.append(entry)
     return out
+
+
+def _fold_observation_features(gym: Any, ns: dict, where: str,
+                               slot_names: set[str]) -> None:
+    """Fold every ``slot.attr`` read in an observation feature's ``expr`` into
+    its value under the selection, leaving the rest symbolic (upstream #77).
+
+    Bounds fold because their namespace exists only here; a feature folds for
+    the same reason and one more. A feature is evaluated at RUNTIME against
+    the state namespace, where the slot's name is bound to the period's
+    realized draw — so a reference left symbolic would not be "the law in
+    force" but a realization leaked into the observation by a different door
+    than the one the latent guard watches. Folded, ``leadtime.probs`` is the
+    selected candidate's pmf: a number vector the interpreter, the differential
+    runner and the gym all see identically, under every candidate.
+    """
+    modes = gym.get("observation_modes") if isinstance(gym, dict) else None
+    if not isinstance(modes, list):
+        return
+    for i, mode in enumerate(modes):
+        feats = mode.get("features") if isinstance(mode, dict) else None
+        if not isinstance(feats, list):
+            continue
+        for j, feat in enumerate(feats):
+            expr = feat.get("expr") if isinstance(feat, dict) else None
+            if isinstance(expr, str) and _STAT_REF.search(expr):
+                feat["expr"] = _fold_slot_stats(
+                    expr, ns, slot_names,
+                    f"{where}.observation_modes[{i}].features[{j}].expr",
+                )
 
 
 def _walk_bounds(node: Any, ns: dict, where: str, instance_consts: set[str],
@@ -674,6 +736,8 @@ def resolve_catalog(
         if block in merged:
             _walk_bounds(merged[block], ns, f"{where}.{block}",
                          instance_consts, slot_names)
+    if "gym" in merged:
+        _fold_observation_features(merged["gym"], ns, f"{where}.gym", slot_names)
 
     merged["selection"] = selection
     return merged

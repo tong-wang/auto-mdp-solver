@@ -1703,6 +1703,12 @@ class ObservationFeature(_Base):
     ref: str | None = None                   # a state var or "info.<field>"
     derived: str | None = None               # name of a derived feature
     expr: str | None = None                  # required when `derived` is set
+    # width of a derived feature's rendered value — a declaration, so the
+    # domain's own test can check the vector it renders against the IR
+    # (a folded `leadtime.probs` renders as many components as the law has
+    # support points; nothing else in the declaration says how many). Not
+    # resolved by the harness; scalar when absent.
+    dim: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _check_one_form(self) -> "ObservationFeature":
@@ -1717,6 +1723,9 @@ class ObservationMode(_Base):
     name: str
     default: bool = False
     features: list[ObservationFeature] = Field(min_length=1)
+    # why this mode exists — a mode narrowed to one candidate family, or one
+    # that carries the law in force for a generalist, says so here
+    desc: str = ""
 
 
 class ActionMode(_Base):
@@ -2130,7 +2139,15 @@ class MdpIR(_Base):
     @model_validator(mode="after")
     def _gym_refs_resolve(self) -> "MdpIR":
         """gym → mdp: every feature ref/expr resolves; latent state appears in
-        no observation mode."""
+        no observation mode.
+
+        The guard is about the *realization*: what a policy must infer may
+        not be shown to it. A slot's law is its prior, which a policy may
+        know, so a catalog IR's ``slot.probs`` / ``slot.support`` reads are
+        folded into the feature at load (``layering``) and reach this check
+        as numbers — the identifiers the guard sees are the ones that would
+        leak a draw (upstream #77). In a resolved IR the same reference is an
+        unresolved identifier, since only the resolver knows the selection."""
         state_names = {sv.name for sv in self.mdp.state_variables}
         info_names = {f.name for f in self.mdp.info_fields}
         # hidden world latents (spec §5.2): a realized sampled constant is not
