@@ -43,13 +43,17 @@ distinction — see `cases/README.md`, "After a case is merged"):
 - **Built and gated at: v0.7.0** (`2e50c60`) — the checkout every number in
   this folder was produced under. This line never moves. Moving it would
   claim the results were re-measured.
-- **Conformance maintained through: v0.10.0** — how far declarations, drawing
+- **Conformance maintained through: v0.10.9** — how far declarations, drawing
   conventions and gate compatibility have been carried forward **without
   re-running anything**: the `benchmarks` block (including the column-sourced
   oracle), the `research_questions` stances, the spec-§8.4 provenance emit, the
-  `mdp.model` theory layer and grouped layout (**F6**), and — this round —
-  the v0.10.0 split-skill pipeline state, the §MAP taxonomy retype, and the
-  README/CLAUDE rebuild to spec §1.3. Logged in `ESCALATION.md`
+  `mdp.model` theory layer and grouped layout (**F6**), and, at v0.10.0, the
+  split-skill pipeline state, the §MAP taxonomy retype, and the README/CLAUDE
+  rebuild to spec §1.3. **This round** adds the two §1.3 blocks `README.md`
+  was missing: the **lead** (v0.10.9) and, below it, the **TL;DR** (v0.10.6),
+  the latter written from the finished boards after the seven-question
+  checklist pass. Both are document conventions, reaching no code and no
+  declaration. Logged in `ESCALATION.md`
   §FRAME-CHANGELOG; **no §IR-CHANGELOG entry is due, because the `mdp` block
   did not move** — the fingerprint is still F6's `5bb25e684405`. **No verdict,
   mark or number moved.**

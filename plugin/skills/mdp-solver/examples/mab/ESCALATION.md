@@ -1239,6 +1239,79 @@ it be configured.
                         moves a verdict upstream; it moves documents. Porting the script
                         conventions the other way, back into the originating project, is owed
                         and not done.
+2026-09-14  MIGRATED    pin v0.10.0 -> v0.10.9 for this copy, README's TWO MISSING LEAD
+                        BLOCKS adopted, and the script-convention port CLOSED.
+                        v0.10.6 added the **TL;DR** block — two to five bullets for the
+                        reader who reads nothing else, tier 1 and tier 2 only, every number
+                        recomputing from a board below — and a seventh §1.3 checklist
+                        question policing it. v0.10.9 then moved it: the TL;DR no longer sits
+                        directly under the title but under a one-or-two-sentence **lead**
+                        saying what the file is, because a reader who meets five verdicts
+                        before one sentence naming the problem they are verdicts on "is
+                        reading bullets about nothing". Both are now written; the four
+                        sections and their order are untouched.
+
+                        **The port the entry above left owed is done.** That entry closed on
+                        "porting the script conventions the other way, back into the
+                        originating project, is owed and not done"; on 2026-09-02 the
+                        downstream copy took `mab_ppo_train.py` / `_ppo_eval.py` wholesale
+                        from the pin, and its conformance moved **25/31 -> 28/31** on
+                        `scripts.cli_contract`, `.l1_derived` and `.launch_check`. The two
+                        copies of this case gate alike again. The divergence that entry
+                        documents is closed by this one rather than corrected in place —
+                        this log is append-only.
+
+                        The releases in the span that reach nothing here: v0.10.2 (a grid
+                        scoped to its base instance's selection), v0.10.3 (the read_api
+                        escape hatch) and v0.10.7 (slot.probs/support derive and fold into
+                        features) are harness capabilities this folder does not exercise —
+                        it declares no mixtures, and `laws` still SKIPs mixture_equivalence.
+                        v0.10.4 redefined the solve level as "did a search run for this
+                        target", which this campaign answers yes to at A3 regardless; no run
+                        name, no declaration and no Δ moves. v0.10.5 and v0.10.8 edit other
+                        folders.
+
+                        **No number was re-measured and no verdict moved.** The five bullets
+                        are read off the finished boards: the #E26 rule and thompson from the
+                        record leaderboard, the RQ1/RQ2 verdicts from `2-structural`, the
+                        horizon bound from #E32/#E34. Checklist q7 was run over the result —
+                        every bullet has a home below it and none is a tier-3 finding.
+
+                        Recorded rather than silently carried, found by checklist q6: the
+                        headline **+22.95 vs thompson is not recomputable from the board it
+                        sits in**. That board's thompson row is the §9 benchmark TSV,
+                        1462.38; the paired margins of #E26/#E27 were taken against the
+                        probe block's own thompson re-run, 1463.19 — a second evaluation,
+                        living in the originating project's `interpret/metrics_thompson.json`,
+                        which a contributed copy does not ship. So the board's own
+                        differences read 23.76 and 2.49 where the text says 22.95 and 1.68.
+                        Both evaluations are legitimate and differ by 0.81, ~1/8 of
+                        thompson's own ±6.52 eval SE, so no verdict, rank or mark moves. The
+                        TL;DR quotes board levels and % oracle only, which do recompute. The
+                        board note is left as it shipped.
+2026-09-14  RE-GATED    at the v0.10.9 pin, no code changed. Measured in THIS copy:
+                        conformance **28/31**, laws 7/9, pytest **69 passed**. Zero FAILs in
+                        either. The differential's **35/35 MATCH** (base + all 34 instances,
+                        40 episodes each, bit-exact) is CARRIED from the originating
+                        project's tree, measured there the same day, and the carry is
+                        evidenced rather than assumed: both trees resolve the mdp fingerprint
+                        `5bb25e684405`, and `diff -rq` across the two folders reports only
+                        this file, `README.md` and `CLAUDE.md` as differing — the schema,
+                        every domain module and `mab_test.py` are byte-identical, so the
+                        differential runs the same code over the same instances from the same
+                        seeds in both. A run in this copy was started and stopped at 19/35
+                        with 0 non-MATCH, consistent with the carried result. Recorded this
+                        way because 5.6M periods simulated twice buys no information when
+                        every input is provably identical, and because a stamp should say
+                        which tree it was measured on.
+                        `mdp_stage mab` is unchanged from the reading the entry above
+                        records: `build` READY,
+                        `escalate`/`interpret`/`package` BLOCKED on `baselines.tsv` and
+                        `rl.artifacts`, because a contributed case ships without its run
+                        directories — the gate working, not a defect. The conformance WARNs
+                        are the two this log owns, `grids.axes` and
+                        `scripts.selection_protocol` (the live SelectionEvalCallback, #E33),
+                        with `run.provenance` SKIP for the same no-run-directory reason.
 ```
 
 ---
