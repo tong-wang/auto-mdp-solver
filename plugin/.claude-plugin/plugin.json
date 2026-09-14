@@ -1,7 +1,7 @@
 {
   "name": "auto-mdp-solver",
   "description": "Build a trained, deployable RL policy from a verbal description of a dynamic decision-making problem: formalize it into an MDP-IR, generate a spec-conformant simulator domain, baselines, PPO training and tuning, and a policy-structure readback, with executable gates between stages.",
-  "version": "0.10.5",
+  "version": "0.10.6",
   "author": {
     "name": "Tong Wang"
   },

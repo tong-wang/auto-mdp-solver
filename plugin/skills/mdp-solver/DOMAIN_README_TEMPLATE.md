@@ -17,12 +17,24 @@ Filling rules:
   problem before the layout, the scenarios before the leaderboards that name
   them, and the commands last. A case with nothing to say in a section keeps
   the heading and says so in a line; it does not reorder.
+- **The `**TL;DR**` block above them is not a fifth section.** It is read
+  instead of the file, not before it, so the ordering principle does not
+  reach it. Two to five bullets, one to two sentences each, the claim in bold
+  first and then the one number or comparison that carries it. Tier 1 and
+  tier 2 findings only (guide §3.1) — never which encoding or hyper-parameter
+  trained best, what the tuning gained, which gate caught what. Every number
+  in it recomputes from a board below; no symbol, no config-id grammar, no
+  `§` reference; a scenario id only in parentheses as an address. Seeded at
+  Stage 1 as the one line shown, updated on the day a finding changes a
+  headline verdict, and written in full at Stage 6 **after** the checklist
+  pass, from the finished boards — an author fresh from the log writes the
+  log's summary, and this block is for a reader who was never in it.
 - **The README grows during the campaign, not after it.** A finding lands here
   the day it lands in `ESCALATION.md` — a result whose only home is a round
   plan is a bug in the log (see `CLAUDE.md`'s file hygiene).
 - **Every command is verified to run as written** before Stage 6 closes, and
   together they reproduce `results/` from an empty folder.
-- Stage 6 runs the six-question checklist (spec §1.3) over the finished file.
+- Stage 6 runs the seven-question checklist (spec §1.3) over the finished file.
   It exists because the shape alone has not been sufficient: the defects it
   catches — an undefined symbol the headline table turns on, two boards sorted
   by different keys, a column mixing units, a percentage that does not
@@ -33,6 +45,15 @@ Filling rules:
 
 ````markdown
 # {domain} — {one-line domain name}
+
+**TL;DR**
+
+*Campaign open — no verdicts yet.*
+
+{At Stage 6, replaced by two to five bullets: **the claim in bold**, then the
+one number or comparison that carries it — tier 1 and tier 2 verdicts only,
+every number recomputing from a board below, no symbol the reader has not
+met.}
 
 ## The problem
 

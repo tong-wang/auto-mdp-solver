@@ -136,6 +136,24 @@ removed again on a later pass.
 
 #### `README.md` — four sections, in this order
 
+Above them, between the title line and `## The problem`, a lead block
+labelled `**TL;DR**` — two to five bullets for the reader who reads nothing
+else. It is not a fifth section and the ordering principle below does not
+reach it: that principle governs sections read *in sequence*, and the block
+is read *instead of* the file, the way an abstract is read instead of a
+paper. Each bullet opens with the claim in bold and gives the one number or
+comparison that carries it, in one or two sentences; a finding that needs a
+third sentence is a finding for Results. Tier 1 and tier 2 only (guide
+§3.1) — how RL compared with the existing solutions, the verdict on each
+declared stance, a transfer result if the campaign asked one; never tier 3,
+which encoding or hyper-parameter trained best, what a gate caught. Every
+number in it recomputes from a board below and every claim has a home there;
+it is readable with no symbol defined — no config-id grammar, no `§`
+reference, a scenario id only in parentheses as an address. It is seeded at
+Stage 1 as the one line `*Campaign open — no verdicts yet.*`, updated on the
+day a finding changes a headline verdict, and written in full at Stage 6
+**after** the checklist pass, from the finished boards.
+
 1. **The problem** — what the decision is, what it costs, what makes it hard.
    Before any file list. A reader who stops here knows whether the case is
    relevant to them.
@@ -173,7 +191,7 @@ these four sections has still shipped with a symbol its headline table turned
 on defined nowhere, two boards sorted by different keys, a column mixing
 signed differences with ratios, and a percentage that did not recompute from
 the costs printed beside it. None of it is reachable by a gate — a checker
-counting headings would be the wrong instrument — so Stage 6 runs six
+counting headings would be the wrong instrument — so Stage 6 runs seven
 questions over the finished file instead:
 
 1. Is every symbol defined before its first use — each value function, each
@@ -186,6 +204,8 @@ questions over the finished file instead:
 5. Does each board name **which artifact ships and why that one**, and say why
    any arm absent from that board is absent?
 6. Does every quoted percentage recompute from the numbers in its own table?
+7. Does every TL;DR bullet have a home below it — a board row or a stance
+   verdict — and is none of them a tier-3 finding?
 
 Question 5 catches the worst class. A case that trains several arms per board
 has to *choose*, and the choice is a scientific claim — a campaign may ship a

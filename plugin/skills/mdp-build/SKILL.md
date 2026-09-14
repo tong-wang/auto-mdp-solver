@@ -91,10 +91,11 @@ Write in dependency order: `{domain}_exceptions.py` (optional) →
     verbatim. The template's filling rules are binding — a pointer may name a
     destination, never describe or score what is inside it, and a hard rule is
     phrased trigger → destination.
-  - `{domain}/README.md` from `DOMAIN_README_TEMPLATE.md` — four sections:
-    fill **The problem** and the two layout tables now (documents the campaign
-    owes are listed "owed", never omitted); the results and appendix sections
-    are seeded as headings and grow as findings land, not at Stage 6.
+  - `{domain}/README.md` from `DOMAIN_README_TEMPLATE.md` — the TL;DR lead
+    block and four sections: fill **The problem** and the two layout tables
+    now (documents the campaign owes are listed "owed", never omitted); the
+    TL;DR keeps its one-line placeholder, and the results and appendix
+    sections are seeded as headings and grow as findings land, not at Stage 6.
 
 - Emit `{domain}/.gitignore` beside it — three lines: `results/`, `scratch/`,
   `__pycache__/`. The folder must carry its own ignore rules (portable-domain

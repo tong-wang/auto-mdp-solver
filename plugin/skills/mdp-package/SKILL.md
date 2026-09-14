@@ -47,12 +47,20 @@ before writing a README that quotes it.
   not a ranking. The `2-structural` block reports the verdict on each declared
   stance (§14.0), the Stage-5 readback among them: the recovered rule, its
   agreement with the reference, and the fitted rule's paired score.
-- **Run the six-question checklist (spec §1.3) over the finished README** —
+- **Run the seven-question checklist (spec §1.3) over the finished README** —
   symbols defined before use, `§` references attributed, every scenario
   tabled with matching columns, one sort key and one unit per table, each
   board naming its shipped artifact and any absent arm, every percentage
-  recomputed from the numbers beside it. No gate sees any of these; the pass
-  is the instrument. Fix what it finds before packaging.
+  recomputed from the numbers beside it, every TL;DR bullet with a home below
+  it and none of them tier 3. No gate sees any of these; the pass is the
+  instrument. Fix what it finds before packaging.
+- **Write the `**TL;DR**` block last**, replacing the Stage-1 placeholder,
+  from the finished boards and after the checklist pass: two to five bullets,
+  the claim in bold then the one number that carries it, tier 1 and tier 2
+  only, no symbol the reader has not met. It is the one part of the README
+  written for someone who will read nothing else, which is why it is written
+  by the author who has just read everything — after, not before, the boards
+  it summarises are final.
 - Final pass over `{domain}/CLAUDE.md` (emitted at Stage 1 from
   `DOMAIN_CLAUDE_TEMPLATE.md`): the gate commands run as written, the hard
   rules are current and still phrased trigger → destination, and the two
