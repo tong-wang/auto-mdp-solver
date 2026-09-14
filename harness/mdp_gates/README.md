@@ -7,10 +7,10 @@ the shared seed count.
 
 ```bash
 python -m mdp_gates \
-  --candidate dynamic_pricing/results/simple/PPO_.../ppo_eval_simple.tsv \
-  --baseline  dynamic_pricing/results/simple/benchmark/benchmark_random_eval_simple.tsv \
-  --baseline  dynamic_pricing/results/simple/benchmark/benchmark_myopic_eval_simple.tsv \
-  --reference dynamic_pricing/results/simple/benchmark/benchmark_dp_eval_simple.tsv \
+  --candidate {domain}/results/{scenario}/PPO_.../ppo_eval_{scenario}.tsv \
+  --baseline  {domain}/results/{scenario}/benchmark/benchmark_random_eval_{scenario}.tsv \
+  --baseline  {domain}/results/{scenario}/benchmark/benchmark_myopic_eval_{scenario}.tsv \
+  --reference {domain}/results/{scenario}/benchmark/benchmark_dp_eval_{scenario}.tsv \
   --n-seeds 8192
 ```
 

@@ -33,8 +33,8 @@ trajectories on shared `(instance, episode_seed, decisions)`.
 
 ```bash
 python -m mdp_ir.interpreter plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json --decision order=40
-python -m mdp_ir.interpreter cases/dynamic_pricing/dynamic_pricing_schema.json \
-    --decision price=1.0 --instance ample_stock --episode-seed 3
+python -m mdp_ir.interpreter plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json \
+    --decision order=40 --instance lost_sales --episode-seed 3
 python -m mdp_ir.laws plugin/skills/mdp-solver/examples/inv_single   # execution-semantics gate
 ```
 

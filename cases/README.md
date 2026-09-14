@@ -20,7 +20,6 @@ changes; **gated** is the tag its conformance has been carried through.
 |---|---|---|---|---|
 | `clark_scarf` — serial multi-echelon inventory | Andrew J. Clark and Herbert Scarf, "Optimal Policies for a Multi-Echelon Inventory Problem", *Management Science* **6**(4), 1960 — read from the 2004 reprint, *Management Science* **50**(12S), 1782–1790. Model is §2–§3, generalized to N levels. | A **coupled multi-stage decision**: N simultaneous shipments per period, each clipped to what its source holds, so the top of the chain anticipates demand it never sees. Carries an `exact` DP verified against a brute-force joint-state solve rather than taken on the theorems' word — the first draft was 30% suboptimal and entirely convincing. | v0.9.5 | v0.9.5 |
 | `fnv` — fresh-newsvendor sequential ordering under MMFE | Tong Wang, Atalay Atasu, Mümin Kurtuluş (2012), "A Multiordering Newsvendor Model with Dynamic Forecast Evolution", *Manufacturing & Service Operations Management* **14**(3), 472–484, [doi:10.1287/msom.1120.0387](https://doi.org/10.1287/msom.1120.0387). Forecast process is the MMFE of Heath & Jackson (1994). | **Progressive information revelation**: a martingale signal refines while cost rises, so the decision is when to commit rather than how much. Two demand transforms are separate leaderboards. Demoted from `examples/` 2026-08-13 for shipping no train/eval pair; the solve leg and record were contributed after. | v0.8.0 | v0.10.9 |
-| `dynamic_pricing` — finite-horizon revenue management | Guillermo Gallego and Garrett van Ryzin (1994), "Optimal Dynamic Pricing of Inventories with Stochastic Demand over Finite Horizons", *Management Science* **40**(8), 999–1020. | **Continuous price control over a depleting stock**: price sets the arrival intensity, so the decision shapes the demand it then faces, and the episode can end early when inventory hits zero. Carries an exact DP and the paper's fluid policies; PPO reaches within 0.6% of DP. Demoted from `examples/` 2026-09-01 — the shape is one `inv_single` already teaches, not a defect in the folder. Its numbers predate the version stamps and it carries no `built` tag, but it meets the contract below. | — | v0.9.37 |
 | `adi_flex` — inventory with advance demand information and flexible delivery | Tong Wang and Beril L. Toktay (2008), "Inventory Management with Advance Demand Information and Flexible Delivery", *Management Science* **54**(4), 716–732 — §4. | A **joint ordering + allocation** decision under **demand crossover**: orders are seen when placed but due now, next period, or further out, so stock spent shipping a not-yet-due order may be stock an urgent one needs tomorrow — the manager chooses how much to buy *and* how much to withhold. The case whose optimum is **bracketed rather than exact** on its headline boards: an AP relaxation (`relaxed`) bounds it from below and the paper's protection-level heuristics (`feasible`) from above, with an exact DP (`exact`) on the homogeneous branch. What it stresses that the pipeline had not met: a decision that is a **policy parameter** (protection levels chosen pre-demand, the constraint dissolved rather than masked), and an **arch-layer lever** — an ordinal, zero-inflated order head — measured against the categorical head at identical hp and seeds on three boards and crowned (`a1`, #E22–#E25); a §14 readback re-run on the crown (#E26), four figures, a §10 playbook. Re-contributed whole on 2026-09-04, replacing the 2026-07-23 Phase-A folder. | v0.9.11 (leaderboards); v0.9.33–v0.9.35 (the head cells) | v0.10.7 |
 
 **No paper PDF is in this repository, at any revision** — the root
@@ -157,8 +156,14 @@ problem is narrower than the shapes an exemplar should teach.
 above names — not incompleteness, which it never had, but redundancy: its
 continuous single-entity control is the shape `inv_single` teaches, and a
 few-shot set is stronger at three distinct shapes than at four overlapping
-ones. It arrives here complete, with its exact DP, its fluid benchmarks and a
-train/eval pair, and it gates unchanged.
+ones. It arrived here complete, with its exact DP, its fluid benchmarks and a
+train/eval pair, and it gated unchanged.
+
+It left the repository on 2026-09-14, to its author's research workspace: it
+is in the pre-§1.3 shape — no `CLAUDE.md`, no campaign record, a README from
+before the four-section rule — and a case is brought to the current spec by
+its author, in their own tree, never by a release. It returns through the
+admission criteria above like any contribution.
 
 That first reason no longer holds — PR #15 contributed the solve leg, the
 campaign record and a §14 readback that recovers the paper's structure, and
@@ -185,6 +190,7 @@ happens: *can the change be made without invalidating a number?*
 | **yes** — declarations, drawing conventions, conformance edits | maintainer updates the case, with a changelog line in its own `ESCALATION.md` §FRAME-CHANGELOG | `mab` declaring its six `benchmarks` and two tier-2 stances (2026-08-16) |
 | **no** — the fix needs the campaign re-run | **caveat it** in `examples/MANIFEST.md` or the case README; disclose, never quietly re-run someone's numbers | `mab`'s selection machinery predating v0.7.0 — every number was produced under the old design, so the code stays and the caveat says so |
 | the case no longer earns its shipped place | demote (above); still gates from `cases/` | `fnv`, 2026-08-13 |
+| the case needs its author's rework against a newer spec | withdraw to the author's workspace; it re-enters through admission | `dynamic_pricing`, 2026-09-14 |
 
 The line a maintainer does not cross: conformance edits touch code, schema,
 declarations and add changelog lines. **They never rewrite a contributor's

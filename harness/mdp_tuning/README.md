@@ -45,22 +45,21 @@ objective. Add `--minimize` when that objective is lower-is-better.
 
 ```bash
 # from the repo root, using the project venv
-python -m mdp_tuning cases/dynamic_pricing -s simple --metric revenue_mean \
+python -m mdp_tuning plugin/skills/mdp-solver/examples/inv_single -s simple --metric cost_total_mean \
     --n-trials 25 --total-timesteps 200000 --eval-seeds 500
 
 # what would be tuned, no training — plus the two things that otherwise only
 # surface at launch: which tiers this script can actually reach, and whether
 # trial 0 would really be the L1 centre
-python -m mdp_tuning cases/dynamic_pricing --show-space
+python -m mdp_tuning plugin/skills/mdp-solver/examples/inv_single --show-space
 #   tier reach : core ok  |  breadth BLOCKED(vf_coef)  |  all BLOCKED(vf_coef, ...)
 #   warm start : trial 0 = L1 ROUNDED to the grid — ent_coef 0.0->1e-08
 # best trials so far
-python -m mdp_tuning cases/dynamic_pricing -s simple --summary-only
+python -m mdp_tuning plugin/skills/mdp-solver/examples/inv_single -s simple --summary-only
 ```
 
 Domains may ship a thin `{domain}_ppo_tune.py` wrapper that pre-fills
-domain-appropriate defaults (see
-`cases/dynamic_pricing/dynamic_pricing_ppo_tune.py`).
+domain-appropriate defaults.
 
 ## Requirements on the domain
 

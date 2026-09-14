@@ -50,7 +50,9 @@ and bump the plugin version.
 Demotion is the same move in reverse and is not a failure verdict — it means
 the entry no longer earns its slot as a *few-shot exemplar*. `dynamic_pricing`
 went back to `cases/` on 2026-09-01: its continuous single-entity control is
-the shape `inv_single` already teaches, and the set is better at three.
+the shape `inv_single` already teaches, and the set is better at three. It
+left the repository on 2026-09-14 for its author's workspace, to be brought
+to the current spec there before any re-contribution.
 
 **The freeze is scoped.** Code, schema and tests take **no research edits** —
 but they do change when pipeline or spec work requires it, through the entry's
