@@ -2089,6 +2089,52 @@ def _names_used(source: str, predicate) -> set[str]:
     return out
 
 
+def _local_selection_callbacks(source: str) -> dict[str, set[str]]:
+    """Classes defined in the script that ARE live selection, whatever the name.
+
+    §9.7's violation is behavioural — a callback that evaluates and ships
+    during training — and a name match can only see SB3's spellings of it. A
+    locally-defined subclass called anything else is the same machinery:
+    `CRNSelectionCallback` scored 256 episodes on a live env and saved its
+    best for an entire campaign, ~1100 runs, while the lexical detector
+    reported "no live selection callback" at every re-gate (upstream #89).
+    So: any class whose bases include a `*Callback` name (import aliases
+    resolved) and whose body calls `self.model.save` or `self.model.predict`.
+    SB3's own `CheckpointCallback` is never matched — it is not defined in
+    the script. Returns ``{class name: methods seen}``.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {}
+    aliases = {a.asname: a.name.rsplit(".", 1)[-1]
+               for node in ast.walk(tree)
+               if isinstance(node, (ast.Import, ast.ImportFrom))
+               for a in node.names if a.asname}
+    out: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        bases = {aliases.get(b.id, b.id) if isinstance(b, ast.Name) else b.attr
+                 for b in node.bases
+                 if isinstance(b, (ast.Name, ast.Attribute))}
+        if not any(b.endswith("Callback") for b in bases):
+            continue
+        methods = set()
+        for sub in ast.walk(node):
+            if (isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Attribute)
+                    and sub.func.attr in ("save", "predict")):
+                recv = sub.func.value
+                if (isinstance(recv, ast.Attribute) and recv.attr == "model"
+                        and isinstance(recv.value, ast.Name)
+                        and recv.value.id == "self"):
+                    methods.add(sub.func.attr)
+        if methods:
+            out[node.name] = methods
+    return out
+
+
 def check_launch_check(h: DomainHandle) -> CheckResult:
     """The train script checks its own derivation at launch (spec §8.6).
 
@@ -2149,6 +2195,12 @@ def check_selection_protocol(h: DomainHandle) -> CheckResult:
     rewriting that would leave its leaderboard describing code that did not
     generate it (`examples/mab` is exactly this case, and says so in its own
     caveat). What the campaign owes is the knowledge, at the moment of use.
+
+    Detection is behavioural where it can be: SB3's spellings by name, plus
+    any class defined in the script that subclasses a callback and calls
+    `self.model.save`/`self.model.predict` (upstream #89). Like
+    `bound_rationale`, the report is evidence, not proof — so the PASS states
+    what was examined, never a bare negative.
     """
     trains = sorted(h.directory.glob(f"{h.name}_*_train.py"))
     if not trains:
@@ -2162,6 +2214,15 @@ def check_selection_protocol(h: DomainHandle) -> CheckResult:
             findings.append(f"{train.name}: selects live with {', '.join(live)} — §9.7 "
                             f"selects post-hoc from checkpoints, with no live "
                             f"selection env")
+        verbs = {"predict": "evaluates (self.model.predict)",
+                 "save": "ships (self.model.save)"}
+        for cls, methods in sorted(_local_selection_callbacks(source).items()):
+            if cls in live:
+                continue  # the name detector above already reported it
+            does = " and ".join(verbs[m] for m in sorted(methods))
+            findings.append(f"{train.name}: {cls} {does} in-training — a live "
+                            f"selection callback by behaviour, whatever its "
+                            f"name (§9.7 selects post-hoc from checkpoints)")
         declared, default = _argument_default(source, "checkpoint_every_frac")
         if declared and (default is None or default == 0):
             findings.append(f"{train.name}: checkpoint_every_frac defaults to "
@@ -2172,7 +2233,9 @@ def check_selection_protocol(h: DomainHandle) -> CheckResult:
         return CheckResult("scripts.selection_protocol", "WARN", "; ".join(findings))
     return CheckResult("scripts.selection_protocol", "PASS",
                        f"{len(trains)} train script(s): checkpoints saved by "
-                       f"default, no live selection callback")
+                       f"default; no *EvalCallback name in use, and no callback "
+                       f"class defined in them evaluates or ships through "
+                       f"self.model in-training")
 
 
 REGISTRY = [

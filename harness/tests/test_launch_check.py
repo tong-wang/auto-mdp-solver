@@ -171,6 +171,53 @@ def test_a_callback_chosen_into_a_variable_is_still_seen(tmp_path):
     assert "EvalCallback, MaskableEvalCallback" in r.detail
 
 
+def test_a_selection_callback_by_any_other_name_is_seen(tmp_path):
+    """clark_scarf's shape (upstream #89): a locally-defined subclass that
+    evaluates on a live env and saves its best mid-run. Nothing in its name
+    says EvalCallback, and the name detector PASSed it for a whole campaign —
+    §9.7's violation is behavioural, so the detector must be too."""
+    r = check_selection_protocol(handle(tmp_path, (
+        "from stable_baselines3.common.callbacks import BaseCallback\n"
+        "class CRNSelectionCallback(BaseCallback):\n"
+        "    def _on_step(self):\n"
+        "        a, _ = self.model.predict(obs, deterministic=True)\n"
+        "        if score < self.best:\n"
+        "            self.model.save(str(self.outdir / 'best.zip'))\n"
+        "        return True\n")))
+    assert r.status == "WARN"
+    assert "CRNSelectionCallback" in r.detail
+    assert "self.model.save" in r.detail
+
+
+def test_a_local_callback_that_neither_evaluates_nor_ships_passes(tmp_path):
+    """A metrics or progress callback is not selection — inv_single's
+    InventoryMetricsCallback subclasses BaseCallback and never touches
+    self.model. Subclassing alone must not be the signal."""
+    r = check_selection_protocol(handle(tmp_path, (
+        "from stable_baselines3.common.callbacks import BaseCallback\n"
+        "class InventoryMetricsCallback(BaseCallback):\n"
+        "    def _on_step(self):\n"
+        "        self.logger.record('metrics/x', 1.0)\n"
+        "        return True\n"
+        "def _build_arg_parser():\n"
+        "    p.add_argument('--checkpoint-every-frac', type=float, default=0.05)\n")))
+    assert r.status == "PASS"
+
+
+def test_a_name_matched_local_class_is_reported_once(tmp_path):
+    """mab's shape: SelectionEvalCallback matches by name AND by behaviour.
+    One finding, not the same class twice."""
+    r = check_selection_protocol(handle(tmp_path, (
+        "from stable_baselines3.common.callbacks import BaseCallback\n"
+        "class SelectionEvalCallback(BaseCallback):\n"
+        "    def _on_step(self):\n"
+        "        a, _ = self.model.predict(obs)\n"
+        "        self.model.save('best.zip')\n"
+        "        return True\n")))
+    assert r.status == "WARN"
+    assert r.detail.count("SelectionEvalCallback") == 1
+
+
 def test_naming_the_callback_without_using_it_passes(tmp_path):
     """An unused import, or a docstring saying there is no `EvalCallback` here
     (inv_single's train script says exactly that), is not live selection."""
