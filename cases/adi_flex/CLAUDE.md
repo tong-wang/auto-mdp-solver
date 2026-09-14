@@ -35,11 +35,11 @@ cannot load this IR.
 - **Built and gated at: v0.9.11** for the leaderboards through `#E18`; the
   ordinal-head cells (`#E22`–`#E25`) were trained under v0.9.33–v0.9.35 and
   re-gated under v0.10.4/v0.10.5. This line moves only when numbers are re-measured.
-- **Conformance maintained through: v0.10.5** — the release that ships the case;
-  its harness is byte-identical to v0.10.4, where the gates ran (2026-09-04: conformance 24/30 no
-  FAIL, laws 7/9, differential 31 MATCH, 63 tests, head gate G1–G5) — how far
-  declarations, drawing conventions and gate compatibility have been carried
-  forward. Every move is logged in `ESCALATION.md` §FRAME-CHANGELOG.
+- **Conformance maintained through: v0.10.7** — re-gated 2026-09-14 (conformance
+  24/30 no FAIL, laws 7/9, differential 31 MATCH, 63 tests, head gate G1–G5,
+  action-mode probe 10/10, `mdp` fingerprint unmoved) — how far declarations,
+  drawing conventions and gate compatibility have been carried forward. Every
+  move is logged in `ESCALATION.md` §FRAME-CHANGELOG.
 
 Upgrading: read the release notes, move the harness to the new tag, re-run
 every gate below, then log the move.

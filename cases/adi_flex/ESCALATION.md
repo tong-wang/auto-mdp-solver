@@ -570,6 +570,31 @@ noise in isolation; the −1.84 horizon rule remains hand-written.
 ## FRAME-CHANGELOG
 
 ```
+2026-09-14  PIN v0.10.4 -> v0.10.7 (conformance stamp v0.10.5 -> v0.10.7), re-gated same
+            day from the repo root: IR OK, `mdp 65cc43ca9f0d` unmoved; conformance 24/30,
+            no FAIL; laws 7/9; differential MATCH ×31; 63 tests; head gate G1–G5;
+            action-mode probe 10/10 exact. No number re-measured. What the releases
+            bring here: v0.10.6 (#81) makes the README's **TL;DR** block a spec rule —
+            two to five bullets of one or two sentences, tier 1–2 only, no `§`, no
+            config id, no file cite, a scenario id only in parentheses — and names this
+            case's block as the one that fails it (a nine-line bullet citing `§3`,
+            `INTERPRET.md` and `het3_exp2` as a subject). Rewritten to four bullets,
+            every number re-derived from the boards, checklist question 7 passed; no
+            board, verdict or symbol changed below it. v0.10.7 (#77) derives a slot's
+            law (`slot.probs` / `support`) and folds feature exprs at load; no feature
+            here reads a slot law, so nothing moves. Upstream diff against
+            `cases/adi_flex` at v0.10.7: six files differ, all accounted for by the
+            three deliberate staging differences logged at PR #79 (the PDF, the local
+            spec pointers, the private project's name at seven sites) plus the PR #80
+            review entry above them — nothing to adopt
+2026-09-04  PR #80 REVIEWED: the five #79 fixes verified (Poisson helpers against a
+            60-digit reference; DP/AP re-solved scipy-free; 840-test repo suite green);
+            one new blocker — the action-mode probe read `results/het_exp7/dp/`, a
+            file nothing in the folder can produce since the #E15 guard, so it could
+            not run from a clean checkout (it ran here only because the file predates
+            the guard). Repointed at `ap/` (same value 258.852305), gate block names
+            the probe's four solved tables, stamps to v0.10.5. Follow-up commit on the
+            same branch; nothing withheld this time
 2026-09-04  PR #79 REVIEWED AND SUPERSEDED BY PR #80, same day. Five findings: scipy had
             become an undeclared hard dependency (12 of 24 modules failed to import
             under the documented install) — replaced by local Poisson helpers, DP and
