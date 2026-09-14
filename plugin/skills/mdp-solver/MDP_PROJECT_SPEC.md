@@ -136,9 +136,13 @@ removed again on a later pass.
 
 #### `README.md` — four sections, in this order
 
-Above them, between the title line and `## The problem`, a lead block
-labelled `**TL;DR**` — two to five bullets for the reader who reads nothing
-else. It is not a fifth section and the ordering principle below does not
+Above them, between the title line and `## The problem`, two things in this
+order. First a **lead** of one or two sentences saying what the file is — the
+problem in a phrase, its source (the paper and venue, or the verbal brief),
+and that it was generated from the IR by auto-mdp-solver — written at Stage 1
+and never a verdict; a TL;DR the reader meets before knowing what case it
+belongs to is bullets about nothing. Then a block labelled `**TL;DR**` — two
+to five bullets for the reader who reads nothing else. It is not a fifth section and the ordering principle below does not
 reach it: that principle governs sections read *in sequence*, and the block
 is read *instead of* the file, the way an abstract is read instead of a
 paper. Each bullet opens with the claim in bold and gives the one number or

@@ -17,7 +17,12 @@ Filling rules:
   problem before the layout, the scenarios before the leaderboards that name
   them, and the commands last. A case with nothing to say in a section keeps
   the heading and says so in a line; it does not reorder.
-- **The `**TL;DR**` block above them is not a fifth section.** It is read
+- **The file opens with one or two sentences saying what it is** — the
+  problem in a phrase, its source, that it was generated from the IR — and
+  only then the verdicts. A reader who lands on a TL;DR with no idea what
+  case it belongs to reads bullets about nothing; the lead is what the bullets
+  are about. It is written at Stage 1, since everything it says is known then.
+- **The `**TL;DR**` block below it is not a fifth section.** It is read
   instead of the file, not before it, so the ordering principle does not
   reach it. Two to five bullets, one to two sentences each, the claim in bold
   first and then the one number or comparison that carries it. Tier 1 and
@@ -45,6 +50,11 @@ Filling rules:
 
 ````markdown
 # {domain} — {one-line domain name}
+
+{One or two sentences saying what this is, before any verdict: the problem in
+a phrase, its source — the paper with its venue, or the verbal brief — and
+that it was generated from `{domain}_schema.json` by auto-mdp-solver. Written
+at Stage 1; it does not change.}
 
 **TL;DR**
 
