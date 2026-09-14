@@ -1,5 +1,40 @@
 # mab — standard stochastic multi-armed bandit
 
+The standard stochastic multi-armed bandit as a finite-horizon MDP: a fixed
+set of arms with unknown mean payouts, one pull per round, and regret
+measured against the best arm. A textbook problem rather than a paper (Lai &
+Robbins 1985; Auer et al. 2002), generated from
+[`mab_schema.json`](mab_schema.json) by **auto-mdp-solver** and verified
+against it bit-for-bit by the differential.
+
+**TL;DR**
+
+- **The best policy in this case is a hand-fitted two-constant rule, not a
+  trained network — and it is the only policy here that beats the field's
+  reference.** Scoring each arm by its posterior mean plus a time-decaying
+  multiple of its posterior spread returns 1486.14 against Thompson sampling's
+  1462.38, or 97.1% of what a clairvoyant oracle collects
+  (`gauss_K10_T1000`, tier 1).
+- **No trained network beat Thompson.** The best trained arm returns 1453.57,
+  99.4% of the reference. The artifact this case ships is not even the top
+  trained row — which object ought to ship is an open call, recorded as the
+  operator's rather than settled here (`gauss_K10_T1000`, tier 1).
+- **The trained network's action rule is a classical index policy, and it is
+  recoverable from the artifact.** A readback reproduces it as "posterior mean
+  plus a constant multiple of posterior spread" at 98% action agreement, and
+  that fitted rule scores 1459.56 — within 6 points of the net it was read off
+  (tier 2, `confirm`).
+- **The multiple has to shrink as the horizon runs out, and getting its level
+  right is the whole of the win.** The network had the shape and missed the
+  level; re-tuning the level in behaviour space, with no training at all, is
+  what clears Thompson, and no parameter-free rule tested comes within 21
+  points (tier 2, `discover`).
+- **That level is local to the cell it was tuned on, and the rule family does
+  not scale.** It still beats Thompson in all 21 cells of the grid it was
+  re-tested on, but its regret grows linearly with the horizon where
+  Thompson's grows logarithmically, so the two cross at about 14,000 rounds
+  (tier 2).
+
 ## The problem
 
 K arms, T rounds, one pull per round. At the start of each episode nature
@@ -333,10 +368,15 @@ python mab_benchmark_thompson_eval.py -s gauss_K10_T1000 --n-seeds 8192
 python mab_benchmark_rule_eval.py     -s gauss_K10_T1000 --n-seeds 8192
 
 # train — script defaults, which are NOT the config behind the leaderboard's trained rows.
-# NOTE: this script uses a live in-training selection callback. v0.7.0's spec §8.6/§9.7
-# replaced that with a post-hoc three-layer screen; the spec cites this campaign's
-# #E33 and #E36 V4 for the change. Every number above was produced under the older
-# design and the code is kept as it ran — a re-run should use the new path.
+# NOTE: this script still uses a live in-training selection callback. v0.7.0's spec
+# §8.6/§9.7 replaced that with a post-hoc three-layer screen, citing this campaign's
+# #E33 and #E36 V4 for the change; a re-run should use the new path.
+# The script is NO LONGER byte-identical to the one that produced the numbers above:
+# issues #56, #58/#59, #61 and #62 brought this copy to the §8.2 tier-1 CLI contract,
+# _L1_DERIVED and assert_l1_current as they landed. The flags this appendix names are
+# unchanged and still parse to the same values (verified), and the selection machinery
+# is untouched — but a bit-exact re-run of a 2026-08 result wants that date's revision,
+# which git carries.
 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python mab_ppo_train.py -s gauss_K10_T1000 -o bayes
 
 # A8-a — the config of record for every "PPO obs=bayes index @ tuned HP" row,
