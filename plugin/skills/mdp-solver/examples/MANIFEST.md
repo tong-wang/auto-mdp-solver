@@ -10,7 +10,7 @@ entry has to teach something the other three cannot.
 
 | example | why it earns a place | origin |
 |---|---|---|
-| `inv_single` | The **classical MDP** in its standard form: a vector state under stochastic demand, a fixed ordering cost, and a stochastic lead time. This is the shape most new domains resemble, so it is the default thing to read first. | imported 2026-07-21 |
+| `inv_single` | The **classical MDP** in its standard form: a vector state under stochastic demand, a fixed ordering cost, and a stochastic lead time — the shape most new domains resemble, so it is the default thing to read first. Since its replacement it is also the **generalist protocol**: one policy trained over a cost × lead-time grid, scored by enumerating it, and tested on a held-out finer grid — with the finding that a generalist interpolates a parameter it *reads* and not one that changes which state components are occupied; an **exact DP on both sides of the lost-sales line**; and declared tier-2 stances with their §14 readback, two of them taking §14.0's `probe_required: false` exception path. | imported 2026-07-21; replaced whole by the author's finished campaign 2026-09-14 (PR #85) |
 | `mab` | The **standard bandit** — exploration against exploitation, with a per-episode latent the agent must infer from censored feedback (only the pulled arm is observed). Its state is **equivariant**: the arms are exchangeable, so the policy must not depend on their ordering. | promoted from `cases/` 2026-08-13 (PR #13) |
 | `game2048` | A **variable and long horizon** — the episode ends when the board jams, not on a clock — over a **board state** read by a **CNN feature extractor**, with masked discrete actions. The one entry with no DP: tile values are unbounded, so the optimum is never bracketed. | promoted from `cases/` 2026-09-01 (PR #73) |
 
@@ -64,9 +64,6 @@ as a plugin version bump, so "what shipped" stays answerable from the tag.
   three-layer screen. Take the selection pattern from the spec, not from this
   script. The code stays because every number in the folder was produced by it;
   the `scripts.selection_protocol` check WARNs on it.
-- `inv_single` **declares no `research_questions` stance**, correctly: it ships
-  no policy probe and no `INTERPRET.md`, so it makes no tier-2 claim. `mab` and
-  `game2048` are where the §14 interpret leg is exemplified.
 - `game2048` was promoted with **declared debt outstanding** — §14.3's figure
   contract is only partly met (no `game2048_plot_policy.py`) and its `discover`
   stance's fitted rule was not delivered. Read that as "not met today", not
@@ -77,8 +74,11 @@ as a plugin version bump, so "what shipped" stays answerable from the tag.
 ## Shape coverage
 
 Covered: vector-state single-entity control, two-step advance, episode-support
-demand, decision-conditioned generators, exact-DP benchmarks, cross-family
-world mixtures (`inv_single`'s `mix_demand`); the design layer over a grid,
+demand, decision-conditioned generators, exact-DP benchmarks on both sides of
+the lost-sales line, cross-family world mixtures (`mix_demand`), a generalist
+over a two-axis design grid with a held-out test grid, a fitted structural rule
+scored against the net it was read from, and the `probe_required: false`
+exception path (`inv_single`); the design layer over a grid,
 discrete actions, censored information, equivariant state, a decision that
 selects which exogenous stream is read, symbolic size axes, and the §14
 interpret leg end to end (`mab`); spatial board observations with CNN
