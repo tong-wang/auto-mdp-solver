@@ -157,6 +157,32 @@ def test_a_live_selection_callback_is_reported_not_failed(tmp_path):
     assert r.status == "WARN" and "MaskableEvalCallback" in r.detail
 
 
+def test_a_callback_chosen_into_a_variable_is_still_seen(tmp_path):
+    """game2048's shape: the class is picked into `cb_cls` (here also wrapped,
+    and imported under an alias) and then called — so no call is *named* after
+    it, and a call-name match reported nothing."""
+    r = check_selection_protocol(handle(tmp_path, (
+        "from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback\n"
+        "from stable_baselines3.common.callbacks import EvalCallback as EC\n"
+        "def main():\n"
+        "    cb_cls = _paired(MaskableEvalCallback if masked else EC)\n"
+        "    cb = cb_cls(env)\n")))
+    assert r.status == "WARN"
+    assert "EvalCallback, MaskableEvalCallback" in r.detail
+
+
+def test_naming_the_callback_without_using_it_passes(tmp_path):
+    """An unused import, or a docstring saying there is no `EvalCallback` here
+    (inv_single's train script says exactly that), is not live selection."""
+    r = check_selection_protocol(handle(tmp_path, (
+        '"""No `EvalCallback`, no live selection env."""\n'
+        "from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback\n"
+        "def _build_arg_parser():\n"
+        "    p.add_argument('--checkpoint-every-frac', type=float, default=0.05)\n"
+        "def main():\n    cb = CheckpointCallback(save_freq=1)\n")))
+    assert r.status == "PASS"
+
+
 def test_a_checkpoint_flag_that_defaults_to_none_is_reported(tmp_path):
     """The capability/use distinction: the dest exists, so cli_contract is
     satisfied, and no run that forgets the flag saves a single checkpoint."""

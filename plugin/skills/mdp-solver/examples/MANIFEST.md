@@ -61,11 +61,13 @@ as a plugin version bump, so "what shipped" stays answerable from the tag.
 
 ## Read with these caveats
 
-- `mab`'s **selection machinery predates v0.7.0**: its train script uses a live
-  in-training `SelectionEvalCallback`, where §8.6/§9.7 now specify a post-hoc
-  three-layer screen. Take the selection pattern from the spec, not from this
-  script. The code stays because every number in the folder was produced by it;
-  the `scripts.selection_protocol` check WARNs on it.
+- **`mab` and `game2048` select live**, where §8.6/§9.7 specify a post-hoc
+  three-layer screen: `mab`'s train script uses an in-training
+  `SelectionEvalCallback` (its machinery predates v0.7.0), `game2048`'s an
+  `EvalCallback`/`MaskableEvalCallback` that writes `best_model.zip`. Take the
+  selection pattern from the spec, not from these scripts. The code stays
+  because the folders' numbers were produced with it; the
+  `scripts.selection_protocol` check WARNs on both.
 - `game2048` was promoted with **declared debt outstanding** — §14.3's figure
   contract is only partly met (no `game2048_plot_policy.py`) and its `discover`
   stance's fitted rule was not delivered. Read that as "not met today", not

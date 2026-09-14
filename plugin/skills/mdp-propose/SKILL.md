@@ -37,7 +37,9 @@ disposition, or its rejection. Required sections:
 
 - **Target** — the upstream file or spec section (e.g. `mdp_ir/schema.py
   StateVariable`, spec §8.6), and a version pin in the header:
-  `Status: draft — not yet proposed. Against v<X.Y.Z> / main @ <sha>.`
+  `Against v<X.Y.Z> / main @ <sha>.` Nothing about the draft's own status —
+  the body is filed verbatim (§2), and a line saying "not yet proposed" is
+  false the moment it is sent.
 - **The gap** — what the current version does, quoted or cited precisely
   enough that upstream can find it without the campaign's context. **First
   check the upstream specs and understand why they are designed that way**:

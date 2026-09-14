@@ -2059,20 +2059,32 @@ def _argument_default(source: str, dest: str) -> tuple[bool, object]:
     return False, None
 
 
-def _calls_named(source: str, predicate) -> set[str]:
-    """Names of the classes/functions this script CONSTRUCTS, filtered."""
+def _names_used(source: str, predicate) -> set[str]:
+    """Names this script USES — not merely imports or mentions — filtered.
+
+    Any load counts: a call, but also a binding (`cb_cls = MaskableEvalCallback
+    if masked else EvalCallback`), a wrapper's argument, a base class; an
+    `import ... as` alias resolves to the imported name. Matching call names
+    alone missed the shipped case — game2048 constructs through `cb_cls(...)`.
+    An unused import and a docstring naming the class stay silent.
+    """
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return set()
+    aliases = {a.asname: a.name.rsplit(".", 1)[-1]
+               for node in ast.walk(tree)
+               if isinstance(node, (ast.Import, ast.ImportFrom))
+               for a in node.names if a.asname}
     out: set[str] = set()
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            name = aliases.get(node.id, node.id)
+        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
+            name = node.attr
+        else:
             continue
-        name = (node.func.id if isinstance(node.func, ast.Name)
-                else node.func.attr if isinstance(node.func, ast.Attribute)
-                else None)
-        if name and predicate(name):
+        if predicate(name):
             out.add(name)
     return out
 
@@ -2145,9 +2157,9 @@ def check_selection_protocol(h: DomainHandle) -> CheckResult:
     findings = []
     for train in trains:
         source = train.read_text()
-        live = sorted(_calls_named(source, lambda n: n.endswith("EvalCallback")))
+        live = sorted(_names_used(source, lambda n: n.endswith("EvalCallback")))
         if live:
-            findings.append(f"{train.name}: constructs {', '.join(live)} — §9.7 "
+            findings.append(f"{train.name}: selects live with {', '.join(live)} — §9.7 "
                             f"selects post-hoc from checkpoints, with no live "
                             f"selection env")
         declared, default = _argument_default(source, "checkpoint_every_frac")
