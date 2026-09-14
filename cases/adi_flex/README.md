@@ -7,20 +7,21 @@ Generated from the IR `adi_flex_schema.json` by **auto-mdp-solver**.
 **TL;DR**
 
 - **RL is competitive with the paper's analytic policies, and the split tracks
-  how much room the reference leaves.** Where the reference is an exact DP, RL
-  lands **0.95%** above the optimum; where it is the paper's protection-level
-  heuristic, RL **beats it by 2.7%** on the general board (`het3_exp2`, 97.3% of
-  the bar) and falls **0.36%** short on the tight one (`het_exp4`), where the
-  heuristic itself sits only 1.5% above the AP lower bound (§3, tier 1).
-- **RL identifies the paper's policy structure and improves on it in one
-  constant, not one class.** It *bypasses* the modified inventory position — a
-  policy from the raw state matches one handed the paper's sufficient statistic
-  on every board — and *recovers* the (s(V̂), S) order rule with the paper's own
-  trigger, holding about 5 less stock than the analytic policy; it *confirms*
-  the protection-level rule for fulfillment, which the shipped encoding builds
-  in; and it does **not** learn a rule beyond a constant protection level — the
-  one such rule worth having, a horizon boundary condition, is hand-written and
-  beats every learned policy's protection (§3, tier 2; `INTERPRET.md`).
+  how much room the reference leaves.** It lands 0.95% above the exact optimum
+  (`homog_L0_T2`), 0.36% behind the paper's protection-level heuristic where that
+  heuristic is only 1.5% above the unattainable lower bound (`het_exp4`), and
+  2.7% ahead of it where the heuristic sits 4.3% above the bound (`het3_exp2`).
+- **The paper's order policy is recovered, down to its trigger.** The learned
+  reorder point equals the analytic one at every level of outstanding advance
+  demand; the order-up-to level is flat in it and about 5 units lower.
+- **The paper's sufficient statistic is not needed as an input.** A policy
+  trained on the raw state ties one handed the modified inventory position on
+  every board, so the network rebuilds the transform the paper had to prove.
+- **The allocation is a constant protection level, and nothing beyond one is
+  learned.** The protection-level shape is built into the shipped policy's
+  action, so it holds by construction; the one rule beyond a constant that is
+  worth having, zero protection in the last period, is hand-written and beats
+  every learned policy's protection.
 
 ## 1. The problem
 
