@@ -20,6 +20,31 @@ is executable:
 | `mdp-package` | winning artifact + eval TSVs | `--for package` | `{domain}_policy.py` + finished README |
 | `mdp-solver` | verbal / paper | env `ENV OK` | conducts the above; the final report |
 
+## What each op reads
+
+The governing docs all live in this directory (`${CLAUDE_SKILL_DIR}/../mdp-solver/`
+from a step skill; read them from that path, never from a filesystem search —
+a development checkout on disk would silently substitute unreleased content).
+They are large, and no op needs all of them. Each step skill's opening
+paragraph names its slice; this table is the same map in one place. Sections
+are cited by number because the spec's and the guide's §-numbers are
+append-only.
+
+| op | reads | does not read |
+|---|---|---|
+| `mdp-formalize` | `INTERVIEW.md`, `MDP_IR_SAMPLE.md`, spec §4.3, §5.1, §5.5, §9.3, §14.0 | the rest of the spec, the guide, the templates |
+| `mdp-build` | spec §1–§7, `MDP_IR_SAMPLE.md`, both `DOMAIN_*_TEMPLATE.md`, `examples/MANIFEST.md` + one exemplar | spec §8–§14, the guide |
+| `mdp-solve` | spec §5.6, §8, §9, §13; `INTERVIEW.md` (Stage 0) | the IR sample, the guide, `PLAYBOOK.md` |
+| `mdp-escalate` | spec §8.4, §8.6, §13; `ESCALATION_LOG_GUIDE.md`; `PLAYBOOK.md` + matched example entries | spec §1–§7, the IR sample |
+| `mdp-interpret` | spec §14 (+ §1.2, §8.4 where cited) | everything else |
+| `mdp-package` | spec §12, §1.3, §9; both `DOMAIN_*_TEMPLATE.md` | everything else |
+| `mdp-solver` | this file, `ENVIRONMENT.md` | the spec — each step reads its own slice |
+
+`ENVIRONMENT.md` (interpreter, `ENV OK`, retry budgets, background runs)
+binds every op and is short; read it once per session. A step that finds
+itself needing a section outside its slice may read it — the map is a
+default, not a fence — but a section it cannot name is one it does not need.
+
 ## Cross-op state — derivable is re-derived
 
 Nothing an op needs from an earlier op lives in conversation memory.

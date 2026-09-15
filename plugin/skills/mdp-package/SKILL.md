@@ -2,26 +2,22 @@
 name: mdp-package
 description: >
   Stage 6 of the MDP pipeline: wrap the winning artifact as a deployable
-  {domain}_policy.py (spec §12), complete the campaign README in its spec
-  §1.3 shape with the leaderboards and the shipped-artifact claim, and close
-  out the domain folder's docs. Use when eval TSVs exist for the run plan's
-  target and the winning artifact is chosen. Entry: python -m mdp_stage
-  {domain} --for package. The full automatic pipeline is mdp-solver.
+  {domain}_policy.py (spec §12) and finish the campaign README in its §1.3
+  shape. Use when eval TSVs exist for the run plan's target and the winning
+  artifact is chosen. Full pipeline: mdp-solver.
 ---
 
 # mdp-package — Stage 6 (deployable policy + README)
 
-One op of the split MDP pipeline (`mdp-solver` is the conductor; its
-`CONTRACTS.md` maps the ops). The governing docs live beside the conductor in
-this plugin's `mdp-solver` skill directory —
-`${CLAUDE_SKILL_DIR}/../mdp-solver/` holds `MDP_PROJECT_SPEC.md` (§12 and
-§1.3 are this op's references — consult them while writing; do not code from
-memory of them), the two `DOMAIN_*_TEMPLATE.md` files, `ENVIRONMENT.md`,
-`CONTRACTS.md` and `examples/`. **Read them from that path. Do not search the
-filesystem for them**: a development checkout of the solver may also be on
-disk, and reading that instead silently substitutes unreleased content for
-the version you are installed at. Use the workspace venv per
-`ENVIRONMENT.md`.
+One op of the split MDP pipeline; `mdp-solver` is the conductor. The governing
+docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — read them from that path,
+never from a filesystem search (a dev checkout on disk would silently
+substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
+ops and says what each reads. **This op needs:** spec `MDP_PROJECT_SPEC.md`
+§12, §1.3 and §9 (consult them while writing; do not code from memory of them)
+and the two `DOMAIN_*_TEMPLATE.md` files — nothing else of the spec, no guide,
+no IR sample. Everything else in that directory is consulted only when a step
+below names it. Venv and run discipline per `ENVIRONMENT.md`.
 
 **Entry gate — run first, exit 0 required:**
 

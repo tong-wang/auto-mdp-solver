@@ -1,16 +1,12 @@
 ---
 name: mdp-contribute
 description: >
-  Contribute a finished MDP case — with its distilled escalation playbook
-  riding in the case folder — upstream to the public auto-mdp-solver repo
-  (github.com/tong-wang/auto-mdp-solver). Use when the user wants to
-  share/submit/contribute a case they built with the mdp-solver skill
-  ("contribute this case", "share this upstream", "submit to auto-mdp-solver"),
-  optionally re-skinned to hide the business context. A case too sensitive
-  even re-skinned is not contributed. For proposing extensions to the spec or
-  IR schema, use the mdp-propose skill instead. Everything is assembled and
-  shown locally first; nothing is sent without the user's explicit approval of
-  the final content.
+  Contribute a finished MDP case, its playbook riding in the folder,
+  upstream to github.com/tong-wang/auto-mdp-solver — optionally re-skinned
+  to hide business context; a case too sensitive even re-skinned is not
+  contributed. Use on "contribute this case", "share this upstream", "submit
+  to auto-mdp-solver". Spec/schema extensions go through mdp-propose.
+  Nothing is sent without the user's approval of the final content.
 ---
 
 # Contribute a case, playbook included

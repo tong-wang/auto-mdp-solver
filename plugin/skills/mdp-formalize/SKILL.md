@@ -2,29 +2,22 @@
 name: mdp-formalize
 description: >
   Phase A of the MDP pipeline: a guided interview (or faithful paper
-  translation) that turns a verbal dynamic decision problem into a validated,
-  human-signed-off MDP-IR — the frozen contract every later op builds from.
-  Use when a problem needs formalizing and no frozen, signed-off IR exists
-  yet, or when a model change re-opens the mdp block. Exit: frozen IR +
-  restatement + {name}.signoff.json. For the full automatic pipeline, use
-  mdp-solver instead.
+  translation) that turns a verbal decision problem into a validated,
+  human-signed-off MDP-IR. Use when no signed-off IR exists yet, or a model
+  change re-opens the mdp block. Full pipeline: mdp-solver.
 ---
 
 # mdp-formalize — Phase A (human in the loop)
 
-One op of the split MDP pipeline (`mdp-solver` is the conductor; its
-`CONTRACTS.md` maps the ops). The governing docs live beside the conductor in
-this plugin's `mdp-solver` skill directory —
-`${CLAUDE_SKILL_DIR}/../mdp-solver/` holds `MDP_PROJECT_SPEC.md` (canonical
-conventions), `MDP_IR_SAMPLE.md` (the annotated IR reference),
-`ESCALATION_LOG_GUIDE.md`, `ENVIRONMENT.md`, `INTERVIEW.md`, `CONTRACTS.md`,
-`PLAYBOOK.md`, the two `DOMAIN_*_TEMPLATE.md` files and `examples/`. **Read
-them from that path. Do not search the filesystem for them**: a development
-checkout of the solver may also be on disk, and reading that instead silently
-substitutes unreleased content for the version you are installed at. The
-pipeline runs in whatever workspace holds the domain; use that workspace's
-venv, resolved per `ENVIRONMENT.md` — whose retry budgets and background-run
-rules govern everything below.
+One op of the split MDP pipeline; `mdp-solver` is the conductor. The governing
+docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — read them from that path,
+never from a filesystem search (a dev checkout on disk would silently
+substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
+ops and says what each reads. **This op needs:** `INTERVIEW.md` (whole — the
+five interaction rules), `MDP_IR_SAMPLE.md` (whole — the annotated IR), and
+spec `MDP_PROJECT_SPEC.md` §4.3, §5.1, §5.5, §9.3, §14.0 — not the rest of it.
+Everything else in that directory is consulted only when a step below names
+it. Venv and run discipline per `ENVIRONMENT.md`.
 
 Entry needs no gate — this is the source op. But if `{name}/{name}_schema.json`
 already exists, run `<python> -m mdp_stage {name}` first and say where the

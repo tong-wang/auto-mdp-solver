@@ -1,30 +1,25 @@
 ---
 name: mdp-escalate
 description: >
-  L2+ escalation rounds of the MDP pipeline: after mdp-solve's L1 gate shows
-  a gap against the baselines, open the hp / gym / arch levers —
-  diagnosis-driven, playbook-consulted, ledger-addressed — within the run
-  plan's escalation budget. Use when an L1 leaderboard row exists and
-  underperforms, and the diagnosis says the build is healthy. Entry: python
-  -m mdp_stage {domain} --for escalate, plus the campaign log. The full
-  automatic pipeline is mdp-solver.
+  L2+ rounds of the MDP pipeline (hp / gym / arch levers) after mdp-solve's
+  L1 gate shows a gap with a healthy build — playbook-consulted,
+  ledger-addressed, within the run plan's budget. Use when an L1 leaderboard
+  row underperforms. Full pipeline: mdp-solver.
 ---
 
 # mdp-escalate — L2+ rounds (hp / gym / arch)
 
-One op of the split MDP pipeline (`mdp-solver` is the conductor; its
-`CONTRACTS.md` maps the ops). The governing docs live beside the conductor in
-this plugin's `mdp-solver` skill directory —
-`${CLAUDE_SKILL_DIR}/../mdp-solver/` holds `MDP_PROJECT_SPEC.md` (§8.6 is
-this op's backbone reference), `ESCALATION_LOG_GUIDE.md` (**the campaign-log
-format — its §-numbers are cited from case logs and never renumber**),
-`PLAYBOOK.md`, `ENVIRONMENT.md`, `CONTRACTS.md` and `examples/`. **Read them
-from that path. Do not search the filesystem for them**: a development
-checkout of the solver may also be on disk, and reading that instead silently
-substitutes unreleased content for the version you are installed at. Use the
-workspace venv per `ENVIRONMENT.md` — its retry budgets (1 repair attempt
-per failing design axis), >30-minute ask, and background-run rules govern
-every launch below.
+One op of the split MDP pipeline; `mdp-solver` is the conductor. The governing
+docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — read them from that path,
+never from a filesystem search (a dev checkout on disk would silently
+substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
+ops and says what each reads. **This op needs:** spec `MDP_PROJECT_SPEC.md`
+§8.4, §8.6 and §13, `ESCALATION_LOG_GUIDE.md` (whole — the campaign-log
+format; its §-numbers are cited from case logs and never renumber),
+`PLAYBOOK.md` and the example playbook entries it matches — not spec §1–§7,
+not the IR sample. Everything else in that directory is consulted only when a
+step below names it. Venv and run discipline per `ENVIRONMENT.md` (1 repair
+attempt per failing design axis, the >30-minute ask, background runs).
 
 **Entry gate — run first, exit 0 required:**
 

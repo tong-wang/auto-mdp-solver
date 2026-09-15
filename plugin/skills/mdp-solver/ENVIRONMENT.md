@@ -41,7 +41,7 @@ starting one.
 ```bash
 .venv/bin/python - <<'EOF'
 import sys, importlib.util as u
-core   = ["mdp_ir","mdp_conformance","mdp_gates","mdp_tuning","numpy","pydantic","gymnasium","optuna"]
+core   = ["mdp_ir","mdp_conformance","mdp_gates","mdp_tuning","mdp_stage","numpy","pydantic","gymnasium","optuna"]
 domain = ["stable_baselines3","sb3_contrib","torch","pandas","tensorboard"]
 miss = []
 for m in core + domain:

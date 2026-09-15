@@ -1,27 +1,24 @@
 ---
 name: mdp-interpret
 description: >
-  Stage 5 of the MDP pipeline: read the winning trained policy back into the
-  domain's policy-structure vocabulary per spec §14 — the probe, the fitted
-  structural rule scored under the paired protocol, the overlay figure —
-  anchored against a reference policy when one exists. Use when a winning
-  artifact exists and a declared tier-2 stance (confirm/discover) owes the
-  readback, or on request for the generic pieces. Entry: python -m mdp_stage
-  {domain} --for interpret. The full automatic pipeline is mdp-solver.
+  Stage 5 of the MDP pipeline: read the winning policy back into the
+  domain's policy-structure vocabulary (spec §14) — probe, fitted rule scored
+  paired, overlay figure — anchored to a reference when one exists. Use when
+  a winning artifact exists and a declared confirm/discover stance owes the
+  readback. Full pipeline: mdp-solver.
 ---
 
 # mdp-interpret — Stage 5 (policy-structure readback)
 
-One op of the split MDP pipeline (`mdp-solver` is the conductor; its
-`CONTRACTS.md` maps the ops). The governing docs live beside the conductor in
-this plugin's `mdp-solver` skill directory —
-`${CLAUDE_SKILL_DIR}/../mdp-solver/` holds `MDP_PROJECT_SPEC.md` (§14 is this
-op's specification — consult it while writing each file; do not code from
-memory of it), `ENVIRONMENT.md`, `CONTRACTS.md` and `examples/`. **Read them
-from that path. Do not search the filesystem for them**: a development
-checkout of the solver may also be on disk, and reading that instead silently
-substitutes unreleased content for the version you are installed at. Use the
-workspace venv per `ENVIRONMENT.md`.
+One op of the split MDP pipeline; `mdp-solver` is the conductor. The governing
+docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — read them from that path,
+never from a filesystem search (a dev checkout on disk would silently
+substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
+ops and says what each reads. **This op needs:** spec `MDP_PROJECT_SPEC.md`
+§14 (this op's specification — consult it while writing each file; do not code
+from memory of it), plus §1.2 and §8.4 where named below — nothing else of the
+spec, no guide, no templates. Everything else in that directory is consulted
+only when a step below names it. Venv and run discipline per `ENVIRONMENT.md`.
 
 **Entry gate — run first, exit 0 required:**
 

@@ -2,14 +2,11 @@
 name: mdp-propose
 description: >
   File an upstream extension proposal against the auto-mdp-solver spec, IR
-  schema, or pipeline process (github.com/tong-wang/auto-mdp-solver) — from
-  any downstream project, the moment a campaign hits a wall the current
-  version cannot express or mandates the wrong thing. Use when the user says
-  "propose this upstream", "file a proposal", "this needs a spec/schema
-  change", or when UPSTREAM_PROPOSAL_*.md drafts exist in the project's
-  scratch/ folder.
-  One GitHub issue per proposal; nothing is sent without the user's explicit
-  approval of the final body.
+  schema or pipeline process, as one GitHub issue, when a campaign hits a
+  wall the current version cannot express. Use on "propose this upstream",
+  "file a proposal", "this needs a spec/schema change", or when
+  UPSTREAM_PROPOSAL_*.md drafts exist in scratch/. Nothing is sent without
+  the user's approval of the final body.
 ---
 
 # Propose an upstream spec/schema/process extension

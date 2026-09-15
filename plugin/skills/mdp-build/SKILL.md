@@ -1,30 +1,26 @@
 ---
 name: mdp-build
 description: >
-  Stages 1–2 of the MDP pipeline: generate the spec-conformant domain from a
-  frozen IR — model layers (_uncertainty/_scenarios/_mdp), differential
-  adapter, tests, campaign docs, then the gym wrapper — with the conformance
-  + laws + differential gates. Use when a frozen, signed-off IR exists
-  ({name}.signoff.json beside the schema) and the domain code does not, or
-  must be regenerated. Entry: python -m mdp_stage {domain} --for build. For
-  the full automatic pipeline, use mdp-solver instead.
+  Stages 1–2 of the MDP pipeline: generate the spec-conformant domain
+  (_uncertainty/_scenarios/_mdp/_gym, adapter, tests, campaign docs) from a
+  frozen IR, gated by conformance + laws + differential. Use when
+  {name}.signoff.json exists beside the schema and the domain code does not,
+  or must be regenerated. Full pipeline: mdp-solver.
 ---
 
 # mdp-build — Stages 1–2 (IR → domain code + gym)
 
-One op of the split MDP pipeline (`mdp-solver` is the conductor; its
-`CONTRACTS.md` maps the ops). The governing docs live beside the conductor in
-this plugin's `mdp-solver` skill directory —
-`${CLAUDE_SKILL_DIR}/../mdp-solver/` holds `MDP_PROJECT_SPEC.md` (the
-canonical convention reference — consult it while writing each file; do not
-code from memory of it), `MDP_IR_SAMPLE.md`, `ESCALATION_LOG_GUIDE.md`,
-`ENVIRONMENT.md`, `CONTRACTS.md`, the two `DOMAIN_*_TEMPLATE.md` files and
-`examples/`. **Read them from that path. Do not search the filesystem for
-them**: a development checkout of the solver may also be on disk, and reading
-that instead silently substitutes unreleased content for the version you are
-installed at. The pipeline runs in whatever workspace holds the domain; use
-that workspace's venv, resolved per `ENVIRONMENT.md` — whose retry budgets
-and background-run rules govern everything below.
+One op of the split MDP pipeline; `mdp-solver` is the conductor. The governing
+docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — read them from that path,
+never from a filesystem search (a dev checkout on disk would silently
+substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
+ops and says what each reads. **This op needs:** spec `MDP_PROJECT_SPEC.md`
+§1–§7 (consult it while writing each file; do not code from memory of it),
+`MDP_IR_SAMPLE.md`, the two `DOMAIN_*_TEMPLATE.md` files,
+`examples/MANIFEST.md` and the one exemplar matched below — not spec §8–§14,
+not the escalation guide. Everything else in that directory is consulted only
+when a step below names it. Venv and run discipline per `ENVIRONMENT.md`
+(retry budgets, background runs).
 
 **Entry gate — run first, exit 0 required:**
 

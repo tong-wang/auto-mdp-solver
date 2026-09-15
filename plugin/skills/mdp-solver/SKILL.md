@@ -1,14 +1,14 @@
 ---
 name: mdp-solver
 description: >
-  Build a trained, deployable RL policy from a verbal description of a dynamic
-  decision-making problem: formalize it into an MDP-IR, generate a
-  spec-conformant domain (_uncertainty/_scenarios/_mdp/_gym), baselines,
-  PPO training, tuning, a policy-structure readback, and a
-  {domain}_policy.py wrapper — with executable gates between stages. Use when the user describes a sequential decision
-  problem to model ("build a domain for...", "train a policy for...",
-  "formalize this problem"), names an existing IR ({name}/{name}_schema.json in a
-  domain folder), or asks to run "the MDP pipeline" / "Phase A" / "Phase B".
+  Build a trained, deployable RL policy from a verbal description of a
+  dynamic decision problem: formalize it into an MDP-IR, generate the domain,
+  baselines, PPO training, a policy-structure readback and a
+  {domain}_policy.py wrapper, with executable gates between stages. Use when
+  the user describes a sequential decision problem ("build a domain for...",
+  "train a policy for...", "formalize this problem"), names an existing
+  {name}/{name}_schema.json, or asks for "the MDP pipeline" / "Phase A" /
+  "Phase B".
 ---
 
 # MDP solver pipeline — the conductor
@@ -20,13 +20,11 @@ every pair. The steps are siblings in this plugin — `mdp-formalize`,
 each independently invocable for re-entry; `CONTRACTS.md` (this directory)
 is the op map: what each consumes, its entry gate, its durable exit.
 
-`MDP_PROJECT_SPEC.md`, co-located with this file, is the canonical
-convention reference; `MDP_IR_SAMPLE.md` is the annotated IR reference,
-`ESCALATION_LOG_GUIDE.md` the campaign-log format — its §-numbers are cited
-from case logs and never renumber — and `ENVIRONMENT.md`, `INTERVIEW.md`,
-`CONTRACTS.md` govern environment, interview conduct, and the op contracts.
-**Read these from this skill's own directory. Do not search the filesystem
-for them**: a development checkout of the solver may also be on disk, and
+The governing docs sit in this directory; `CONTRACTS.md` maps the ops and
+says what each one reads — the conductor itself needs only `CONTRACTS.md`
+and `ENVIRONMENT.md`; each step skill names its own slice of the spec.
+**Read them from this skill's own directory, never from a filesystem
+search**: a development checkout of the solver may also be on disk, and
 reading that instead silently substitutes unreleased content for the version
 you are installed at. The pipeline runs in whatever workspace holds the
 domain; use that workspace's venv.
