@@ -1,0 +1,3 @@
+# the engine tests live in the repo (harness/tests, run via the root pytest.ini);
+# the sdist ships the packages and their metadata only
+prune tests

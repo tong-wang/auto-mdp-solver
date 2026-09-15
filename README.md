@@ -39,8 +39,8 @@ package** — is encapsulated as Claude Code skills (and, increasingly,
 deployable agents), so a competitive policy can be reached from a
 plain-English problem description.
 
-**Status: pre-release.** The PyPI name (`auto-mdp-solver`) currently holds a
-placeholder; the first functional release is being prepared from this repo.
+**Status: first public release.** The plugin and the PyPI package
+(`auto-mdp-solver`) are cut from the same tag and carry the same version.
 
 A Claude Code plugin + Python toolchain that builds a **trained, deployable
 RL policy from a verbal description of a dynamic decision-making problem**:
@@ -123,7 +123,7 @@ Python toolchain into your workspace venv on first run):
 Python toolchain only:
 
 ```bash
-pip install auto-mdp-solver   # placeholder today; real release upcoming
+pip install "auto-mdp-solver[domain]"   # harness + the training stack a generated domain needs
 # or, from source:
 pip install -e ./harness
 ```
