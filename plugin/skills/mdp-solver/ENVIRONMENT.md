@@ -26,10 +26,19 @@ Resolve in this order:
 Install into it (skip if the probe below already prints `ENV OK`):
 
 ```bash
-uv pip install --python .venv/bin/python "auto-mdp-solver[domain]"
-# no uv:              .venv/bin/python -m pip install "auto-mdp-solver[domain]"
+# the plugin's own version — the harness release must match it exactly
+V=$(python3 -c "import json;print(json.load(open('${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json'))['version'])")
+.venv/bin/python -m pip install "auto-mdp-solver[domain]==$V" \
+  || .venv/bin/python -m pip install "auto-mdp-solver[domain] @ git+https://github.com/tong-wang/auto-mdp-solver@v$V#subdirectory=harness"
+# uv: `uv pip install --python .venv/bin/python <the same spec>`
 # from a repo checkout: ... install -e "<repo-root>/harness[domain]"
 ```
+
+PyPI first, pinned; when PyPI has no release at that version the second
+command installs the same tag straight from GitHub (`subdirectory=harness`
+is the package root). Never install unpinned: the name existed on PyPI as an
+empty stub before the first real release, and an unpinned install of it
+succeeds and then fails the probe below.
 
 The **`[domain]` extra is required**: the bare package is deliberately
 torch-free (it carries only the IR/conformance/gate/tuning harness), so

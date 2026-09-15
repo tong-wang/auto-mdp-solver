@@ -124,7 +124,9 @@ Python toolchain only:
 
 ```bash
 pip install "auto-mdp-solver[domain]"   # harness + the training stack a generated domain needs
-# or, from source:
+# the same from the repo at a release tag, no PyPI needed:
+pip install "auto-mdp-solver[domain] @ git+https://github.com/tong-wang/auto-mdp-solver@v0.10.16#subdirectory=harness"
+# or, from a checkout:
 pip install -e ./harness
 ```
 
