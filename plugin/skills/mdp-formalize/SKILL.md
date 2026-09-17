@@ -40,6 +40,12 @@ and stop — extending `mdp_ir/` is a separate task the user must approve.
 
 ## The interview
 
+Every human-facing confirmation in this op is a question round under the
+five rules in `INTERVIEW.md` — including the first "is this reading of the
+paper right?" check and every later "confirm the translation". A paper does
+not exempt a round from rule 1: status board, candidates, ballot; never a
+prose list that ends in "please confirm".
+
 Phase A is a guided interview, not a form dump. The five interaction rules in
 `INTERVIEW.md` (same directory as the spec, see above) govern every question
 round below — brief in the message + choose in the menu, status board every
@@ -124,7 +130,7 @@ step list whenever they conflict. Read them before the first round.
    already carries an experiment design, **extract and translate it faithfully**
    into concrete `instances`, world-latent `draw` specs on the relevant
    candidates, and/or a `{Domain}ScenarioGrid`, then ask the human to
-   confirm the translation. If it does not, **propose a reasonable grid + mode
+   confirm the translation — as a question round, not a prose recap. If it does not, **propose a reasonable grid + mode
    composition, with your reasoning,** and ask. Either way the concrete set
    being confirmed must be visible before the human answers: lay the
    candidates out in the briefing (rule 1), and — since a grid is genuinely

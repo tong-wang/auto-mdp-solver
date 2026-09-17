@@ -83,19 +83,30 @@ reads it at each step regardless, but with this line Codex also loads it
 automatically, as Claude Code does, whenever you start a session in that
 folder.
 
+**Model and effort.** Run the pipeline on a frontier model at *medium or
+higher* reasoning effort. In our own test at effort "low" the agent skipped
+two of the reads its skill requires, wrote an IR that fails validation,
+improvised a solver of its own and reported success while every pipeline
+gate showed BLOCKED — at that setting the gates only help if you run them
+yourself. And treat the interview as a real review: the pipeline presents a
+model for your sign-off, and a wrong restatement signed off is frozen. That
+is why the best first run is a paper you know.
+
 ### 2. Test-drive it on your favorite MDP paper
 
 The best first run is a published MDP: the model is already pinned down, and
 the paper's own policy gives you an answer to check against. Start your
-agent in a fresh folder, drop the PDF in, and say:
+agent in a fresh folder — `git init` it first: the pipeline commits its
+sign-off and run-plan files, and Codex reads instruction files only inside a
+git repository — drop the PDF in, and say:
 
 > Formalize the model in §3 of this paper, then solve it and compare
 > against the paper's own policy.
 
-Claude reaches for the `mdp-solver` skill on a request like that. To be
-explicit, invoke it directly: `/auto-mdp-solver:mdp-solver` — or just
-`/mdp-solver`, which resolves to the same skill unless you have another
-command by that name.
+Either agent reaches for the `mdp-solver` skill on a request like that. To
+be explicit, invoke it directly: `/mdp-solver` in Claude Code
+(`/auto-mdp-solver:mdp-solver` if another command shares the name),
+`$mdp-solver` in Codex.
 
 The skill translates the paper faithfully — its state, dynamics, and
 experiment design become the IR and the scenario set — shows you the

@@ -38,7 +38,10 @@ PyPI first, pinned; when PyPI has no release at that version the second
 command installs the same tag straight from GitHub (`subdirectory=harness`
 is the package root). Never install unpinned: the name existed on PyPI as an
 empty stub before the first real release, and an unpinned install of it
-succeeds and then fails the probe below.
+succeeds and then fails the probe below. The install takes minutes (torch
+and its CUDA libraries are hundreds of MB each); if the host's command
+timeout cuts it off, run the same command again — pip resumes from its
+cache — and only then run the probe.
 
 The **`[domain]` extra is required**: the bare package is deliberately
 torch-free (it carries only the IR/conformance/gate/tuning harness), so
