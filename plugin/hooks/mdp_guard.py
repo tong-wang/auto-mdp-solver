@@ -266,9 +266,13 @@ def on_post_tool(payload: dict, cwd: Path) -> int:
             pass
     if not failures:
         return 0
+    sample = plugin_root() / "skills" / "mdp-solver" / "MDP_IR_SAMPLE.md"
     return block(
         "mdp-guard: a schema you just changed does not validate. Fix it before "
-        "anything else; nothing downstream can start from an invalid IR.\n\n" +
+        "anything else; nothing downstream can start from an invalid IR. Each "
+        "error names the exact field; the IR's shape is documented, annotated, "
+        f"in {sample} — read the matching section rather than guessing, and "
+        "do not leave the pipeline over a validation error.\n\n" +
         "\n\n".join(failures))
 
 
