@@ -163,7 +163,7 @@ the tuning driver without the plugin:
 ```bash
 pip install "auto-mdp-solver[domain]"   # harness + the training stack a generated domain needs
 # the same from the repo at a release tag, no PyPI needed:
-pip install "auto-mdp-solver[domain] @ git+https://github.com/tong-wang/auto-mdp-solver@v0.10.16#subdirectory=harness"
+pip install "auto-mdp-solver[domain] @ git+https://github.com/tong-wang/auto-mdp-solver@v0.10.17#subdirectory=harness"
 # or, from a checkout:
 pip install -e ./harness
 ```

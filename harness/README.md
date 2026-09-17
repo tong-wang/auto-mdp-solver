@@ -22,11 +22,11 @@ pip install "auto-mdp-solver[domain]"   # everything a generated domain needs (S
 pip install auto-mdp-solver             # harness only, torch-free: IR, conformance, gates, tuning
 pip install "auto-mdp-solver[dev]"      # harness + pytest
 # the same, straight from the repo at a release tag (no PyPI needed):
-pip install "auto-mdp-solver[domain] @ git+https://github.com/tong-wang/auto-mdp-solver@v0.10.16#subdirectory=harness"
+pip install "auto-mdp-solver[domain] @ git+https://github.com/tong-wang/auto-mdp-solver@v0.10.17#subdirectory=harness"
 ```
 
 Requires Python ≥ 3.12. The version number tracks the plugin release it was
-cut from (`v0.10.16` ↔ plugin `0.10.16`), so the skills and the harness a
+cut from (`v0.10.17` ↔ plugin `0.10.17`), so the skills and the harness a
 workspace holds are comparable by one number.
 
 Documentation, the per-domain spec, the frozen example domains and the test

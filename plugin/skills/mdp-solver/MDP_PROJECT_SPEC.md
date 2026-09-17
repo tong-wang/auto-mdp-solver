@@ -1575,7 +1575,7 @@ nothing, and that is correct.
   run dir's immutable `{scenario}_{algo}_args.txt` and a reader standing in the
   run dir can find its birth entry without grep.
 - **Expose `--checkpoint-every-frac`** (default `0.05`, `0` disables): §9.7's
-  screen wants ~20 checkpoints, and a **fraction of the budget** is what keeps
+  selection layer wants ~20 checkpoints, and a **fraction of the budget** is what keeps
   that true when the budget moves — an absolute step count stops meaning "~20
   checkpoints" the moment `total_timesteps` changes. Convert at the call site:
   `save_freq = max(1, int(frac * total_timesteps / n_envs))`, since
@@ -1943,7 +1943,7 @@ cites its own result and stays at L1:
 | `normalize_advantage` | on. PPO's per-minibatch rescaling of advantages to zero mean / unit variance, exposed as `--no-normalize-advantage`. It is stated here rather than inherited silently from SB3 because §8.3 *reasons from* it — it is the premise that downgrades reward norm to a critic-scaling detail — and a load-bearing premise no script exposes is one no campaign can check. `mdp_tuning` opens it at `breadth`. Off only as a logged L2 move: the one measurement is decisively for the default (adi_flex A14, +108.05 main effect for ON, ~6× worse seed dispersion for OFF), which is also why searching it is cheap rather than dangerous. |
 | `net_arch` | (64,64) for obs dim ≤ ~32; scale the first hidden layer to ~2–4× obs dim above. Structured obs (set/permutation, grid, sequence) is never a width problem — record a *predicted escalation: arch* note. Boundary: `net_arch` widths = HP layer; custom extractors = arch layer. This row derives a **width**, not a layer count, which is why `mdp_tuning` searches width at its `core` tier and opens depth only at `breadth`: at core the derivation's own depth stands. The searched grid is width {32, 64, 128, 256} × depth {2, 3, 4}, uniform layers. |
 | budget | ceiling = 20k–50k episodes × T̄ steps AND ≥ ~300 updates. **A training run runs to its budget — no early stopping.** The training trajectory is too noisy to make any judgment from; judgment happens post-hoc, on CRN evals of saved checkpoints (the selection row). Early stopping exists only in tuning trials (§9.7), where it reads the periodic CRN eval, never the rollout curve, and the arm is one of many. |
-| model selection | **Post-hoc, three-layer (§9.7).** `CheckpointCallback` every ~5% of budget (~20 checkpoints — `--checkpoint-every-frac 0.05`, §8.2); after training, evaluate every checkpoint on the selection block (~2048 CRN seeds, disjoint from the protocol block — `--first-seed`, §9.7), take the top-k (k≈3, adjustable — widen when the leaders sit within one screen-SE), confirm those on the protocol block (~8192), ship the winner. No `EvalCallback`, no live selection env, no `sync_envs_normalization` — the machinery that selected a generalist's checkpoint on one wrong cell (mab #E36 V4) simply isn't there. **The terminal checkpoint is never the deliverable** — the marginal gain of the screen over a working callback is small (+1.4, mab #E33) but selecting *at all* is worth +43, and the post-hoc form buys the robustness. |
+| model selection | **Post-hoc, cost-sized funnel (§9.7).** `CheckpointCallback` every ~5% of budget (~20 checkpoints — `--checkpoint-every-frac 0.05`, §8.2); after training, evaluate **every checkpoint on one CRN selection block** (disjoint from the protocol block — `--first-seed`, §9.7), whose size follows the evaluator's cost (~2048 seeds where eval is vectorized and cheap, ~256 where an episode runs thousands of Python-stepped steps); **shortlist the top-k by selection mean** (k = 3 default, 5 as the refinement where the protocol eval is affordable); confirm the shortlist on the protocol block; ship the winner. The **band** — checkpoints within 2 SE-of-the-difference of the top — is a diagnostic, not a stage: a band wider than k says the plateau is wider than the shortlist (raise k); a band of one says the run is still climbing (a budget question — the extension rule above — not a selection one). No `EvalCallback`, no live selection env, no `sync_envs_normalization` — the machinery that selected a generalist's checkpoint on one wrong cell (mab #E36 V4) simply isn't there, and the post-hoc form scores each checkpoint under its own normalizer, on any cell, CRN-paired by construction. **The terminal checkpoint is never the deliverable** — selecting *at all* is worth +43 (mab #E33), and on game2048's eight 4x4 legs the shortlist's protocol winner beat the live callback's pick in 2 of 8 (by 2.5k and 3.3k, where the pick ranked 4th on the selection block) and the selection top-1 matched the protocol winner in 7 of 8 (#88). |
 
 **Which knobs a tuning study opens follows this table.** `mdp_tuning`'s
 tiers are budget scopes ordered by how much the derivation above already knows:
@@ -2123,7 +2123,7 @@ Two conventions the parsers follow:
 - **The parser's names are §8.2's tier-1 table**, eval column: the problem and
   rendering modes, `model_path` / `vecnorm_path` / `outfile`, and the protocol
   pair `n_seeds` / `first_seed`. `first_seed` is what makes §9.7's *disjoint*
-  blocks expressible — the protocol block starts at 0 and the screen block at
+  blocks expressible — the protocol block starts at 0 and the selection block at
   `1_000_000`, and without an offset flag the requirement is unsatisfiable as
   written. (The corresponding train-side flag is `--tag`, §8.2.)
 
@@ -2319,21 +2319,25 @@ for cell_id, source in targets:
 One principle organizes all judgment: **the training trajectory is never a
 judgment input** — too noisy for any decision, in training or tuning. Every
 judgment reads a CRN eval, and the three layers trade randomness against
-efficiency (the numbers are defaults, adjustable case by case; the *blocks
-are mutually disjoint* — a layer that ranks must not touch the block that
-quotes).
+efficiency. **The layer sizes below are worked defaults, not prescriptions**
+— what is fixed is the structure (a layer that ranks must not touch the block
+that quotes; the *blocks are mutually disjoint*; only the protocol layer's
+number is ever quoted) and the sizing rule (§9.7's "Sizing the layers", below).
+A campaign sets its own sizes in the run plan (§8.6 Stage 0) and names them
+in the campaign record.
 
 Disjointness is a property of the seed block, so it is set by
 `--first-seed` / `--n-seeds` (§8.2 tier 1, §9.1): the **protocol** block is
-`first_seed = 0`, the **screen** block is `first_seed = 1_000_000`, and a
+`first_seed = 0`, the **selection** block is `first_seed = 1_000_000`, and a
 trial's periodic eval reads its own block above that. The offsets are
 conventional, the disjointness is not.
 
 | layer | where | episodes | job |
 |---|---|---|---|
 | trial | periodic eval inside a tuning trial, every ~5% of budget | ~512 CRN seeds | the tuner's signal: trial value = the **last** eval (it describes the artifact the trial ships); early stopping reads THIS curve, never the rollout curve — patience ~4 evals with a min-evals guard ~5, strict comparison (the fixed CRN block pairs the evals, so policy differences are not draw noise); `trial.report` on the same curve enables population pruning. **Its scores are never quoted** — a trial value is a tuning signal on a different instrument, and comparing one to a protocol number manufactures a result in either direction |
-| screen | post-hoc over a training run's ~20 checkpoints (§8.6, `--checkpoint-every-frac 0.05`) | ~2048 CRN seeds from `--first-seed 1000000` | rank the checkpoints, pass the top-k to confirmation; its scores are never quoted |
-| protocol | `{domain}_ppo_eval.py` / benchmark evals, `--first-seed 0` | **~8192 evidence-grade** (2048 default for cheap domains) | confirm the top-k, crown the winner — the leaderboard number; a ladder run *exists* only once this TSV does |
+| selection | post-hoc over a training run's ~20 checkpoints (§8.6, `--checkpoint-every-frac 0.05`), one CRN block from `--first-seed 1000000` shared by every checkpoint | cost-sized: ~2048 seeds where eval is vectorized and cheap, ~256 where it is not | rank the checkpoints, shortlist the top-k (k = 3 default, 5 as the refinement), read the band as a diagnostic (§8.6); its scores are never quoted |
+| screen (optional) | between selection and protocol, its own block | ~4× the selection block | only where the protocol eval is very expensive relative to the selection eval: re-rank the shortlist on a fresh block and pass fewer candidates (typically 1) to the protocol layer; its scores are never quoted |
+| protocol | `{domain}_ppo_eval.py` / benchmark evals, `--first-seed 0` | **evidence-grade**: ~8192 by default, 2048 for cheap domains — sized so its SE resolves the margins the campaign quotes | confirm the shortlist, crown the winner — the leaderboard number, quoted with its SE; a ladder run *exists* only once this TSV does |
 
 A smoke eval (train-script tail, ~50 episodes, "did it learn anything")
 stays outside the layers and is never quoted.
@@ -2364,11 +2368,37 @@ prose; the same applies to any multi-arm readout in the campaign docs
 `1-comparative` tier, after the scenario it scores has been introduced — is
 §1.3.
 
-The screen layer is affordable because the **selection evaluator is
-vectorized over episodes** — the old "~256–512 seeds" tier reflected a
-scalar `predict`-per-step loop's budget, not a statistical judgment; batched
-eval runs 20–100× cheaper per step than training, and the seed count stops
-being the constraint.
+**Sizing the layers.** Every layer's size follows the domain's evaluator
+cost, measured in env-steps against the training budget — problems differ by
+orders of magnitude here, and one fixed number cannot serve them all:
+
+- **Cheap, vectorized eval** (a batched `predict` over episodes runs 20–100×
+  cheaper per step than training, and an episode is short): the seed count
+  stops being the constraint. Selection on ~2048, protocol on ~8192, k = 5.
+- **Expensive eval** (the env steps in Python, an episode runs thousands of
+  steps): the eval budget is a line in the run plan beside training.
+  game2048's 4x4 episodes average ~3,000 steps, so one 8192-seed protocol
+  eval costs ~25M env-steps — more than a 20M-step training leg — and its
+  callback-driven live eval had taken ~85% of wall time (#88). There the
+  selection block is ~256 (SE ~1.5k on a 50k score, enough to rank a 20-point
+  grid whose neighbours differ by noise), k = 3, and the protocol block is
+  what the campaign can afford to quote with an SE that resolves its margins —
+  8192 where the claims are at the ~1k level, fewer where they are not, the
+  size and its SE stated with the number.
+- **The optional screen** earns its place only in that expensive case, where
+  ~4× the selection block on a fresh block is far cheaper than a protocol
+  eval and can cut the protocol shortlist from 3 to 1. Where the protocol eval
+  is cheap it is a stage the shortlist already covers: on game2048's simulated
+  4x4 record (#88) a 2-SE band → screen → top-3 landed where a plain top-5
+  does, at similar total cost. Whether a live screen's top-1 agrees with the
+  protocol ordering of the same shortlist is still being measured (#88); until
+  it is, the screen is a cost decision, not a measured one.
+
+Whatever the sizes, three invariants hold: the selection block is **one block
+shared by every checkpoint** (CRN-paired, so ranking differences are policy
+differences), each checkpoint is scored **under its own normalizer** (the
+`VecNormalize` saved beside it — never a live env's), and the protocol number
+is the only one that leaves the campaign record.
 
 **Comparing two arms over a grid.** When the eval enumerates a §5.6 grid, the
 comparison is per cell (§5.6 Rider 2: report per cell, never quote a single
