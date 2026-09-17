@@ -153,8 +153,10 @@ def on_prompt(payload: dict, cwd: Path) -> int:
         "auto-mdp-solver: this request is a pipeline request (formalize / build / "
         "solve a dynamic decision problem). Do not solve it directly with ad-hoc "
         "code or prose. Use the `mdp-solver` skill — Claude Code: invoke "
-        "`/mdp-solver`; Codex: `$mdp-solver`; either way its instructions are "
-        f"at {skill}. The pipeline's guard will not let a turn end on a "
+        "`/auto-mdp-solver:mdp-solver` (the plugin-qualified name; a bare "
+        "`/mdp-solver` may resolve to another copy); Codex: `$mdp-solver`; "
+        f"either way its instructions are at {skill}. The pipeline's guard "
+        "will not let a turn end on a "
         "completion claim until a validated `{name}/{name}_schema.json` and its "
         "restatement exist and the stage gates agree."
     )
@@ -185,7 +187,8 @@ def on_stop(payload: dict, cwd: Path) -> int:
                 "validated IR plus a restatement produced by the mdp-solver skill "
                 f"(instructions: {skill}), then the built domain and its gates; "
                 "a hand-written formalization or solver is not it. Invoke the "
-                "skill now (Claude Code: `/mdp-solver`; Codex: `$mdp-solver`) and "
+                "skill now (Claude Code: `/auto-mdp-solver:mdp-solver`; Codex: "
+                "`$mdp-solver`) and "
                 "run its Phase A; do not end the turn on this claim.")
         return 0
     if py is None:
