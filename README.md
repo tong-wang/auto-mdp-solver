@@ -83,14 +83,19 @@ reads it at each step regardless, but with this line Codex also loads it
 automatically, as Claude Code does, whenever you start a session in that
 folder.
 
-**Model and effort.** Run the pipeline on a frontier model at *medium or
-higher* reasoning effort. In our own test at effort "low" the agent skipped
-two of the reads its skill requires, wrote an IR that fails validation,
-improvised a solver of its own and reported success while every pipeline
-gate showed BLOCKED — at that setting the gates only help if you run them
-yourself. And treat the interview as a real review: the pipeline presents a
-model for your sign-off, and a wrong restatement signed off is frozen. That
-is why the best first run is a paper you know.
+**Model and effort — the floor.** Claude Code: **Opus 5 or above**. Codex:
+**GPT-5.6 or above, at *medium* or higher reasoning effort**. These are
+tested floors, not preferences: on GPT-5.6 at high effort the pipeline ran
+a published paper end to end, every interview round in shape and the model
+right on first presentation; the same family at effort "low" skipped two
+of the reads its skill requires, wrote an IR that fails validation and
+improvised a solver of its own, and Haiku 4.5 needed a correction at nearly
+every round. The plugin ships guard hooks that refuse to end a turn on a
+success the pipeline's gates contradict and feed schema errors straight
+back — so a weak model is stopped, not rescued. What no hook can catch is a
+*valid* model of the wrong problem, and that is what the interview is for:
+the pipeline presents its model for your sign-off, a wrong restatement
+signed off is frozen, and the best first run is a paper you know.
 
 ### 2. Test-drive it on your favorite MDP paper
 
