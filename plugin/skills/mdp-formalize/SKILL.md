@@ -10,9 +10,11 @@ description: >
 # mdp-formalize — Phase A (human in the loop)
 
 One op of the split MDP pipeline; `mdp-solver` is the conductor. The governing
-docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — read them from that path,
-never from a filesystem search (a dev checkout on disk would silently
-substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
+docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — the `mdp-solver` sibling
+of this skill's own directory (`${CLAUDE_SKILL_DIR}` is substituted by Claude
+Code at load; on Codex it is the path printed beside this skill in the skills
+list) — read them from that path, never from a filesystem search (a dev
+checkout on disk would silently substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
 ops and says what each reads. **This op needs:** `INTERVIEW.md` (whole — the
 five interaction rules), `MDP_IR_SAMPLE.md` (whole — the annotated IR), and
 spec `MDP_PROJECT_SPEC.md` §4.3, §5.1, §5.5, §9.3, §14.0 — not the rest of it.
@@ -146,8 +148,8 @@ step list whenever they conflict. Read them before the first round.
    world sampler, a grid, or a combination) into the IR.
 5. Validate: `python -m mdp_ir {name}/{name}_schema.json` must print OK.
 6. Resolve every `Confirmable` (decision type/bounds, `requires_memory`,
-   borderline placements) via AskUserQuestion — one at a time, under the
-   interaction rules above; set `source` to `human_confirmed` /
+   borderline placements) as question rounds per `INTERVIEW.md` — one at a
+   time, under the interaction rules above; set `source` to `human_confirmed` /
    `human_override` in the JSON. Do this *before* the restatement so the
    restatement reflects the final, resolved model.
 7. Round-trip artifact — build it now that the model is settled:

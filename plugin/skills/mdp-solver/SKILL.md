@@ -37,8 +37,11 @@ every step. Use that exact interpreter path for every command, never a bare
 
 ## Conducting
 
-Dispatch the steps in order, invoking each step skill by name (use the
-plugin-qualified form if the bare name does not resolve):
+Dispatch the steps in order: for each, open the sibling step skill's
+`SKILL.md` (`${CLAUDE_SKILL_DIR}/../mdp-<step>/SKILL.md` — this skill's own
+directory is substituted by Claude Code at load and printed beside the skill
+in Codex's list) and follow it to its exit; where the host offers a skill
+invocation by name, that is the same file:
 
 ```
 mdp-formalize → mdp-build → mdp-solve → [mdp-escalate]* → mdp-interpret → mdp-package

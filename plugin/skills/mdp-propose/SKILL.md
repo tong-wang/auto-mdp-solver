@@ -68,7 +68,10 @@ projects — run the same three-way disposition before the issue is filed.
 
 ## 2. Send
 
-- `gh auth status` first — issues need no fork or push rights.
+- `gh auth status` first — issues need no fork or push rights. `gh issue
+  create` needs the network: on a host whose shell sandbox has none (Codex's
+  default), request escalated permissions for that command —
+  `ENVIRONMENT.md`'s network rule.
 - **One issue per proposal** — proposals are accepted, rejected, or deferred
   independently; a batch issue can only be closed once.
 - Title `proposal: <slug> — <one-line gap>`, label `upstream-proposal` (omit

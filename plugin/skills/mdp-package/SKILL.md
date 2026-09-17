@@ -10,9 +10,11 @@ description: >
 # mdp-package — Stage 6 (deployable policy + README)
 
 One op of the split MDP pipeline; `mdp-solver` is the conductor. The governing
-docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — read them from that path,
-never from a filesystem search (a dev checkout on disk would silently
-substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
+docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — the `mdp-solver` sibling
+of this skill's own directory (`${CLAUDE_SKILL_DIR}` is substituted by Claude
+Code at load; on Codex it is the path printed beside this skill in the skills
+list) — read them from that path, never from a filesystem search (a dev
+checkout on disk would silently substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
 ops and says what each reads. **This op needs:** spec `MDP_PROJECT_SPEC.md`
 §12, §1.3 and §9 (consult them while writing; do not code from memory of them)
 and the two `DOMAIN_*_TEMPLATE.md` files — nothing else of the spec, no guide,
@@ -24,6 +26,11 @@ below names it. Venv and run discipline per `ENVIRONMENT.md`.
 ```bash
 <python> -m mdp_stage {domain} --for package
 ```
+
+
+Then read `{domain}/CLAUDE.md`, the folder's operating brief: Claude Code
+pushes it when work touches the folder, other hosts do not, and its hard
+rules bind this op either way.
 
 The ordering-sanity half of the entry stays a command you run, not a file
 check: re-run the Stage-4 `mdp_gates` command for the artifact being shipped
@@ -59,14 +66,15 @@ before writing a README that quotes it.
   it summarises are final.
 - Final pass over `{domain}/CLAUDE.md` (emitted at Stage 1 from
   `DOMAIN_CLAUDE_TEMPLATE.md`): the gate commands run as written, the hard
-  rules are current and still phrased trigger → destination, and the two
+  rules are current and still phrased trigger → destination, and the three
   provenance lines are right — "built and gated at" naming the checkout the
   numbers came from, "conformance maintained through" naming how far the
-  folder has been carried. **And check what the file has accreted:** anything
+  folder has been carried, "solved with" naming the host, its version and
+  the model that drove the campaign. **And check what the file has accreted:** anything
   describing, summarising or scoring what lives in another document is a copy
   and comes out — the README owns the case, this file owns the specs above
-  it. Then add the domain to the root `CLAUDE.md`'s domain list — one line;
-  the folder's own file carries the rest.
+  it. Then, if the workspace root keeps a `CLAUDE.md` domain list, add the
+  domain to it — one line; the folder's own file carries the rest.
 - Trained artifacts (`results/`) are gitignored; the README's commands must
   reproduce them.
 

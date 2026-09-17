@@ -2,10 +2,14 @@
 
 Template for the `{domain}/CLAUDE.md` the pipeline emits at Stage 1, so every
 generated domain carries its own operating brief from the first commit. It is
-the one file whose *placement* decides whether an agent sees it at all: the
-host loads a folder's `CLAUDE.md` exactly when work touches that folder — the
-repo-root file stays short and cross-domain, the domain's brief rides with
-the domain (and travels with it on contribution or promotion).
+the one file whose *placement* decides whether an agent sees it at all:
+Claude Code loads a folder's `CLAUDE.md` exactly when work touches that
+folder, Codex does when the workspace names `CLAUDE.md` in its
+`project_doc_fallback_filenames`, and every pipeline op reads it at entry on
+any host (spec §1.3) — the repo-root file stays short and cross-domain, the
+domain's brief rides with the domain (and travels with it on contribution or
+promotion). The file's name is `CLAUDE.md` on every host; no host-specific
+companion is ever added beside it.
 
 Its counterpart is `DOMAIN_README_TEMPLATE.md`, and the two divide by
 direction (spec §1.3): **this file points up** — at the specs that govern the
@@ -93,8 +97,13 @@ distinction — see `cases/README.md`, "After a case is merged"):
   conventions and gate compatibility have been carried forward. Updated when
   the case is brought to a newer spec *without* re-running anything; log each
   such move in `ESCALATION.md` §FRAME-CHANGELOG.
+- **Solved with: {host} {host version}, {model}** — the agent that drove the
+  campaign (e.g. `Claude Code 2.1.x, claude-fable-5-1` or
+  `Codex CLI 0.154.0, gpt-5.6`). A case built by a different agent is a
+  different data point for the auto-solving objective; a folder without this
+  line was built with Claude Code before v0.11.0.
 
-While the campaign is live these two are the same tag. They diverge only once
+While the campaign is live the first two are the same tag. They diverge only once
 someone conforms the case to a spec that landed after its results did.
 
 The repo-root `CLAUDE.md` carries the cross-domain rules. `README.md` carries

@@ -13,9 +13,12 @@ this — they override the mechanical step list below whenever they conflict.
 
 **1. Brief in the message, choose in the menu.** Every question round is two
 parts of *one* turn: a **briefing message** in plain markdown, then the
-`AskUserQuestion` call. The menu is a ballot, not a document — it is a narrow
-column and long text there is unreadable. All exposition lives in the
-briefing; the menu carries only the choices' names.
+**ballot** — the host's structured question tool when it has one (Claude
+Code: `AskUserQuestion`; Codex: `request_user_input`, available in Plan mode
+or behind its `default_mode_request_user_input` flag), else a numbered
+plain-text ballot that ends the turn (below). The menu is a ballot, not a
+document — it is a narrow column and long text there is unreadable. All
+exposition lives in the briefing; the menu carries only the choices' names.
 
 The briefing message (markdown, headings/bullets/tables — not a wall of
 prose) carries, in this order:
@@ -31,7 +34,8 @@ prose) carries, in this order:
 - one line noting they can answer "Other" to ask a question instead of
   picking (rule 4).
 
-The `AskUserQuestion` call is then deliberately tiny. Hard limits:
+The ballot is then deliberately tiny. Hard limits (the field names are the
+Claude Code tool's; the same limits bind the plain-text form):
 
 | field | limit |
 |---|---|
@@ -43,6 +47,13 @@ The `AskUserQuestion` call is then deliberately tiny. Hard limits:
 
 A description that wraps to three lines in a narrow column, or a `question`
 carrying the status board, is the failure mode this rule exists to prevent.
+
+*Plain-text ballot* (no structured tool): end the briefing with the question
+in ≤ 2 sentences, then a numbered list — one option per line, the same
+≤ 5-word label the briefing used, a dash, the one-line consequence — and a
+last line `Other — ask a question or challenge the framing`. Then **stop and
+wait**; the human answers with a number or free text. Do not fold the ballot
+into prose: the numbered list is what makes the answer unambiguous.
 
 **2. Post a status board at the top of every briefing.** A short *structured*
 snapshot (not prose the human has to mine):

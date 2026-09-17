@@ -11,9 +11,11 @@ description: >
 # mdp-solve — run plan, baselines, L0/L1 train + eval
 
 One op of the split MDP pipeline; `mdp-solver` is the conductor. The governing
-docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — read them from that path,
-never from a filesystem search (a dev checkout on disk would silently
-substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
+docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — the `mdp-solver` sibling
+of this skill's own directory (`${CLAUDE_SKILL_DIR}` is substituted by Claude
+Code at load; on Codex it is the path printed beside this skill in the skills
+list) — read them from that path, never from a filesystem search (a dev
+checkout on disk would silently substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
 ops and says what each reads. **This op needs:** spec `MDP_PROJECT_SPEC.md`
 §5.6, §8, §9 and §13 (consult it while writing each script; do not code from
 memory of it), and `INTERVIEW.md` for the Stage-0 round — not the IR sample,
@@ -27,6 +29,11 @@ is consulted only when a step below names it. Venv and run discipline per
 <python> -m mdp_stage {domain} --for solve
 ```
 
+
+Then read `{domain}/CLAUDE.md`, the folder's operating brief: Claude Code
+pushes it when work touches the folder, other hosts do not, and its hard
+rules bind this op either way.
+
 This *runs* build's exit gates — conformance, IR laws, and the bit-exact
 differential — rather than trusting that they once passed; it is the honest
 form of "the domain is ready to spend compute on". A blocked entry goes back
@@ -36,8 +43,8 @@ the gate.
 ### Stage 0 — run plan (confirm before running)
 
 Phase A froze the *whole* scenario set; one solve pass does **not** run all
-of it. Before launching anything, confirm a **run plan** with the human (via
-AskUserQuestion, under the interaction rules in `INTERVIEW.md`) — and treat
+of it. Before launching anything, confirm a **run plan** with the human (a
+question round under the interaction rules in `INTERVIEW.md`) — and treat
 it as a live choice, not a Phase-A relic to rubber-stamp. When the user
 supplied a run-plan file up front (the unattended path), take it as the
 confirmed answer and skip the round — that supplied-vs-asked fork is the only
@@ -88,16 +95,17 @@ count (default 8192). A benchmark that precomputes a solution table writes it
 to `results/{scenario}/benchmark/{method}/{scenario}.txt`; eval TSVs go to
 `results/{scenario}/benchmark/benchmark_{name}_eval_{scenario}.tsv`. Resolve
 both from `Path(__file__).resolve().parent`, never from the CWD (spec §8.4) —
-and redirect each eval's console output into that same `benchmark/` directory:
+and redirect each eval's console output into that same `benchmark/` directory.
+Launch each as a background job of the host (`ENVIRONMENT.md` — not a bare
+`nohup … &`, which does not outlive a Codex turn):
 
 ```bash
 cd {domain}
 out=results/{scenario}/benchmark; mkdir -p $out
-for m in random myopic dp; do
-  OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 nohup ../.venv/bin/python \
-    {domain}_benchmark_${m}_eval.py -s {scenario} --n-seeds 8192 \
-    > $out/benchmark_${m}.log 2>&1 &
-done
+# one background job per method, e.g. for m in random myopic dp:
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 ../.venv/bin/python \
+  {domain}_benchmark_${m}_eval.py -s {scenario} --n-seeds 8192 \
+  > $out/benchmark_${m}.log 2>&1
 ```
 
 **GATE:** baselines run to completion and their ordering is sane
@@ -135,15 +143,16 @@ L1 verdict below.
   `gamma=args.gamma` passed**; script defaults = the L1-derived values, so the
   tuner's warm-start trial 0 is the L1 center; run-name encodes obs/act/rew +
   non-default hyperparameters).
-- Launch with `OMP_NUM_THREADS=1 MKL_NUM_THREADS=1`, in the background;
-  watch `ep_rew_mean` against the baseline bounds while it runs. The train
+- Launch with `OMP_NUM_THREADS=1 MKL_NUM_THREADS=1`, as a background job of
+  the host (`ENVIRONMENT.md` — not a bare `nohup … &`, which does not outlive
+  a Codex turn); watch `ep_rew_mean` against the baseline bounds while it runs. The train
   script tees its own stdout/stderr to `{run_dir}/train.log` (spec §8.4), so
   send the shell redirect to the scratchpad and poll the run's own log:
 
   ```bash
   cd {domain}
-  OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 nohup ../.venv/bin/python \
-    {domain}_ppo_train.py -s {scenario} -o {obs} > $SCRATCH/train_launch.log 2>&1 &
+  OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 ../.venv/bin/python \
+    {domain}_ppo_train.py -s {scenario} -o {obs} > $SCRATCH/train_launch.log 2>&1
   # the script prints `outdir=` on its first lines; watch results/{scenario}/*/train.log
   ```
 

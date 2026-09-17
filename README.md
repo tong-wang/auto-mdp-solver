@@ -35,8 +35,8 @@ and, where a classical policy form exists, testing whether it rediscovers one.
 A solution to understand, not only to deploy.
 
 The whole semi-automatic pipeline — **formalize → build → solve → interpret →
-package** — is encapsulated as Claude Code skills (and, increasingly,
-deployable agents), so a competitive policy can be reached from a
+package** — is encapsulated as agent skills — Claude Code and Codex today (and,
+increasingly, deployable agents), so a competitive policy can be reached from a
 plain-English problem description.
 
 **Status: first public release.** The plugin and the PyPI package
@@ -44,27 +44,50 @@ plain-English problem description.
 
 ## Quick start
 
-Everything happens inside a Claude Code session — no Python setup of your
-own, no algorithm to choose.
+Everything happens inside a coding-agent session — Claude Code or Codex —
+no Python setup of your own, no algorithm to choose.
 
-### 1. Install it as a Claude Code plugin
+### 1. Install it as a plugin
+
+Claude Code:
 
 ```
 /plugin marketplace add tong-wang/auto-mdp-solver
 /plugin install auto-mdp-solver@auto-mdp-solver
 ```
 
-This installs the pipeline skills and the worked examples they learn from.
+Codex CLI:
+
+```
+codex plugin marketplace add tong-wang/auto-mdp-solver
+codex plugin add auto-mdp-solver@auto-mdp-solver
+```
+
+Either installs the pipeline skills and the worked examples they learn from
+(the skills are `/mdp-solver` … in Claude Code, `$mdp-solver` … in Codex).
 The Python side is not your job: on its first real run the skill creates a
 `.venv` in your working folder and installs `auto-mdp-solver[domain]` into
 it (needs Python ≥ 3.12; the training stack is a large download, and it
-says so before starting one).
+says so before starting one). If your agent's shell sandbox has no network —
+Codex's default — it asks you to approve that one install command.
+
+Codex users, one optional line in `~/.codex/config.toml` (or in a
+`.codex/config.toml` at your workspace root):
+
+```toml
+project_doc_fallback_filenames = ["CLAUDE.md"]
+```
+
+Every generated domain carries a `CLAUDE.md` operating brief; the pipeline
+reads it at each step regardless, but with this line Codex also loads it
+automatically, as Claude Code does, whenever you start a session in that
+folder.
 
 ### 2. Test-drive it on your favorite MDP paper
 
 The best first run is a published MDP: the model is already pinned down, and
-the paper's own policy gives you an answer to check against. Start Claude
-Code in a fresh folder, drop the PDF in, and say:
+the paper's own policy gives you an answer to check against. Start your
+agent in a fresh folder, drop the PDF in, and say:
 
 > Formalize the model in §3 of this paper, then solve it and compare
 > against the paper's own policy.
@@ -116,7 +139,7 @@ training run.
 
 ## What the pipeline does
 
-A Claude Code plugin + Python toolchain that builds a **trained, deployable
+A coding-agent plugin (Claude Code, Codex) + Python toolchain that builds a **trained, deployable
 RL policy from a verbal description of a dynamic decision-making problem**:
 
 1. **Phase A — formalize (human in the loop).** A guided interview turns the
@@ -218,10 +241,12 @@ Has its own `pyproject.toml`; deliberately torch-free at base install (the
 | `harness/mdp_tuning/` | Optuna tuning driver (`python -m mdp_tuning <domain-dir> ...`) |
 | `harness/mdp_stage/` | pipeline entry gates (`python -m mdp_stage <domain-dir> [--for <op>]`) — the split ops' executable entry re-validation, incl. the always-on freeze check against `{name}.signoff.json` |
 
-### `plugin/` — the Claude Code plugin
+### `plugin/` — the plugin (Claude Code, Codex)
 
 `.claude-plugin/plugin.json` + `skills/`; the plugin is the versioned unit
-(every release is a `v<version>` tag matching `plugin.json`).
+(every release is a `v<version>` tag matching `plugin.json`). One manifest
+serves both hosts: Codex reads `.claude-plugin/` as a compatibility
+fallback, so there is no Codex-specific manifest to keep in sync.
 
 | path | role |
 |---|---|
@@ -242,7 +267,10 @@ Has its own `pyproject.toml`; deliberately torch-free at base install (the
 
 | path | role |
 |---|---|
-| `.claude-plugin/marketplace.json` | marketplace manifest (points at `./plugin`) |
+| `.claude-plugin/marketplace.json` | marketplace manifest (points at `./plugin`); read by both Claude Code and Codex |
+| `.codex/config.toml` | one line — Codex reads `CLAUDE.md` as its instruction file at every level of its root→cwd walk |
+| `AGENTS.md` | symlink to `CLAUDE.md`, for hosts that read only that name |
+| `.claude/skills/`, `.agents/skills/` | symlinks into `plugin/skills/`, so a session in this checkout loads the skills under development (Claude Code / Codex) |
 | `cases/` | auto-solve test cases: one folder per case, built end-to-end by the skill |
 
 ## License

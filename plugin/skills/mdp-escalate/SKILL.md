@@ -10,9 +10,11 @@ description: >
 # mdp-escalate — L2+ rounds (hp / gym / arch)
 
 One op of the split MDP pipeline; `mdp-solver` is the conductor. The governing
-docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — read them from that path,
-never from a filesystem search (a dev checkout on disk would silently
-substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
+docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — the `mdp-solver` sibling
+of this skill's own directory (`${CLAUDE_SKILL_DIR}` is substituted by Claude
+Code at load; on Codex it is the path printed beside this skill in the skills
+list) — read them from that path, never from a filesystem search (a dev
+checkout on disk would silently substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
 ops and says what each reads. **This op needs:** spec `MDP_PROJECT_SPEC.md`
 §8.4, §8.6 and §13, `ESCALATION_LOG_GUIDE.md` (whole — the campaign-log
 format; its §-numbers are cited from case logs and never renumber),
@@ -26,6 +28,11 @@ attempt per failing design axis, the >30-minute ask, background runs).
 ```bash
 <python> -m mdp_stage {domain} --for escalate
 ```
+
+
+Then read `{domain}/CLAUDE.md`, the folder's operating brief: Claude Code
+pushes it when work touches the folder, other hosts do not, and its hard
+rules bind this op either way.
 
 It re-derives the freeze check plus solve's exit artifacts (run plan,
 baselines, an RL row) and requires `{domain}/ESCALATION.md` — the guide's

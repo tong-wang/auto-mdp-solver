@@ -45,6 +45,17 @@ torch-free (it carries only the IR/conformance/gate/tuning harness), so
 without it Stage 4 cannot train. Torch is a large download — say so before
 starting one.
 
+**Network.** The install above is the one step that must reach PyPI (or
+GitHub). If the host runs shell commands in a sandbox without network —
+Codex's default `workspace-write` mode, Claude Code with its sandbox on —
+the command fails on DNS and nothing prompts for help: **request escalated
+permissions for that one command**, stating why, and let the human approve
+it; do not silently report the failure and do not retry inside the sandbox.
+The human may instead lift the wall per project (Codex:
+`[sandbox_workspace_write] network_access = true`). The same rule covers
+every later command that needs the network — the `gh` calls in
+`mdp-contribute` and `mdp-propose`.
+
 **GATE — run verbatim; `ENV OK` is required before Phase B:**
 
 ```bash
@@ -70,4 +81,10 @@ reproducible from the workspace alone.
 **Retry budget: 3 repair attempts per gate, 1 per failing training design
 axis.** When a budget is exhausted, stop and surface the failure — do not
 loop. Ask before launching anything expected to take > 30 minutes of
-compute; run training/tuning in the background and keep working.
+compute; run training/tuning as a **background job of the host** and keep
+working — Claude Code's `run_in_background`, Codex's background terminal
+(`/ps` lists it). Never a bare `nohup … &` from a foreground command: on
+Codex every command runs in its own PID namespace and a detached child dies
+with the turn. The generated train scripts tee their own logs, so the
+background job's console output goes to the scratchpad and the run is
+watched through `results/…/train.log`.

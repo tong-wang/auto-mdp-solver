@@ -46,7 +46,10 @@ for them.
   (`$MDP_SOLVER_PYTHON` → workspace `.venv/bin/python` → create). Gates below run
   through it.
 - Check `gh auth status`. Not authenticated → tell the user to run
-  `gh auth login` and pause.
+  `gh auth login` and pause. Every `gh` call below that reaches GitHub needs
+  the network: on a host whose shell sandbox has none (Codex's default),
+  request escalated permissions for that command — `ENVIRONMENT.md`'s
+  network rule.
 - Ask which tier (1 / 1b) unless the request already says. If the case is
   sensitive beyond what a re-skin hides, say so plainly and stop — nothing is
   contributed.
@@ -79,8 +82,9 @@ sends the file as-is.
   `2-structural`), and the technical appendix, whose commands reproduce every
   number above them
 - `CLAUDE.md` — the domain's operating brief, five sections per spec §1.3
-  (emitted at Stage 1 from the skill's template); on staging, re-point its two
-  provenance lines at the upstream repo and drop machine-local paths
+  (emitted at Stage 1 from the skill's template); on staging, re-point its
+  provenance lines (built-at, maintained-through; keep *solved with* as is) at
+  the upstream repo and drop machine-local paths
 - the campaign record: `ESCALATION.md`, `PLAYBOOK.md` (§1), `INTERPRET.md`
   and committed figures if the campaign kept them — the record is half the
   value, and for a case later promoted to the examples set it ships with the

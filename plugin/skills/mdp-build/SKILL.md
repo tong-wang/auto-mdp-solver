@@ -11,9 +11,11 @@ description: >
 # mdp-build — Stages 1–2 (IR → domain code + gym)
 
 One op of the split MDP pipeline; `mdp-solver` is the conductor. The governing
-docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — read them from that path,
-never from a filesystem search (a dev checkout on disk would silently
-substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
+docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — the `mdp-solver` sibling
+of this skill's own directory (`${CLAUDE_SKILL_DIR}` is substituted by Claude
+Code at load; on Codex it is the path printed beside this skill in the skills
+list) — read them from that path, never from a filesystem search (a dev
+checkout on disk would silently substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
 ops and says what each reads. **This op needs:** spec `MDP_PROJECT_SPEC.md`
 §1–§7 (consult it while writing each file; do not code from memory of it),
 `MDP_IR_SAMPLE.md`, the two `DOMAIN_*_TEMPLATE.md` files,
@@ -27,6 +29,11 @@ when a step below names it. Venv and run discipline per `ENVIRONMENT.md`
 ```bash
 <python> -m mdp_stage {domain} --for build
 ```
+
+
+Then read `{domain}/CLAUDE.md`, the folder's operating brief: Claude Code
+pushes it when work touches the folder, other hosts do not, and its hard
+rules bind this op either way.
 
 Never start from a prior op's (or a human's) report that the IR is ready —
 the gate re-derives it: schema validates, `unconfirmed()` empty, sign-off
@@ -83,8 +90,9 @@ Write in dependency order: `{domain}_exceptions.py` (optional) →
   exactly one of them.
   - `{domain}/CLAUDE.md` from `DOMAIN_CLAUDE_TEMPLATE.md` — five sections:
     fill the problem statement, the leaderboard-commensurability line, the
-    two provenance lines and the gate-command slots; keep the fixed text
-    verbatim. The template's filling rules are binding — a pointer may name a
+    three provenance lines (built-at, maintained-through, and *solved with* —
+    the host, its version and the model driving this campaign) and the
+    gate-command slots; keep the fixed text verbatim. The template's filling rules are binding — a pointer may name a
     destination, never describe or score what is inside it, and a hard rule is
     phrased trigger → destination.
   - `{domain}/README.md` from `DOMAIN_README_TEMPLATE.md` — the lead, the

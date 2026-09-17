@@ -23,8 +23,11 @@ is executable:
 ## What each op reads
 
 The governing docs all live in this directory (`${CLAUDE_SKILL_DIR}/../mdp-solver/`
-from a step skill; read them from that path, never from a filesystem search —
-a development checkout on disk would silently substitute unreleased content).
+from a step skill — `${CLAUDE_SKILL_DIR}` is the skill's own directory,
+substituted by Claude Code at load; on Codex it is the path printed beside
+the skill in the skills list. Read them from that path, never from a
+filesystem search — a development checkout on disk would silently
+substitute unreleased content).
 They are large, and no op needs all of them. Each step skill's opening
 paragraph names its slice; this table is the same map in one place. Sections
 are cited by number because the spec's and the guide's §-numbers are
@@ -41,7 +44,11 @@ append-only.
 | `mdp-solver` | this file, `ENVIRONMENT.md` | the spec — each step reads its own slice |
 
 `ENVIRONMENT.md` (interpreter, `ENV OK`, retry budgets, background runs)
-binds every op and is short; read it once per session. A step that finds
+binds every op and is short; read it once per session. Every op that acts on
+an existing domain folder also reads `{domain}/CLAUDE.md` at entry, right
+after its gate: it is the folder's operating brief (spec §1.3), Claude Code
+pushes it when work touches the folder, other hosts do not, and its hard
+rules bind the op either way. A step that finds
 itself needing a section outside its slice may read it — the map is a
 default, not a fence — but a section it cannot name is one it does not need.
 

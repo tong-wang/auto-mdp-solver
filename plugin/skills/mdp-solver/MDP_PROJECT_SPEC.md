@@ -242,9 +242,12 @@ above them, in `README.md` §3; and a trap the campaign paid for is a
 (ESCALATION_LOG_GUIDE §10) is a strict superset of it.
 
 What `CLAUDE.md` keeps is the *push*. It is the one file whose placement
-decides whether an agent sees it at all — the host loads a folder's
-`CLAUDE.md` exactly when work touches that folder, while `README.md`,
-`ESCALATION.md` and `PLAYBOOK.md` are pulled. So the hard rules carry the
+decides whether an agent sees it at all — Claude Code loads a folder's
+`CLAUDE.md` exactly when work touches that folder; Codex loads it when the
+workspace names `CLAUDE.md` in `project_doc_fallback_filenames` and the
+session starts in or below the folder; and on every host each pipeline op
+reads it at entry, so no host is a precondition for the brief being seen —
+while `README.md`, `ESCALATION.md` and `PLAYBOOK.md` are pulled. So the hard rules carry the
 trigger and the address and stop there: "before quoting a number, say which
 artifact it came from (§8.4)" is a hard rule; the same sentence continuing
 into which artifact won is a copy.

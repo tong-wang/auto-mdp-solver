@@ -1,8 +1,9 @@
 # CLAUDE.md
 
-This file guides Claude Code when working in **auto-mdp-solver** — the
-standalone MDP-solver pipeline (public brand `auto-mdp-solver`; split out of
-a private research workspace on 2026-07-21).
+This file guides a coding agent (Claude Code, Codex, or any host that reads
+`CLAUDE.md`) working in **auto-mdp-solver** — the standalone MDP-solver
+pipeline (public brand `auto-mdp-solver`; split out of a private research
+workspace on 2026-07-21).
 
 ## What this repo is
 
@@ -91,12 +92,23 @@ restate:
   plus pytest so a domain's own `{domain}_test.py` runs out of the box).
   `[dev]` is pytest alone — the torch-free path for harness work, enough to
   run the whole suite. This repo ships no `.venv`; create one if absent.
+- **Host neutrality lives at the root, not in the folders.** `AGENTS.md` is a
+  symlink to this file (for hosts that read only that name) and
+  `.codex/config.toml` names `CLAUDE.md` in `project_doc_fallback_filenames`
+  so Codex reads every `CLAUDE.md` on its root→cwd walk; `.agents/skills/`
+  mirrors `.claude/skills/` so this checkout's skills load in a Codex session.
+  Domain folders carry only `CLAUDE.md` — no host file is ever added there,
+  and the pipeline ops read a folder's brief at entry on every host
+  (spec §1.3), since only Claude Code pushes files below the cwd.
 - Never use `param`, `params`, or `param_*` as identifiers (spec rule).
 - **Plugin versioning:** the plugin is the versioned unit — individual SKILL.md /
   doc files carry no per-file version stamps. Any change under `plugin/` bumps
   `plugin/.claude-plugin/plugin.json` in the same commit, and each publish to
   `main` gets a matching `git tag v<version>`, so "what version is live" is
   always answerable from the tag and installed copies are comparable to it.
+  There is no Codex manifest: Codex installs from `.claude-plugin/` as a
+  compatibility fallback (verified 2026-09-16 on Codex 0.154), so one manifest
+  serves both hosts.
 
 ## Regression suite
 

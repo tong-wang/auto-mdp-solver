@@ -11,9 +11,11 @@ description: >
 # mdp-interpret — Stage 5 (policy-structure readback)
 
 One op of the split MDP pipeline; `mdp-solver` is the conductor. The governing
-docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — read them from that path,
-never from a filesystem search (a dev checkout on disk would silently
-substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
+docs are at `${CLAUDE_SKILL_DIR}/../mdp-solver/` — the `mdp-solver` sibling
+of this skill's own directory (`${CLAUDE_SKILL_DIR}` is substituted by Claude
+Code at load; on Codex it is the path printed beside this skill in the skills
+list) — read them from that path, never from a filesystem search (a dev
+checkout on disk would silently substitute unreleased content). Read `CONTRACTS.md` there first: it maps the
 ops and says what each reads. **This op needs:** spec `MDP_PROJECT_SPEC.md`
 §14 (this op's specification — consult it while writing each file; do not code
 from memory of it), plus §1.2 and §8.4 where named below — nothing else of the
@@ -25,6 +27,11 @@ only when a step below names it. Venv and run discipline per `ENVIRONMENT.md`.
 ```bash
 <python> -m mdp_stage {domain} --for interpret
 ```
+
+
+Then read `{domain}/CLAUDE.md`, the folder's operating brief: Claude Code
+pushes it when work touches the folder, other hosts do not, and its hard
+rules bind this op either way.
 
 Its `interpret.owed` line states whether a declared stance owes the §14
 deliverables or only the generic pieces apply (spec §14.0) — quote it rather
