@@ -16,6 +16,12 @@ them at the two moments the model could otherwise skip them:
 * ``PostToolUse`` — after any tool call, validate every ``{name}_schema.json``
   whose mtime moved since the last check, and feed a failing validator's
   output straight back. An invalid IR then never survives to a sign-off.
+* ``UserPromptSubmit`` — when the prompt reads as a pipeline request (the
+  skill's own trigger vocabulary), record that intent for the workspace and
+  tell the model to use the ``mdp-solver`` skill. With intent on record, the
+  ``Stop`` rule above also fires when *no* domain folder exists at all — the
+  case where the model never opened the skill and solved the problem its own
+  way, which no per-folder check can see.
 
 Runs on the system ``python3`` with the stdlib only; the pipeline tools run
 under the workspace interpreter resolved exactly as ENVIRONMENT.md says
@@ -43,6 +49,12 @@ CLAIM = re.compile(
 FORMALIZE = re.compile(r"\b(formaliz\w*|restatement|sign[- ]?off|phase[- ]a|\bIR\b)", re.I)
 SOLVE = re.compile(r"\b(train\w*|ppo|leaderboard|baselines?|solve[ds]?|benchmark\w*)\b", re.I)
 PACKAGE = re.compile(r"policy\.py|deploy\w*|packag\w*", re.I)
+# The skill's trigger vocabulary (mdp-solver's description + the README's
+# quick-start phrasing). A prompt matching it is a pipeline request.
+TRIGGER = re.compile(
+    r"formaliz\w*|\bMDPs?\b|markov decision|train\w* an? (rl )?polic|"
+    r"build an? domain|mdp pipeline|\bphase [ab]\b|_schema\.json|"
+    r"solve it and compare|sequential decision|dynamic[- ]decision", re.I)
 # A turn that ends by asking the human something is a question round, not a
 # completion claim — a ballot line, an "Other" escape, or a trailing question.
 ASKS = re.compile(r"(?m)^\s*(Other\b|\d+\.\s+\S)|\?\s*$|\?\s*\n[^\n]{0,200}$")
@@ -102,6 +114,55 @@ def block(reason: str) -> int:
     return 2
 
 
+def plugin_root() -> Path:
+    for var in ("CLAUDE_PLUGIN_ROOT", "PLUGIN_ROOT"):
+        v = os.environ.get(var)
+        if v and Path(v).exists():
+            return Path(v)
+    return Path(__file__).resolve().parent.parent
+
+
+def state_dir() -> Path:
+    base = os.environ.get("CLAUDE_PLUGIN_DATA") or os.environ.get("PLUGIN_DATA") \
+        or tempfile.gettempdir()
+    d = Path(base) / "mdp_guard"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def cwd_key(cwd: Path) -> str:
+    return hashlib.sha1(str(cwd).encode()).hexdigest()[:12]
+
+
+def intent_file(cwd: Path) -> Path:
+    return state_dir() / f"{cwd_key(cwd)}.intent"
+
+
+# ------------------------------------------------------ UserPromptSubmit
+
+def on_prompt(payload: dict, cwd: Path) -> int:
+    prompt = payload.get("user_prompt") or payload.get("prompt") or ""
+    if not TRIGGER.search(prompt):
+        return 0
+    try:
+        intent_file(cwd).write_text(prompt[:2000])
+    except OSError:
+        pass
+    skill = plugin_root() / "skills" / "mdp-solver" / "SKILL.md"
+    note = (
+        "auto-mdp-solver: this request is a pipeline request (formalize / build / "
+        "solve a dynamic decision problem). Do not solve it directly with ad-hoc "
+        "code or prose. Use the `mdp-solver` skill — Claude Code: invoke "
+        "`/mdp-solver`; Codex: `$mdp-solver`; either way its instructions are "
+        f"at {skill}. The pipeline's guard will not let a turn end on a "
+        "completion claim until a validated `{name}/{name}_schema.json` and its "
+        "restatement exist and the stage gates agree."
+    )
+    print(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit", "additionalContext": note}}))
+    return 0
+
+
 # ----------------------------------------------------------------- Stop
 
 def on_stop(payload: dict, cwd: Path) -> int:
@@ -115,12 +176,17 @@ def on_stop(payload: dict, cwd: Path) -> int:
     py = interpreter(cwd)
     folders = domain_folders(cwd)
     if not folders:
-        if FORMALIZE.search(msg) and py is not None:
+        if FORMALIZE.search(msg) or intent_file(cwd).exists():
+            skill = plugin_root() / "skills" / "mdp-solver" / "SKILL.md"
             return block(
-                "mdp-guard: the message reads as a completed formalization, but no "
-                "`{name}/{name}_schema.json` exists under the workspace. Phase A's "
-                "exit is a validated IR plus a restatement, not a description of one. "
-                "Resume mdp-formalize; do not end the turn on this claim.")
+                "mdp-guard: this turn ends on a completion claim, but no "
+                "`{name}/{name}_schema.json` exists under the workspace — the "
+                "pipeline was requested and never entered. The deliverable is a "
+                "validated IR plus a restatement produced by the mdp-solver skill "
+                f"(instructions: {skill}), then the built domain and its gates; "
+                "a hand-written formalization or solver is not it. Invoke the "
+                "skill now (Claude Code: `/mdp-solver`; Codex: `$mdp-solver`) and "
+                "run its Phase A; do not end the turn on this claim.")
         return 0
     if py is None:
         return 0
@@ -159,12 +225,7 @@ def on_stop(payload: dict, cwd: Path) -> int:
 # ----------------------------------------------------------- PostToolUse
 
 def state_file(cwd: Path) -> Path:
-    base = os.environ.get("CLAUDE_PLUGIN_DATA") or os.environ.get("PLUGIN_DATA") \
-        or tempfile.gettempdir()
-    key = hashlib.sha1(str(cwd).encode()).hexdigest()[:12]
-    d = Path(base) / "mdp_guard"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"{key}.json"
+    return state_dir() / f"{cwd_key(cwd)}.json"
 
 
 def on_post_tool(payload: dict, cwd: Path) -> int:
@@ -219,6 +280,8 @@ def main() -> int:
         return on_stop(payload, cwd)
     if event == "PostToolUse":
         return on_post_tool(payload, cwd)
+    if event == "UserPromptSubmit":
+        return on_prompt(payload, cwd)
     return 0
 
 
