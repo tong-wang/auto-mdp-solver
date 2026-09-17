@@ -43,6 +43,9 @@ CLAIM = re.compile(
 FORMALIZE = re.compile(r"\b(formaliz\w*|restatement|sign[- ]?off|phase[- ]a|\bIR\b)", re.I)
 SOLVE = re.compile(r"\b(train\w*|ppo|leaderboard|baselines?|solve[ds]?|benchmark\w*)\b", re.I)
 PACKAGE = re.compile(r"policy\.py|deploy\w*|packag\w*", re.I)
+# A turn that ends by asking the human something is a question round, not a
+# completion claim — a ballot line, an "Other" escape, or a trailing question.
+ASKS = re.compile(r"(?m)^\s*(Other\b|\d+\.\s+\S)|\?\s*$|\?\s*\n[^\n]{0,200}$")
 
 
 def interpreter(cwd: Path) -> Path | None:
@@ -106,6 +109,8 @@ def on_stop(payload: dict, cwd: Path) -> int:
         return 0
     msg = payload.get("last_assistant_message") or ""
     if not CLAIM.search(msg):
+        return 0
+    if ASKS.search(msg[-600:]):
         return 0
     py = interpreter(cwd)
     folders = domain_folders(cwd)
