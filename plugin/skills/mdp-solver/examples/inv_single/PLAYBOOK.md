@@ -11,10 +11,13 @@ objectives on seed blocks disjoint from the reported one. Magnitudes are given
 as **% of that cell's exact optimum** — raw cost units mean nothing outside
 this folder and stay in the `#E` citations.
 
-**Already upstream; not repeated here.** The ordinal / zero-inflated quantity
-head is `adi_flex` LV1 + MR9 — this campaign confirms it a second time and, for
-the first time, at a *tuned* centre, where its value shows up as reduced
-seed variance rather than a better peak (#E21). Checkpoint screening is
+**Already upstream; not repeated here.** The hurdle-discretized-Gaussian
+quantity head ("ordinal" informally) is `adi_flex` LV1 + MR9 — one name over
+two separable mechanisms: the adjacency-pooling discretized-Gaussian body,
+plus a hurdle zero gate that exclusively owns P(0), earned here by the fixed
+cost. This campaign confirms the head a second time and, for the first time,
+at a *tuned* centre, where its value shows up as reduced seed variance rather
+than a better peak (#E21). Checkpoint screening is
 `mab` LV6, already graduated into spec §8.6/§9.7; harvesting a tuner's centre
 is `mab` LV7; distilling a net into a rule and scoring the rule is `mab` LV8.
 Pricing a representation lever at L2 rather than L1 is `clark_scarf` LV2.

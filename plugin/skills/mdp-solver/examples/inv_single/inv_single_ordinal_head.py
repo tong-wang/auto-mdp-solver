@@ -1,5 +1,6 @@
-"""Ordinal (mixture-at-zero) order head — ported from the `adi_flex` case
-(`adi_flex_ordinal_head.py`), whose diagnosis is the same one measured here.
+"""Hurdle-discretized-Gaussian ("ordinal") order head — ported from the
+`adi_flex` case (`adi_flex_ordinal_head.py`), whose diagnosis is the same one
+measured here.
 
 The plain categorical head spreads its gradient over `q_high + 1` independent
 logits with **no notion of adjacency**, so learning that 14 is right teaches the
@@ -21,11 +22,16 @@ class, not a constructor argument"). The logits are induced from three numbers:
     logit(0) = log w
     logit(k) = log(1 - w) - (k - mu)^2 / (2 tau^2) - logZ,   k >= 1
 
-a point mass at zero mixed with a discretized Gaussian over the positive
-quantities. The zero atom is exactly what the `hurdle` encoding tried to buy by
-splitting the action space (#E6, worse on both targets) -- here it costs one
-parameter instead of a second head, and keeps a single categorical so log_prob,
-entropy, sampling and mode are all inherited unchanged.
+a HURDLE construction: a zero gate w over a discretized Gaussian on the
+positive quantities. The positive branch is zero-truncated, so the gate
+exclusively owns P(0) -- there is no second route to zero through mu. It is
+the same two-part structure the `hurdle` encoding tried to buy by splitting
+the action space (#E6, worse on both targets) -- here it costs one parameter
+instead of a second head, and keeps a single categorical so log_prob, entropy,
+sampling and mode are all inherited unchanged. Gate and body are SEPARABLE
+mechanisms: this domain's fixed cost earns the gate; a domain without a
+genuine "do nothing" mass wants the adjacency-pooling body alone
+(`adi_flex` LV1 SCOPE (ii)).
 
 The location gradient d log pi / d mu ~ (a - mu) / tau^2 pools EVERY sample into
 one estimate of where the level is, instead of nudging one category's logit.
@@ -38,8 +44,13 @@ this class by module path, so eval/select must run where it is importable (the
 domain dir, as always).
 
 At init (SB3's ortho gain 0.01, zero bias) w = 0.5, mu = mid-range and tau is
-large, so the induced distribution is near-uniform -- the same exploration a
-zero-init categorical starts from.
+large. Only the POSITIVE branch is near-flat; the head as a whole starts
+nothing like a zero-init categorical: the gate owns P(0) outright, so
+P(q = 0) begins at 0.5 against a flat categorical's 1/(q_high + 1), and the
+deterministic argmax at init is q = 0 until t has travelled ~log(q_high)
+logit-units. Here the fixed cost makes that a sane prior; on a domain without
+a genuine "do nothing" mass it makes every slow-learning configuration
+evaluate as the do-nothing constant (`adi_flex` LV1 SCOPE (ii)).
 """
 
 from __future__ import annotations
