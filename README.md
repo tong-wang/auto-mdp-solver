@@ -90,9 +90,9 @@ a published paper end to end, every interview round in shape and the model
 right on first presentation; the same family at effort "low" skipped two
 of the reads its skill requires, wrote an IR that fails validation and
 improvised a solver of its own, and Haiku 4.5 needed a correction at nearly
-every round. The plugin ships guard hooks that refuse to end a turn on a
-success the pipeline's gates contradict and feed schema errors straight
-back — so a weak model is stopped, not rescued. What no hook can catch is a
+every round. The executable gates run where the step skills invoke them, at
+the stage boundaries, so they bind only a model that stays in the pipeline —
+below the floor nothing does. What no gate can catch is a
 *valid* model of the wrong problem, and that is what the interview is for:
 the pipeline presents its model for your sign-off, a wrong restatement
 signed off is frozen, and the best first run is a paper you know.
