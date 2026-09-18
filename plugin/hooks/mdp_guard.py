@@ -50,9 +50,17 @@ FORMALIZE = re.compile(r"\b(formaliz\w*|restatement|sign[- ]?off|phase[- ]a|\bIR
 SOLVE = re.compile(r"\b(train\w*|ppo|leaderboard|baselines?|solve[ds]?|benchmark\w*)\b", re.I)
 PACKAGE = re.compile(r"policy\.py|deploy\w*|packag\w*", re.I)
 # The skill's trigger vocabulary (mdp-solver's description + the README's
-# quick-start phrasing). A prompt matching it is a pipeline request.
+# quick-start phrasing). A prompt matching it is a pipeline request. "MDP"
+# must not match the plugin's own name: a hyphen is a word boundary, so
+# "auto-mdp-solver" and a scratchpad path like ".../-projects-mdp-solver/..."
+# would otherwise read as one — which is how a background-task notice once
+# recorded pipeline intent for a plain PR review (2026-09-18).
+# The host also delivers its own notices (a background task finishing, a
+# system reminder) through UserPromptSubmit; they are not the human asking.
+NOT_A_PROMPT = re.compile(
+    r"<task-notification>|\[SYSTEM NOTIFICATION\b|<system-reminder>", re.I)
 TRIGGER = re.compile(
-    r"formaliz\w*|\bMDPs?\b|markov decision|train\w* an? (rl )?polic|"
+    r"formaliz\w*|\bMDPs?\b(?![-_]solver)|markov decision|train\w* an? (rl )?polic|"
     r"build an? domain|mdp pipeline|\bphase [ab]\b|_schema\.json|"
     r"solve it and compare|sequential decision|dynamic[- ]decision", re.I)
 # A turn that ends by asking the human something is a question round, not a
@@ -142,7 +150,7 @@ def intent_file(cwd: Path) -> Path:
 
 def on_prompt(payload: dict, cwd: Path) -> int:
     prompt = payload.get("user_prompt") or payload.get("prompt") or ""
-    if not TRIGGER.search(prompt):
+    if NOT_A_PROMPT.search(prompt) or not TRIGGER.search(prompt):
         return 0
     try:
         intent_file(cwd).write_text(prompt[:2000])
