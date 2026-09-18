@@ -26,7 +26,7 @@ PL(σ) 347.1749, AP 332.8232.
 
 ## Lever entries
 
-### LV1 — a discrete *quantity* decision gets an ordinal head, zero-inflated when "do nothing" is a real mass
+### LV1 — a discrete *quantity* decision gets a discretized-Gaussian ("ordinal") head, with a hurdle zero gate when "do nothing" is a real mass
 
 ```
 context:      het_exp4, after the action encoding (order_protection, F51/#E11)
@@ -52,8 +52,10 @@ diagnosis:    a categorical head over an ORDERED quantity splits one gradient
               separable, masking and passthrough intact), then by a 2×2 that
               showed the effect additive with norm_obs, so no confound.
 prescription: arch. Replace the per-quantity logits with three numbers —
-              P(q = 0) = sigmoid(t) (the trigger, zero-inflation), a
-              discretized-Gaussian location μ and width τ over q ≥ 1 — and
+              P(q = 0) = sigmoid(t) (the trigger — a HURDLE gate: the positive
+              branch is zero-truncated, so this one scalar exclusively owns
+              P(0)), a discretized-Gaussian location μ and width τ over
+              q ≥ 1 — and
               EXPAND them back to logits, so the action space, the mask, the
               entropy and the algorithm are untouched (MaskablePPO, `a0`'s
               constraint, still hold). A policy-architecture knob like
@@ -72,9 +74,19 @@ prescription: arch. Replace the per-quantity logits with three numbers —
               the head does most of what 820 trials of tuning did.
               SCOPE: (i) for a decision that is a QUANTITY whose neighbours are
               substitutes — order size, batch, allocation amount — not for a
-              nominal choice; (ii) zero-inflate only when the problem has a
-              genuine "do nothing" mass (a fixed cost ⇒ an (s,S) trigger);
-              otherwise the plain ordinal body; (iii) leave a head categorical
+              nominal choice; (ii) add the hurdle gate only when the problem
+              has a genuine "do nothing" mass (a fixed cost ⇒ an (s,S)
+              trigger); otherwise the plain discretized-Gaussian body — which
+              had NO shipped implementation as of 2026-09-18 (`clark_scarf`'s
+              ordinal board is building one), and outside its scope the gate
+              is a measured hazard, not a harmless extra: it owns P(0) and
+              starts at 0.5, so under deterministic evaluation the argmax is
+              "do nothing" until t travels ~log(n−1) logit-units, and every
+              slow-learning configuration scores as the do-nothing constant —
+              on `clark_scarf` (no fixed cost) 28 of 57 tuning trials sat
+              flat at the ship-nothing constant while their sampled behaviour
+              trained normally, a cliff in the tuner's objective;
+              (iii) leave a head categorical
               where a smoothness prior points the wrong way — here the σ heads,
               +0.10 at stake and a terminal-boundary effect (#E14); (iv) the
               gain shrinks as the categorical baseline is better tuned (−8..−9
@@ -83,7 +95,11 @@ prescription: arch. Replace the per-quantity logits with three numbers —
               rollout and λ ≈ 0.995 where the categorical wanted 512–2048 and
               0.81–0.95 (h6 vs h2), worth −1.33 on vec and nothing on vec_mip;
               (vi) gate it training-free before any run — an exactness error in
-              the expanded logits would be invisible in a learning curve.
+              the expanded logits would be invisible in a learning curve —
+              and gate the INIT too: the induced distribution against flat,
+              and the deterministic argmax at init. Expressiveness and
+              gradient checks say nothing about the starting point, which is
+              where the out-of-scope failure lived.
 failed:       on the same symptom — more hp/budget (stage 2, 820 trials: 342.90,
               +1.64 and a ranking that inverts on confirm); alternative order
               encodings (target_ip/target_mip: three of four contrasts
@@ -343,10 +359,12 @@ MR8  if a tier-2 stance's instrument is an outcome comparison between arms,
      the stance is `bypass`; `confirm` needs a readback that recovers the
      structure — declare the stance the instrument can decide, and re-read
      every stance against its instrument at Phase A (F58).
-MR9  if the decision is a discrete QUANTITY, start with an ordinal head, and
-     zero-inflate it when the problem has a fixed cost or any other genuine
-     "do nothing" mass (LV1) — a per-quantity categorical head is the choice
-     that needs justifying, not the default.
+MR9  if the decision is a discrete QUANTITY, start with a discretized-
+     Gaussian ("ordinal") head, and add the hurdle zero gate ONLY when the
+     problem has a fixed cost or some other genuine "do nothing" mass (LV1) —
+     a per-quantity categorical head is the choice that needs justifying, not
+     the default, and the gate outside its scope is a measured hazard, not a
+     harmless extra (LV1 SCOPE (ii)).
 ```
 
 ---
