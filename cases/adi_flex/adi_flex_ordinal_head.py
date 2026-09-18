@@ -1,5 +1,6 @@
-"""Ordinal (mixture-at-zero) order head for `order_protection` (design and gate:
-ESCALATION.md #E22; evidence base: #E21, the order-gap dissection).
+"""Hurdle-discretized-Gaussian ("ordinal") order head for `order_protection`
+(design and gate: ESCALATION.md #E22; evidence base: #E21, the order-gap
+dissection).
 
 The categorical order head splits its gradient signal across 108 independent
 logits with no notion of adjacency, which is why a ±1-unit magnitude error
@@ -16,11 +17,16 @@ space, but the ORDER head's 108 logits are induced from 3 numbers —
     logit(k) = log(1-w) - (k-mu)^2/(2 tau^2) - logZ ,  k >= 1
                logZ = logsumexp_j [-(j-mu)^2/(2 tau^2)]
 
-a mixture of a point mass at 0 (the trigger keeps its own degree of freedom —
-near the (s,S) boundary the target distribution is bimodal, "0 or ~S-u", which
-a plain unimodal head cannot express) and a discretized Gaussian over the
-positive quantities, whose location gradient  d log pi / d mu ~ (a-mu)/tau^2
-pools every sample into one estimate instead of one category's logit.
+a HURDLE construction: a zero gate w over a discretized Gaussian on the
+positive quantities. The positive branch is zero-truncated, so the gate
+exclusively owns P(0) — there is no second route to zero through mu. (The
+trigger keeps its own degree of freedom — near the (s,S) boundary the target
+distribution is bimodal, "0 or ~S-u", which a plain unimodal head cannot
+express.) The body's location gradient  d log pi / d mu ~ (a-mu)/tau^2 pools
+every sample into one estimate instead of one category's logit — adjacency
+pooling, the mechanism the flat head lacks. Gate and body are SEPARABLE
+mechanisms: a domain without a genuine "do nothing" mass wants the body
+without the gate (PLAYBOOK.md LV1 SCOPE (ii)).
 
 The sigma head(s) stay plain categorical: only +0.10 at stake there, and its
 residual is partly the terminal-boundary effect (#E14), where a smoothness
@@ -31,9 +37,15 @@ inherited MaskableMultiCategorical machinery over the expanded logits, so
 MaskablePPO and the `a0` algorithm axis do not move. Gate:
 `adi_flex_ordinal_head_probe.py` (run it before trusting any training).
 
-At init (ortho gain 0.01, zero bias): w = 0.5, mu = mid-range, tau ~ 28 —
-the induced distribution is near-uniform over the order range, matching the
-exploration a zero-init categorical starts from.
+At init (ortho gain 0.01, zero bias): w = 0.5, mu = mid-range, tau ~ 28. The
+positive branch is smooth and wide (max/min ~ 6 over 1..107), but the head as
+a whole starts nothing like a zero-init categorical: the gate owns P(0)
+outright, so P(order = 0) begins at 0.5 against a flat categorical's 1/108
+(54x), and the deterministic argmax at init is "order nothing" until t has
+travelled ~log(107) ~ 4.7 logit-units. Inside this domain's scope the fixed
+cost makes that a sane prior; on a domain without a "do nothing" mass it
+makes every slow-learning configuration evaluate as the do-nothing constant
+(measured downstream — PLAYBOOK.md LV1 SCOPE (ii)).
 """
 
 from __future__ import annotations
@@ -68,7 +80,8 @@ def expand_order_logits(raw: th.Tensor, n_ord: int) -> th.Tensor:
 
 
 class OrdinalMultiCategoricalDistribution(MaskableMultiCategoricalDistribution):
-    """First head ordinal (mixture-at-zero), remaining heads plain categorical.
+    """First head a hurdle-discretized-Gaussian ("ordinal"), remaining heads
+    plain categorical.
 
     The action layer outputs `3 + sum(action_dims[1:])` numbers; this class
     expands them to the full `sum(action_dims)` logits and delegates to the

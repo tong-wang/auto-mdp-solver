@@ -175,12 +175,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-normalize-advantage", action="store_false",
                    dest="normalize_advantage", default=True,
                    help="disable PPO's per-minibatch advantage normalization")
-    # ARCH-layer lever (ESCALATION.md #E22): the ORDER head's
-    # distribution parameterization. `ordinal` = mixture-at-zero + discretized
-    # Gaussian (3 numbers instead of order_max+1 logits) — the action space,
-    # decode, masking and algorithm (`a0` = MaskablePPO) are untouched, so this
-    # is a policy-architecture knob like net_arch, NOT an action mode and NOT
-    # an IR change. Gated by adi_flex_ordinal_head_probe.py (G1-G5).
+    # ARCH-layer lever (ESCALATION.md #E22): the ORDER head's distribution
+    # parameterization. `ordinal` = a hurdle zero gate over a discretized-
+    # Gaussian body (3 numbers instead of order_max+1 logits) — the action
+    # space, decode, masking and algorithm (`a0` = MaskablePPO) are untouched,
+    # so this is a policy-architecture knob like net_arch, NOT an action mode
+    # and NOT an IR change. Gated by adi_flex_ordinal_head_probe.py (G1-G5).
     # PROTECT_MODES only: the head assumes head-0 is the order quantity of a
     # one-shot MultiDiscrete mode; the fixed-order instrument has no order head.
     p.add_argument("--order-head", type=str, default="categorical",
