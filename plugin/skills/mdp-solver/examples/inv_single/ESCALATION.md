@@ -323,6 +323,24 @@ optimum is a single sharp level and the other has a trigger to discover (#E8).
 
 ## FRAME-CHANGELOG
 
+### 2026-09-18 — the ordinal head's `params` argument violates the naming rule; rename owed on the author's clock
+
+**No fingerprint moved; nothing was edited.** A readback during the
+hurdle-naming correction (PR #90) found `expand_order_logits` in
+`inv_single_ordinal_head.py` naming its first argument `params` — the name
+the spec forbids ("never `param`, `params`, or `param_*` anywhere in the
+codebase"). The port introduced it: the `adi_flex` original names the same
+argument `raw`. Identifier-only (the docstring's prose "parameter" is fine),
+and no gate catches it — conformance checks structure, not identifier names.
+
+This folder — the shipped exemplar — is frozen: code edits land through the
+entry's author with a plugin version bump, not as research edits. **Owed:**
+rename `params` → `raw` in both copies (this folder and the author's
+campaign copy) — a pure argument rename; saved models reference the policy
+class by module path, never this function's signature — re-run pytest, ship
+at the author's next pass. Recorded so the debt has an address; not done in
+this entry.
+
 ### 2026-09-14 — REPARENTED/RETYPED: the root is the `K=0` variance family; `lt_variance_k20` is an open extension
 
 **A deliberate scope cut, which guide §3.5 makes a re-framing of the root and
