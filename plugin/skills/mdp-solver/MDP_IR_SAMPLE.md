@@ -52,7 +52,7 @@ verifying rather than dictating.
 
 ```jsonc
 {
-  "ir_version": "0.4",
+  "ir_version": "0.5",
   "seed_scheme": "v2",                   // spec §6.3 seed tree; canonical for new domains
 
   "domain": {

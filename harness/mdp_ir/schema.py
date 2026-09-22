@@ -1070,21 +1070,45 @@ _OPTIONAL_SINCE_29 = ("model",)
 # It adds no fact, so it is excluded from every hash unconditionally: a schema
 # that documents itself must not thereby void its own Phase-A confirmation
 _ANNOTATION_KEYS = ("narrowed",)
+# Documentation text, on the same argument one lineage later (IR 0.5): a `desc`
+# names what a quantity is for and a `note` qualifies a distribution; neither
+# states a fact the interpreter reads, and no trajectory moves when one is
+# rewritten. Hashing them made prose edits void a Phase-A sign-off, which cost
+# a case its correction twice in one afternoon — first a same-day re-signing to
+# accommodate the fix, then a description knowingly left wrong because putting
+# it right would have orphaned the artifacts. Excluded from IR 0.5 onward only:
+# an IR at 0.4 hashes byte-identically to what it always did, and one that
+# adopts moves its token once, which is the truth about it (cf. #34).
+_PROSE_KEYS = ("desc", "note")
+_PROSE_FREE_SINCE = (0, 5)
 
 
-def _prune_absent(node):
-    """Drop the #29 fields wherever they are empty, at any depth.
+def hashes_prose(ir_version: str) -> bool:
+    """Whether this IR's declared version still hashes documentation text.
+
+    An unparseable version is legacy: a freeze token is not the place to guess.
+    """
+    try:
+        parsed = tuple(int(part) for part in str(ir_version).split("."))
+    except ValueError:
+        return True
+    return parsed < _PROSE_FREE_SINCE
+
+
+def _prune_absent(node, prose_keys: tuple[str, ...] = ()):
+    """Drop the #29 fields wherever they are empty, at any depth, plus the
+    annotations that state no fact — ``prose_keys`` per the IR's version.
 
     The freeze token must be byte-identical for an IR that predates them —
     otherwise every downstream fingerprint moves on upgrade and the Phase-A
     confirmations all read as voided.
     """
     if isinstance(node, dict):
-        return {k: _prune_absent(v) for k, v in node.items()
-                if k not in _ANNOTATION_KEYS
+        return {k: _prune_absent(v, prose_keys) for k, v in node.items()
+                if k not in _ANNOTATION_KEYS and k not in prose_keys
                 and not (k in _OPTIONAL_SINCE_29 and not v)}
     if isinstance(node, list):
-        return [_prune_absent(v) for v in node]
+        return [_prune_absent(v, prose_keys) for v in node]
     return node
 
 
@@ -2396,8 +2420,13 @@ class MdpIR(_Base):
         does adopt moves its token once, which is the truth: its model
         statement changed. Once. A field added to the model layer later must
         not move it a second time, so within that block an unset field is
-        pruned too (#34)."""
-        payload = _prune_absent(self.mdp.model_dump(mode="json"))
+        pruned too (#34).
+
+        From IR 0.5 the same reasoning covers documentation text: `desc` and
+        `note` are excluded, so a description can be corrected without voiding
+        the confirmation it was written under. An IR at 0.4 is untouched."""
+        prose = () if hashes_prose(self.ir_version) else _PROSE_KEYS
+        payload = _prune_absent(self.mdp.model_dump(mode="json"), prose)
         if "model" in payload:
             payload["model"] = _model_payload(payload["model"])
         canonical = json.dumps(payload, sort_keys=True)

@@ -23,7 +23,10 @@ import pytest
 # in one screen, rich enough to carry a guard, an info field, a decomposition,
 # an instance override and a scenario constant.
 _MINIMAL: dict = {
-    "ir_version": "1.0",
+    # the shipped lineage, so the fixture exercises the same hashing rules the
+    # domains do; the field sits outside the hashed mdp block, so pinning it
+    # here moves no token (see test_fingerprint_prose.py)
+    "ir_version": "0.4",
     "seed_scheme": "v2",
     "domain": {"name": "tiny", "class_prefix": "Tiny"},
     "mdp": {

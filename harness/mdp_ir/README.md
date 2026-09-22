@@ -19,7 +19,7 @@ python -m mdp_ir plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.
 ```python
 from mdp_ir import load_ir
 ir = load_ir("plugin/skills/mdp-solver/examples/inv_single/inv_single_schema.json")
-ir.mdp_fingerprint()   # freeze token of the problem block
+ir.mdp_fingerprint()   # freeze token of the problem block (IR 0.5+: prose excluded)
 ir.unconfirmed()       # Confirmable fields not yet human-reviewed
 ```
 
