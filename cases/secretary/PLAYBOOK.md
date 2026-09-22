@@ -62,13 +62,13 @@ to the optimum.” Evidence: [#E1](ESCALATION.md#E1).
 
 ## Modeling rules
 
-### MR1 — reset-time realizations belong to episode state
+### MR1 — use the scenario-sampler contract for reset-time world draws
 
-If randomness is redrawn for every reset while setting hyperparameters remain
-fixed, store the realization in episode state even when an IR interpreter uses
-a world-sampler primitive to initialize it. Do not let the interpreter’s
-mechanism dictate scenario ownership in generated code. Evidence:
-[F1](ESCALATION.md#ir-changelog).
+When the IR declares a scenario sampler, place its callable source in
+`SCENARIOS`, give it the declared `substream_id`, and realize one concrete
+scenario per reset with `meta_key()`. Initialization may then copy the realized
+world into episode state for deterministic transitions; it must not perform a
+second draw. Evidence: [F2](ESCALATION.md#f2).
 
 ## What did not transfer
 

@@ -9,7 +9,7 @@ import numpy as np
 
 import secretary_mdp as mdp
 from secretary_mdp import SecretaryState
-from secretary_scenarios import SecretaryScenario
+from secretary_scenarios import SecretaryScenario, SecretaryScenarioSource
 
 
 class SecretaryEnv(gym.Env):
@@ -25,7 +25,7 @@ class SecretaryEnv(gym.Env):
 
     def __init__(
         self,
-        scenario: SecretaryScenario,
+        scenario: SecretaryScenario | SecretaryScenarioSource,
         observation_mode: str = "relative",
         action_mode: str = "accept",
         reward_mode: str = "success",
@@ -50,6 +50,7 @@ class SecretaryEnv(gym.Env):
             dtype=np.float32,
         )
         self._state: SecretaryState
+        self._episode_scenario: SecretaryScenario
         self._info: dict
         self._episode_seed: int
         self.total_reward = 0.0
@@ -58,7 +59,7 @@ class SecretaryEnv(gym.Env):
     def _get_obs(self) -> np.ndarray:
         return np.array(
             [
-                float(self.scenario.n_candidates - self._state.period),
+                float(self._episode_scenario.n_candidates - self._state.period),
                 float(self._state.relative_rank),
             ],
             dtype=np.float32,
@@ -75,7 +76,14 @@ class SecretaryEnv(gym.Env):
             self._episode_seed = int(seed)
         else:
             self._episode_seed = int(self.np_random.integers(0, 2_147_483_647))
-        self._state, self._info = mdp.init_state(self.scenario, self._episode_seed)
+        self._episode_scenario = (
+            self.scenario(self._episode_seed)
+            if callable(self.scenario)
+            else self.scenario
+        )
+        self._state, self._info = mdp.init_state(
+            self._episode_scenario, self._episode_seed
+        )
         self.total_reward = 0.0
         obs = self._get_obs()
         assert self.observation_space.contains(obs)
@@ -85,7 +93,7 @@ class SecretaryEnv(gym.Env):
         self, action: np.ndarray | int
     ) -> tuple[np.ndarray, float, bool, bool, dict]:
         self._state, self._info = mdp.advance(
-            self.scenario, self._state, int(action)
+            self._episode_scenario, self._state, int(action)
         )
         reward = float(self._info["outcome"]["total"])
         self.total_reward += reward

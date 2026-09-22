@@ -1,18 +1,18 @@
 # Secretary MDP restatement
 
-**Status:** signed off 2026-09-22
-**MDP fingerprint:** `36aa528b6f34`
+**Status:** signed off 2026-09-23
+**MDP fingerprint:** `fdc8951326c2`
 **Schema:** `secretary/secretary_schema.json`
 
 ## Problem
 
-There are exactly 100 candidates. The scenario contains only setting
-hyperparameters, principally `n_candidates=100`. When a new episode is
-initialized or reset, nature draws a fresh uniformly random permutation of the
-candidates' distinct absolute ranks 1 through 100, where rank 1 is the unique
-overall best. This realized arrival order is stored in that episode's hidden
-state and is never part of the scenario. The complete permutation is hidden
-from the decision-maker.
+There are exactly 100 candidates. The registered scenario source contains the
+fixed setting hyperparameters, principally `n_candidates=100`. When a new
+episode is initialized or reset, that source draws a concrete scenario with a
+fresh uniformly random permutation of the candidates' distinct absolute ranks
+1 through 100, where rank 1 is the unique overall best. Initialization copies
+this realized arrival order into the episode's hidden state. The complete
+permutation is hidden from the decision-maker.
 
 Candidates arrive one at a time. At each arrival, the decision-maker sees the
 candidate's position and relative rank among all candidates seen so far. An
@@ -43,18 +43,18 @@ scoring against the exact threshold reference.
 
 ## Randomness classification
 
-The complete arrival permutation is the one genuine random object. It is an
-**episode-initialization draw**, sampled by initialization/reset and stored as
-the latent `arrival_order` state variable. It is not a scenario field. A
+The complete arrival permutation is the one genuine random object. It is a
+**scenario-sampler draw**, realized once at initialization/reset in a concrete
+scenario and copied into the latent `arrival_order` state variable. A
 deterministic per-period transition merely reveals the appropriate entry from
 that already-drawn state; it introduces no additional randomness. There is no
 training-only distribution over problem variants and no within-episode regime.
 
-The v0.11.4 IR interpreter represents a reset-time random initializer through
-its world-sampler mechanism: it draws `initial_arrival_order` and immediately
-copies that value into the initial latent state. This is an interpreter encoding
-detail, not domain ownership; generated domain code must perform the draw in
-`init_state`/`reset`, while scenario objects retain only setting hyperparameters.
+The v0.11.4 IR and generated-code contracts agree on this placement: a callable
+entry in `SCENARIOS`, carrying `substream_id=0`, draws
+`initial_arrival_order` from `meta_key(0, episode_seed, seed_salt)` and returns
+a fully concrete scenario. The Gym reset realizes it once, then `init_state`
+copies the permutation into latent state without drawing again.
 
 ## State, decisions, and horizon
 
@@ -89,8 +89,9 @@ The sample trajectory below reports no invariant violations.
 ## Assumptions and provenance
 
 - `N=100`: human-confirmed specialist design point.
-- Uniform fresh permutation per episode, drawn during initialization/reset and
-  owned by episode state rather than scenario: human-corrected and confirmed.
+- Uniform fresh permutation per episode, drawn by the callable scenario source
+  and copied into episode state during initialization/reset: human-corrected
+  and confirmed.
 - Relative-rank-only observation: human-confirmed information structure.
 - Accepting non-record candidates remains legal: human-confirmed.
 - Forced final selection: human-confirmed.

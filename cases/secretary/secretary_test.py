@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from math import factorial
 from pathlib import Path
 
 import pytest
@@ -18,9 +17,8 @@ from mdp_ir.testing import (
 )
 
 from secretary_mdp import advance, init_state
-from secretary_scenarios import scenario_standard
+from secretary_scenarios import source_standard
 from secretary_select import _blocks_overlap, _checkpoints, _vecnorm_for
-from secretary_uncertainty import RankingUncertainty
 from secretary_benchmark_dp import solve
 from secretary_benchmark_threshold import (
     optimal_skip_count,
@@ -55,31 +53,27 @@ def test_differential_matches_domain(instance):
     assert_match(SCHEMA, instance=instance, episodes=8)
 
 
-def test_reset_draw_is_pure_and_stored_only_in_state():
-    a, _ = init_state(scenario_standard, 17)
-    b, _ = init_state(scenario_standard, 17)
-    c, _ = init_state(scenario_standard, 18)
+def test_scenario_sampler_is_pure_and_init_copies_realization_to_state():
+    scenario_a = source_standard(17)
+    scenario_b = source_standard(17)
+    scenario_c = source_standard(18)
+    a, _ = init_state(scenario_a, 17)
+    b, _ = init_state(scenario_b, 17)
+    c, _ = init_state(scenario_c, 18)
     assert a.arrival_order == b.arrival_order
     assert a.arrival_order != c.arrival_order
-    assert set(a.arrival_order) == set(range(1, scenario_standard.n_candidates + 1))
-    assert not hasattr(scenario_standard, "arrival_order")
+    assert a.arrival_order == scenario_a.arrival_order
+    assert set(a.arrival_order) == set(range(1, source_standard.n_candidates + 1))
+    assert not hasattr(source_standard, "arrival_order")
 
 
-def test_ranking_uncertainty_and_reset_meta_key():
-    ranking = RankingUncertainty(scenario_standard.n_candidates)
-    assert ranking.support == tuple(range(1, 101))
-    assert ranking.n_realizations == factorial(100)
-    assert ranking.contains(tuple(reversed(ranking.support)))
-    assert not ranking.contains(ranking.support[:-1])
-    assert ranking.seed_key(17, scenario_standard.seed_salt) == [
+def test_scenario_sampler_uses_the_declared_meta_key():
+    assert source_standard.seed_key(17) == [
         0,
         0,
         17,
-        scenario_standard.seed_salt,
+        source_standard.seed_salt,
     ]
-    draw = ranking.sample(17, scenario_standard.seed_salt)
-    state, _ = init_state(scenario_standard, 17)
-    assert draw == state.arrival_order
 
 
 def test_selector_pairs_each_checkpoint_with_its_own_normalizer(tmp_path: Path):
@@ -97,7 +91,7 @@ def test_selector_pairs_each_checkpoint_with_its_own_normalizer(tmp_path: Path):
 
 
 def test_relative_rank_and_forced_final_selection():
-    scenario = scenario_standard
+    scenario = source_standard(9)
     state, _ = init_state(scenario, 9)
     for _ in range(scenario.n_candidates):
         visible = 1 + sum(

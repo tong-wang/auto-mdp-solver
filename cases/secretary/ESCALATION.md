@@ -11,7 +11,7 @@ campaign stops and asks for new authorization.
 
 ```mermaid
 graph TD
-    ROOT["IR secretary v0.4<br/>mdp 36aa528b6f34"]
+    ROOT["IR secretary v0.4<br/>mdp fdc8951326c2"]
     ROOT ==>|"cases · scenario · S1 · required ★"| SC["scenario=standard<br/>N=100 specialist · #E1<br/>sc0"]
     SC ==>|"design-axes · solver · S1 · role=exact · tier=1 ✓"| DP["method=dp<br/>0.371826 ± 0.005340 · #E1"]
     SC ==>|"design-axes · solver · S2 · role=exact · tier=1 ✓"| TH["method=threshold<br/>0.371826 ± 0.005340 · #E1"]
@@ -97,6 +97,40 @@ rule: If randomness is redrawn for every reset while the setting remains
 fixed, classify the realization as episode state even when the IR interpreter
 uses a world-sampler primitive to initialize it; never copy that interpreter
 mechanism into scenario ownership in generated code.
+
+### <a id="F2"></a>F2 2026-09-23 — restored the declared callable scenario sampler
+
+decision: Generated-code placement of the reset-time permutation draw.
+
+initial: F1 placed the draw in `init_state` and introduced
+`secretary_uncertainty.RankingUncertainty`, while leaving the IR's declared
+scenario sampler unchanged.
+
+signal: Human correction after upstream review; the user confirmed that the
+upstream generated-code contract requires the scenario sampler and withdrew
+the earlier restriction against using it.
+
+symptom: The F1 code passed simulation and differential tests but left the IR
+sampler undiscoverable to `scenario.samplers`; a source object reachable only
+from `init_state` was outside the generated-code contract.
+
+fix: `SCENARIOS["standard"]` is now a pure callable
+`SecretaryScenarioSource` with `substream_id=0`. At reset it uses
+`meta_key(substream_id, episode_seed, seed_salt)` to draw one permutation and
+returns a concrete `SecretaryScenario` containing that realization. The Gym
+wrapper realizes it once; `init_state` only copies `arrival_order` into state.
+The obsolete `_uncertainty.py` module was removed. The modeled trajectories did
+not change. Correcting the stale constant description that still encoded F1's
+generated-code placement moved the signed MDP fingerprint from
+`36aa528b6f34` to `fdc8951326c2`; the prior L0/L1 artifacts retain their
+original fingerprint as historical provenance.
+
+evidence: `scenario.samplers`, `scheme.v2_ids`, and `scheme.v2_keys` PASS;
+the 40-episode differential remains bit-exact; 9 domain tests pass.
+
+rule: An IR scenario sampler must have a callable twin in `SCENARIOS`; realize
+it once per reset into a concrete scenario, then copy any transition state in
+`init_state` without drawing again.
 
 ## CONFIG-REGISTRY
 

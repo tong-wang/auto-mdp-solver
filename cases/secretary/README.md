@@ -60,9 +60,8 @@ Code — where things are implemented:
 |---|---|
 | `secretary_schema.json` | **the authoritative IR** |
 | `secretary.signoff.json` | durable Phase-A fingerprint sign-off |
-| `secretary_uncertainty.py` | seeded uniform hidden-ranking source and `sample()` |
-| `secretary_scenarios.py` | setting-only scenario objects and `SCENARIOS` |
-| `secretary_mdp.py` | reset-time permutation draw, episode state, and deterministic transitions |
+| `secretary_scenarios.py` | seeded scenario sampler, concrete episode instances, and `SCENARIOS` |
+| `secretary_mdp.py` | episode-state initialization and deterministic transitions |
 | `secretary_gym.py` | relative-rank Gymnasium wrapper |
 | `secretary_ir_adapter.py` | interpreter-to-domain differential bridge |
 | `secretary.runplan.json` | confirmed `standard` specialist pass; no automatic L2+ escalation |

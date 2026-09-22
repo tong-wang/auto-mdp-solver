@@ -5,10 +5,10 @@ Gymnasium. The simulator knows the hidden absolute-rank permutation; the gym
 wrapper decides that the policy sees only time-to-go and current relative
 rank.
 
-``init_state`` draws the episode's hidden absolute-rank permutation and stores
-it in state. Transitions are deterministic thereafter. Absolute ranks and
-selected-rank outcomes travel through ``info`` and never enter the policy
-observation.
+The scenario source draws the episode's hidden absolute-rank permutation.
+``init_state`` copies that realization into state, and transitions are
+deterministic thereafter. Absolute ranks and selected-rank outcomes travel
+through ``info`` and never enter the policy observation.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from secretary_scenarios import SecretaryScenario
-from secretary_uncertainty import RankingUncertainty
 
 
 @dataclass(slots=True)
@@ -45,18 +44,14 @@ def init_state(
     scenario: SecretaryScenario,
     episode_seed: int,
 ) -> tuple[SecretaryState, dict]:
-    """Draw and store a fresh episode instance, before the first candidate."""
-    # Sampling is triggered only at initialization; the source owns the
-    # distribution and seed mapping, and state owns the realized permutation.
-    ranking = RankingUncertainty(scenario.n_candidates)
-    arrival_order = ranking.sample(episode_seed, scenario.seed_salt)
+    """Copy a realized episode instance into state before the first candidate."""
     state = SecretaryState(
         period=0,
         terminated=False,
         relative_rank=1,
         selected=0,
         episode_seed=int(episode_seed),
-        arrival_order=arrival_order,
+        arrival_order=scenario.arrival_order,
     )
     return state, {
         "action_period": -1,
@@ -112,9 +107,9 @@ def advance(
 
 
 def _run_smoke(episode_seed: int = 3) -> None:
-    from secretary_scenarios import scenario_standard
+    from secretary_scenarios import source_standard
 
-    scenario = scenario_standard
+    scenario = source_standard(episode_seed)
     state, _ = init_state(scenario, episode_seed)
     while not state.terminated:
         # Classical-looking smoke rule: reject first 37, then accept a record.

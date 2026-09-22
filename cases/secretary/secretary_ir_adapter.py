@@ -22,7 +22,7 @@ def make_adapter(
     constants = {c.name: c.value for c in ir.mdp.scenario.constants}
     if instance:
         constants.update(ir.mdp.scenario.instances[instance])
-    scenario = scen.SecretaryScenario(
+    source = scen.SecretaryScenarioSource(
         n_candidates=int(constants["n_candidates"]),
         seed_salt=int(seed_salt),
         scenario_name="standard",
@@ -30,6 +30,7 @@ def make_adapter(
     )
 
     def run_episode(episode_seed: int, decisions: list[dict]) -> list[dict]:
+        scenario = source(episode_seed)
         state, _ = mdp.init_state(scenario, episode_seed)
         rows: list[dict] = []
         for acts in decisions:
