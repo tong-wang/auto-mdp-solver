@@ -796,13 +796,27 @@ def check_benchmarks(h: DomainHandle) -> CheckResult:
     from_column = {n for n, b in declared.items() if getattr(b, "column", None)}
     missing_file = sorted(declared.keys() - on_disk - from_column)
     undeclared = sorted(on_disk - declared.keys())
+    # A declared benchmark with no file is *owed* until Stage 3 opens: the
+    # roles are settled in the formalize interview — the bracket is part of the
+    # objective conversation — while the solvers are written in Phase B, so the
+    # declaration legitimately precedes its file. The run plan is the signal
+    # that Stage 3 has opened and the files are due (#92). "On disk but
+    # undeclared" is a second source of truth at any stage, and stays a FAIL.
+    runplan = h.directory / f"{h.name}.runplan.json"
+    owed = f"declared with no {prefix}*.py: {missing_file}" if missing_file else ""
     problems = []
-    if missing_file:
-        problems.append(f"declared with no {prefix}*.py: {missing_file}")
+    if owed and runplan.exists():
+        problems.append(owed)
     if undeclared:
         problems.append(f"on disk but undeclared: {undeclared}")
     if problems:
+        if owed and not runplan.exists():
+            problems.append(f"{owed} — owed, built in Stage 3")
         return CheckResult("benchmarks.declared", "FAIL", "; ".join(problems))
+    if owed:
+        return CheckResult("benchmarks.declared", "WARN",
+                           f"{owed} — owed, built in Stage 3 "
+                           f"(no {runplan.name} yet)")
     roles = ", ".join(
         f"{n}={b.role.value}" + (f"@{b.column}" if getattr(b, "column", None) else "")
         for n, b in sorted(declared.items()))
@@ -1091,6 +1105,13 @@ def check_research_questions(h: DomainHandle) -> CheckResult:
     obliged an artifact a bypass campaign has no use for and named nothing as a
     confirm campaign's own deliverable. Tied to the declared stance it becomes
     checkable, and narrower: a bypass-only campaign owes neither file.
+
+    Absence is a WARN, never a FAIL (#92). The stance is declared at Phase A,
+    as §14.0 asks, and both files are Stage-5 deliverables — so a FAIL here
+    blocked `mdp_stage --for solve` on a domain that had done exactly what the
+    spec instructed, and was satisfiable by a stub. Conformance has no notion
+    of which stage the folder is at and does not pretend to one; the blocking
+    test lives in `mdp_stage --for package`, the op that delivers the readback.
     """
     schemas = sorted(h.directory.glob("*_schema.json"))
     if len(schemas) != 1:
@@ -1117,9 +1138,10 @@ def check_research_questions(h: DomainHandle) -> CheckResult:
     if not (h.directory / "INTERPRET.md").exists():
         missing.append("INTERPRET.md")
     if missing:
-        return CheckResult("research.deliverables", "FAIL",
+        return CheckResult("research.deliverables", "WARN",
                            f"{stances} owes the §14 readback; missing: "
-                           f"{', '.join(missing)}")
+                           f"{', '.join(missing)} — delivered at Stage 5, "
+                           f"enforced at `mdp_stage --for package`")
     return CheckResult("research.deliverables", "PASS",
                        f"{stances} — probe and INTERPRET.md present")
 

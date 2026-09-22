@@ -17,7 +17,7 @@ is executable:
 | `mdp-solve` | domain passing build's gates | `--for solve` (runs conformance + laws + differential) | `{name}.runplan.json` + baselines + L0/L1 leaderboard row |
 | `mdp-escalate` | an L1 row with a gap | `--for escalate` + the campaign log | L2+ winner + `ESCALATION.md` progress |
 | `mdp-interpret` | winning artifact + declared stance | `--for interpret` | probe stats, fitted-rule score, overlay figure |
-| `mdp-package` | winning artifact + eval TSVs | `--for package` | `{domain}_policy.py` + finished README |
+| `mdp-package` | winning artifact + eval TSVs | `--for package` (blocks on the §14 readback when a stance owes it) | `{domain}_policy.py` + finished README |
 | `mdp-solver` | verbal / paper | env `ENV OK` | conducts the above; the final report |
 
 ## What each op reads

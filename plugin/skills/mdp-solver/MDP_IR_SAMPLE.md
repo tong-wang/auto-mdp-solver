@@ -837,7 +837,10 @@ The RL artifact needs no entry — a trained policy under the real information
 set is `feasible` by construction. Two gates read the block: `mdp_conformance`
 checks declaration ↔ file correspondence (`benchmarks.declared`), and
 `mdp_gates --ir` refuses a must-beat comparison against an unbeatable arm and
-fails the gate if the candidate beats one. Optional and additive: an IR
+fails the gate if the candidate beats one. A declared benchmark whose file does
+not exist yet is owed, not wrong: the correspondence check WARNs until
+`{domain}.runplan.json` opens Stage 3, so the roles can be recorded in the
+Phase-A interview where they are decided. Optional and additive: an IR
 without the block validates unchanged and both checks stand down.
 
 ---
@@ -873,9 +876,10 @@ beside the objective and the mode stance.
 Two stances on one structure is a legitimate shape: bypass as the primary
 claim, confirm riding along because the structure is *known* optimal. Tier 1 is
 standing and never declared; tier 3 is engineering.
-`mdp_conformance research.deliverables` requires `{domain}_policy_probe.py` +
-`INTERPRET.md` when any entry needs a probe, and SKIPs when the block is
-absent.
+`mdp_conformance research.deliverables` reports `{domain}_policy_probe.py` +
+`INTERPRET.md` as owed (WARN) while any entry needs a probe and either file is
+missing, and SKIPs when the block is absent; `mdp_stage --for package` is where
+the two become blocking (§14.0).
 
 ---
 

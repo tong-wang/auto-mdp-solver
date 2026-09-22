@@ -354,6 +354,45 @@ def check_interpret_owed(ctx: DomainContext) -> GateResult:
     )
 
 
+def check_research_deliverables(ctx: DomainContext) -> GateResult:
+    """Blocking, at the op that delivers the readback: a declared
+    confirm/discover stance must have produced ``{domain}_policy_probe.py``
+    and ``INTERPRET.md`` before the campaign is packaged (spec §14.0).
+
+    Conformance reports the same two files as *owed* (WARN) from Phase A on —
+    it has no stage knowledge, and a FAIL there blocked ``--for solve`` on a
+    domain that declared its stance exactly when §14.0 asks (#92). Package
+    entry is where the obligation comes due, so the FAIL lives here, and
+    ``--for interpret`` keeps ``interpret.owed`` informational: interpret is
+    the op that *writes* these files and cannot require them at entry.
+
+    What no gate can read is whether ``INTERPRET.md`` carries an actual
+    readback rather than a placeholder — that is the README checklist's job
+    (spec §1.3, which ties every TL;DR verdict to a stance verdict), and this
+    check does not pretend to close it.
+    """
+    try:
+        rq = ctx.ir.research_questions
+    except Exception as exc:
+        return GateResult(
+            "research.deliverables", "FAIL", f"{type(exc).__name__}: {exc}"
+        )
+    if rq is None or not rq.probe_required:
+        return GateResult(
+            "research.deliverables", "SKIP",
+            "no declared stance owes the §14 readback",
+        )
+    names = (f"{ctx.name}_policy_probe.py", "INTERPRET.md")
+    missing = [n for n in names if not (ctx.directory / n).exists()]
+    if missing:
+        return GateResult(
+            "research.deliverables", "FAIL",
+            "a declared stance owes the §14 readback; missing: "
+            + ", ".join(missing),
+        )
+    return GateResult("research.deliverables", "PASS", " + ".join(names) + " present")
+
+
 # ---------------------------------------------------------------------------
 # Expensive checks — run the upstream gates
 # ---------------------------------------------------------------------------
@@ -439,7 +478,8 @@ OPS: dict[str, list] = {
     + [check_runplan, check_rl_artifacts, check_rl_current,
        check_interpret_owed],
     "package": _FREEZE_CORE
-    + [check_runplan, check_baselines, check_rl_artifacts, check_rl_current],
+    + [check_runplan, check_baselines, check_rl_artifacts, check_rl_current,
+       check_research_deliverables],
 }
 
 # checks whose cost is a training-gate re-run, listed so the table can say

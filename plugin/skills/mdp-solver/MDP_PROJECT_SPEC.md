@@ -36,7 +36,7 @@ prefixed with the domain name; the campaign docs (`CLAUDE.md`, `README.md`,
 | `{domain}_benchmark_{method}.py` | Non-RL benchmark solver — `{method}` names the method (`lp`, `dp`, `myopic`, `greedy`, `fluid`, or a domain-custom heuristic). One per method; a solver may expose several related policies via `--policy` (§9.8) |
 | `{domain}_benchmark_{method}_eval.py` | Evaluate a benchmark over the full parameter grid, same TSV format as the RL eval |
 | `{domain}_policy.py` | Deployable policy wrapper over the trained artifact (§12) |
-| `{domain}_policy_probe.py` | Policy-interpretation probe: action-surface sweep, structural-form fit + paired scoring of the fitted rule, agreement vs the reference, feature-sensitivity sweeps (§14). **Required when a declared tier-2 stance is `confirm` or `discover`** (`research_questions`, §14.0) — a claim-shaped condition, not a problem-shaped one: a `bypass` campaign owes no probe |
+| `{domain}_policy_probe.py` | Policy-interpretation probe: action-surface sweep, structural-form fit + paired scoring of the fitted rule, agreement vs the reference, feature-sensitivity sweeps (§14). **Required when a declared tier-2 stance is `confirm` or `discover`** (`research_questions`, §14.0) — a claim-shaped condition, not a problem-shaped one: a `bypass` campaign owes no probe. Owed from Phase A, due at Stage 5: `mdp_conformance` WARNs while it is missing, `mdp_stage --for package` blocks |
 | `{domain}_plot_policy.py` | Policy-overlay figure — one plot spec, static + interactive renders (§14.3) |
 | `{domain}_test.py` | The domain's own tests: the engine laws + the differential parametrized over the covering set, plus the claims only this domain can state. **Required for a new domain**; see §1.2 |
 
@@ -2470,7 +2470,7 @@ Two consequences worth stating because they are checkable rather than editorial:
 
 Two gates read it, which is the point of declaring rather than describing:
 
-- **`mdp_conformance`** (`benchmarks.declared`) — every declared benchmark has a file and every file is declared, so a renamed method or a deleted solver cannot go unnoticed. SKIPs when nothing is declared.
+- **`mdp_conformance`** (`benchmarks.declared`) — every declared benchmark has a file and every file is declared, so a renamed method or a deleted solver cannot go unnoticed. SKIPs when nothing is declared. A file on disk that nothing declares is a second source of truth and FAILs at any stage; a *declared* benchmark with no file yet is **WARN (owed)** until `{domain}.runplan.json` exists and FAILs once it does — the roles are settled in the formalize interview, the solvers are written in Stage 3, and the run plan is what says Stage 3 has opened.
 - **`mdp_gates --ir {domain}_schema.json`** — refuses `--baseline` on an `exact` or `relaxed` arm (exit 2: must-beat asks the candidate to beat a bound it cannot beat), and **fails the gate when the candidate beats an `exact` or `relaxed` reference**, quoting §9.9. Without `--ir` the gate behaves exactly as before.
 
 Name the role beside the leaderboard too; a relaxation and a heuristic look alike in a table of numbers, and the bracket they jointly form goes unstated unless something says which is which.
@@ -2708,10 +2708,23 @@ Tier 1 (how does RL compare with the existing solutions, exact and heuristic?)
 is **standing** — every campaign asks it, so it is never declared. Tier 3 is
 engineering.
 
-`mdp_conformance research.deliverables` enforces this: a declared
-`confirm`/`discover` stance requires `{domain}_policy_probe.py` and
-`INTERPRET.md`; a bypass-only campaign passes with neither; an IR with no block
-SKIPs.
+Two checks read the declaration, and they say different things on purpose: the
+stance is declared here, at Phase A, while both files are Stage-5
+deliverables. `mdp_conformance research.deliverables` reports the
+*obligation* — a declared `confirm`/`discover` stance with either
+`{domain}_policy_probe.py` or `INTERPRET.md` missing is **WARN (owed)**, both
+present is PASS, a bypass-only campaign passes with neither, an IR with no
+block SKIPs. It never FAILs on absence: conformance has no notion of which
+stage the folder is at, and a FAIL there blocked `mdp_stage --for solve` on a
+domain that had declared its stance exactly as this section asks. The
+*blocking* test is `mdp_stage --for package`'s own `research.deliverables`, at
+the op that delivers the readback — a missing probe or `INTERPRET.md` is
+`ENTRY BLOCKED` there. `--for interpret` requires neither: interpret is the op
+that writes them, and `interpret.owed` stays informational.
+
+What no gate can read is whether `INTERPRET.md` carries a readback or a
+placeholder. That is §1.3's README checklist, which ties every TL;DR verdict to
+a stance verdict — an existence check is the floor, not the standard.
 
 ### 14.1 The probe (`{domain}_policy_probe.py`)
 

@@ -82,6 +82,8 @@ step list whenever they conflict. Read them before the first round.
    without the machinery that produces it?")? It is the same kind of commitment
    as the mode stance and it decides a Stage-5 deliverable: confirm and discover
    owe a `{domain}_policy_probe.py` and an `INTERPRET.md`, bypass owes neither.
+   Declaring here costs nothing downstream: the two files are reported as owed
+   until `mdp-package` entry, so neither build nor solve is blocked by them.
    Record the answer as a root-level `research_questions.tier2` entry (`stance`,
    `structure`, `claim`, `instrument`); more than one stance on the same
    structure is legitimate. Undeclared, the same measurement reads three ways —

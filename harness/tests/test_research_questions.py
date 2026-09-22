@@ -95,12 +95,16 @@ def test_undeclared_domain_skips(tmp_path, ir_doc):
     assert check_research_questions(h).status == "SKIP"
 
 
-def test_confirm_without_the_artifacts_fails(tmp_path, ir_doc):
+def test_confirm_without_the_artifacts_is_owed_not_failed(tmp_path, ir_doc):
+    """Upstream #92: the stance is declared at Phase A and the files are
+    Stage-5 deliverables, so conformance reports them owed. A FAIL here blocked
+    `--for solve` on a domain that followed the formalize skill exactly."""
     ir_doc["research_questions"] = _rq([{"stance": "confirm", "structure": "the snake"}])
     h = _domain(tmp_path, ir_doc, probe=False, interpret=False)
     result = check_research_questions(h)
-    assert result.status == "FAIL"
+    assert result.status == "WARN"
     assert "d_policy_probe.py" in result.detail and "INTERPRET.md" in result.detail
+    assert "--for package" in result.detail
 
 
 def test_confirm_with_both_artifacts_passes(tmp_path, ir_doc):
@@ -109,11 +113,25 @@ def test_confirm_with_both_artifacts_passes(tmp_path, ir_doc):
     assert check_research_questions(h).status == "PASS"
 
 
-def test_a_missing_interpret_alone_still_fails(tmp_path, ir_doc):
+def test_a_missing_interpret_alone_is_still_owed(tmp_path, ir_doc):
     ir_doc["research_questions"] = _rq([{"stance": "discover", "structure": "?"}])
     h = _domain(tmp_path, ir_doc, probe=True, interpret=False)
     result = check_research_questions(h)
-    assert result.status == "FAIL" and "INTERPRET.md" in result.detail
+    assert result.status == "WARN" and "INTERPRET.md" in result.detail
+    assert "d_policy_probe.py" not in result.detail
+
+
+def test_a_scored_run_does_not_promote_the_owed_warning(tmp_path, ir_doc):
+    """A scored artifact says Stage 5 is *reachable*, not that the readback is
+    due — and solve is re-enterable per target, so keying a FAIL to the first
+    eval TSV would re-block `--for solve` before interpret had ever run (#92).
+    The stage that makes the two files blocking is package, in `mdp_stage`."""
+    ir_doc["research_questions"] = _rq([{"stance": "discover", "structure": "?"}])
+    h = _domain(tmp_path, ir_doc, probe=False, interpret=False)
+    run = tmp_path / "results" / "base" / "ppo_lr3e4"
+    run.mkdir(parents=True)
+    (run / "d_ppo_eval_base.tsv").write_text("seed\tmean\n0\t1.0\n")
+    assert check_research_questions(h).status == "WARN"
 
 
 def test_bypass_only_passes_with_no_artifacts(tmp_path, ir_doc):

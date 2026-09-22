@@ -25,6 +25,7 @@ from mdp_stage.gate import (
     check_freeze,
     check_interpret_owed,
     check_laws,
+    check_research_deliverables,
     run_gate,
     stage_table,
 )
@@ -144,7 +145,11 @@ def test_package_entry_passes_with_full_artifact_tree(tmp_path, ir_doc, capsys):
     (run / "base_ppo_args.txt").write_text(f"ir_mdp_fingerprint: {fp}\n")
     results, code = run_gate(d, "package")
     assert code == 0
-    assert set(_statuses(results).values()) == {"PASS"}
+    # the minimal IR declares no tier-2 stance, so the §14 readback is not
+    # owed here — the owing case is its own test below (#92)
+    statuses = _statuses(results)
+    assert statuses.pop("research.deliverables") == "SKIP"
+    assert set(statuses.values()) == {"PASS"}
 
 
 def test_one_baseline_tsv_is_not_enough(tmp_path, ir_doc, capsys):
@@ -226,6 +231,48 @@ def test_interpret_owed_branches(tmp_path, ir_doc):
     (d / "tiny_schema.json").write_text(json.dumps(doc))
     r = check_interpret_owed(DomainContext(d))
     assert r.status == "SKIP" and "bypass" in r.detail
+
+
+# -- package: where the readback comes due -----------------------------------
+
+
+def _declare(d, doc, stance: str):
+    doc["research_questions"] = {"tier2": [{"stance": stance, "structure": "(s,S)"}]}
+    (d / "tiny_schema.json").write_text(json.dumps(doc))
+    return DomainContext(d)
+
+
+def test_package_blocks_on_a_missing_readback(tmp_path, ir_doc):
+    """Upstream #92: conformance reports the two files owed from Phase A on,
+    and package entry is where that obligation becomes blocking."""
+    doc = _confirm_all(ir_doc)
+    d = _write_domain(tmp_path, doc)
+    r = check_research_deliverables(_declare(d, doc, "discover"))
+    assert r.status == "FAIL"
+    assert "tiny_policy_probe.py" in r.detail and "INTERPRET.md" in r.detail
+
+
+def test_package_passes_once_the_readback_lands(tmp_path, ir_doc):
+    doc = _confirm_all(ir_doc)
+    d = _write_domain(tmp_path, doc)
+    (d / "tiny_policy_probe.py").write_text("# probe\n")
+    (d / "INTERPRET.md").write_text("# readback\n")
+    assert check_research_deliverables(_declare(d, doc, "confirm")).status == "PASS"
+
+
+def test_package_skips_when_no_stance_owes_a_probe(tmp_path, ir_doc):
+    doc = _confirm_all(ir_doc)
+    d = _write_domain(tmp_path, doc)
+    assert check_research_deliverables(DomainContext(d)).status == "SKIP"
+    assert check_research_deliverables(_declare(d, doc, "bypass")).status == "SKIP"
+
+
+def test_only_package_makes_the_readback_blocking():
+    """Solve stays enterable with the readback owed, and interpret — the op
+    that WRITES these files — cannot require them at entry."""
+    for op in ("build", "solve", "escalate", "interpret"):
+        assert check_research_deliverables not in OPS[op]
+    assert check_research_deliverables in OPS["package"]
 
 
 # -- expensive checks: failure plumbing only ---------------------------------
