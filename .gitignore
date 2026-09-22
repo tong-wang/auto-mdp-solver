@@ -15,4 +15,9 @@ tensorboard_*/
 results/
 .venv/
 *.egg-info/
+# Build artifacts: the wheel and sdist are published to PyPI from a
+# tag, never tracked — a committed one would race the tag it claims.
+*.whl
+*.tar.gz
+dist/
 scratch/
