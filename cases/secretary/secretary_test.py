@@ -17,6 +17,8 @@ from mdp_ir.testing import (
 )
 
 from secretary_mdp import advance, init_state
+from secretary_gym import SecretaryEnv
+from secretary_policy import _realize_scenario
 from secretary_scenarios import source_standard
 from secretary_select import _blocks_overlap, _checkpoints, _vecnorm_for
 from secretary_benchmark_dp import solve
@@ -74,6 +76,32 @@ def test_scenario_sampler_uses_the_declared_meta_key():
         17,
         source_standard.seed_salt,
     ]
+
+
+def test_gym_reseed_exercises_registered_scenario_source():
+    env = SecretaryEnv(source_standard)
+    env.reset(seed=1)
+    first = env._state.arrival_order
+    env.reset(seed=2)
+    second = env._state.arrival_order
+    env.reset(seed=1)
+    replay = env._state.arrival_order
+    assert first != second
+    assert first == replay
+
+    env.reset(seed=0)
+    unseeded = []
+    for _ in range(3):
+        env.reset()
+        unseeded.append(env._state.arrival_order)
+    assert len(set(unseeded)) == 3
+    env.close()
+
+
+def test_deployable_wrapper_realizes_source_before_raw_mdp():
+    scenario = _realize_scenario(source_standard, 23)
+    state, _ = init_state(scenario, 23)
+    assert state.arrival_order == scenario.arrival_order
 
 
 def test_selector_pairs_each_checkpoint_with_its_own_normalizer(tmp_path: Path):

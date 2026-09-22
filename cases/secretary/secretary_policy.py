@@ -24,7 +24,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from secretary_gym import SecretaryEnv
-from secretary_scenarios import SCENARIOS
+from secretary_scenarios import SCENARIOS, SecretaryScenario, SecretaryScenarioSource
 
 
 def _read_args_log(path: Path) -> dict[str, str]:
@@ -34,6 +34,14 @@ def _read_args_log(path: Path) -> dict[str, str]:
         if separator:
             values[key.strip()] = value.strip()
     return values
+
+
+def _realize_scenario(
+    source: SecretaryScenarioSource,
+    episode_seed: int,
+) -> SecretaryScenario:
+    """Realize the registered source before calling the raw MDP layer."""
+    return source(int(episode_seed))
 
 
 class SecretaryPolicy:
@@ -77,10 +85,10 @@ class SecretaryPolicy:
         if mismatches:
             raise ValueError(f"requested policy contract does not match training args: {mismatches}")
         self.scenario_name = scenario
-        self.scenario = SCENARIOS[scenario]
+        self.scenario_source = SCENARIOS[scenario]
         self.model = PPO.load(self.model_path, device="cpu")
         dummy = DummyVecEnv([lambda: SecretaryEnv(
-            scenario=self.scenario,
+            scenario=self.scenario_source,
             observation_mode=observation_mode,
             action_mode=action_mode,
             reward_mode="success",
@@ -116,13 +124,14 @@ def main() -> None:
     policy = SecretaryPolicy(args.model_path, args.vecnorm_path)
     try:
         for episode_seed in range(args.episodes):
-            state, _ = init_state(policy.scenario, episode_seed)
+            scenario = _realize_scenario(policy.scenario_source, episode_seed)
+            state, _ = init_state(scenario, episode_seed)
             while not state.terminated:
                 obs = [
-                    policy.scenario.n_candidates - state.period,
+                    scenario.n_candidates - state.period,
                     state.relative_rank,
                 ]
-                state, info = advance(policy.scenario, state, policy.act(obs))
+                state, info = advance(scenario, state, policy.act(obs))
             print(
                 f"seed={episode_seed} steps={state.period} "
                 f"selected_rank={info['selected_rank']} "

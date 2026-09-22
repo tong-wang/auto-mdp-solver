@@ -1,7 +1,7 @@
 # Secretary MDP restatement
 
-**Status:** signed off 2026-09-23
-**MDP fingerprint:** `fdc8951326c2`
+**Status:** signed off 2026-09-22
+**MDP fingerprint:** `36aa528b6f34`
 **Schema:** `secretary/secretary_schema.json`
 
 ## Problem

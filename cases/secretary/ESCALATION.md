@@ -11,7 +11,7 @@ campaign stops and asks for new authorization.
 
 ```mermaid
 graph TD
-    ROOT["IR secretary v0.4<br/>mdp fdc8951326c2"]
+    ROOT["IR secretary v0.4<br/>mdp 36aa528b6f34"]
     ROOT ==>|"cases · scenario · S1 · required ★"| SC["scenario=standard<br/>N=100 specialist · #E1<br/>sc0"]
     SC ==>|"design-axes · solver · S1 · role=exact · tier=1 ✓"| DP["method=dp<br/>0.371826 ± 0.005340 · #E1"]
     SC ==>|"design-axes · solver · S2 · role=exact · tier=1 ✓"| TH["method=threshold<br/>0.371826 ± 0.005340 · #E1"]
@@ -58,6 +58,7 @@ protocol. The theoretical success probability is `0.371042778713`.
 ## FRAME-CHANGELOG
 
 - 2026-09-22 INTRODUCED the single-scenario specialist tree, exact-reference siblings, L0→L1 floor-control chain, and explicitly parked L2+ ([#E1](#E1), [#E2](#E2)).
+- 2026-09-23 MAINTAINED the §12 wrapper through F2: raw-MDP smoke episodes now realize the registered source before `init_state`. Added a source-path Gym reseed regression because v0.11.4 conformance concretizes registry entries before testing reseeding and therefore SKIPs this callable-source shape.
 
 ## IR-CHANGELOG
 
@@ -119,14 +120,14 @@ fix: `SCENARIOS["standard"]` is now a pure callable
 `meta_key(substream_id, episode_seed, seed_salt)` to draw one permutation and
 returns a concrete `SecretaryScenario` containing that realization. The Gym
 wrapper realizes it once; `init_state` only copies `arrival_order` into state.
-The obsolete `_uncertainty.py` module was removed. The modeled trajectories did
-not change. Correcting the stale constant description that still encoded F1's
-generated-code placement moved the signed MDP fingerprint from
-`36aa528b6f34` to `fdc8951326c2`; the prior L0/L1 artifacts retain their
-original fingerprint as historical provenance.
+The obsolete `_uncertainty.py` module was removed. The modeled trajectories and
+signed MDP fingerprint remain `36aa528b6f34`; the generated-code placement is
+recorded here rather than changing the already signed descriptive text in the
+IR and invalidating semantically current L0/L1 artifacts.
 
 evidence: `scenario.samplers`, `scheme.v2_ids`, and `scheme.v2_keys` PASS;
-the 40-episode differential remains bit-exact; 9 domain tests pass.
+the 40-episode differential remains bit-exact; 11 domain tests pass; the §12
+five-episode README smoke command completes against the selected local bundle.
 
 rule: An IR scenario sampler must have a callable twin in `SCENARIOS`; realize
 it once per reset into a concrete scenario, then copy any transition state in
