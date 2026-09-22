@@ -38,11 +38,15 @@ Scenario architecture (spec §5, §6.3) — **scheme-aware**: a domain declares
 WARN nudge) so pre-redesign domains keep passing until they migrate:
 - `scheme.declared` — `SEED_SCHEME` present, valid, unmixed across modules.
 - `scenario.samplers` — every sampler entry in `SCENARIOS` is a pure function:
-  same seed twice ⇒ equal concrete scenarios (both schemes).
+  same seed twice ⇒ equal concrete scenarios (both schemes). A sampler the IR
+  declares with no callable twin in `SCENARIOS` WARNs instead of skipping: the
+  draw is implemented off the scenario layer, so nothing here checks it.
 - `scheme.v2_ids` (v2 only) — `seed_salt >= 1` everywhere; meta drawers carry
   distinct `substream_id`; generator instances carry distinct `source_id`.
 - `scheme.v2_keys` (v2 only) — every `SeedSequence` call in the world layers
-  goes through `intrinsic_key()` / `meta_key()` (template-drift guard).
+  goes through `intrinsic_key()` / `meta_key()` (template-drift guard). The mdp
+  layer is scanned at WARN — it is where a deterministic-dynamics domain's
+  reset-time draw lands when there is no uncertainty module to hold it.
 - `grids.*` — no grid object inside `SCENARIOS`; `GRIDS` entries are
   enumerable, non-callable, uniquely-celled, and `as_sampler()` is pure.
 

@@ -546,11 +546,41 @@ def check_seed_scheme(h: DomainHandle) -> CheckResult:
     return CheckResult("scheme.declared", "PASS", f"SEED_SCHEME = {scheme!r}")
 
 
+def _ir_declared_samplers(h: DomainHandle) -> list[str]:
+    """Sampler names the frozen IR declares; empty when no IR is readable."""
+    try:
+        schemas = sorted(h.directory.glob("*_schema.json"))
+        if len(schemas) != 1:
+            return []
+        from mdp_ir.schema import load_ir
+        ir = load_ir(schemas[0])
+    except Exception:
+        return []
+    return [s.name for s in ir.mdp.scenario.samplers]
+
+
 def check_sampler_registry(h: DomainHandle) -> CheckResult:
     """Registry smoke + purity (spec §5.2): every sampler entry in SCENARIOS is
-    a pure function — same seed twice -> equal concrete scenarios."""
+    a pure function — same seed twice -> equal concrete scenarios.
+
+    The registry is read against the IR too, because *absence* was
+    self-certifying: a domain whose IR declares a world sampler and whose
+    SCENARIOS holds no callable skipped this check entirely, and the draw it
+    implements somewhere else — an ``init_state`` seeding its own permutation,
+    say — was covered here by nothing. WARN, not FAIL: §5.2 names one placement
+    and the interpreter's world-sampler mechanism admits another, so a hard
+    failure would rule on a question the spec has not settled. The differential
+    is what holds the draw itself; this line says the purity check did not run.
+    """
     samplers = [(k, v) for k, v in h.SCENARIOS.items() if callable(v)]
     if not samplers:
+        declared = _ir_declared_samplers(h)
+        if declared:
+            return CheckResult(
+                "scenario.samplers", "WARN",
+                f"IR declares sampler(s) {', '.join(declared)}; SCENARIOS has no "
+                f"callable entry, so the draw sits off the scenario layer and its "
+                f"purity is unchecked here (spec §5.2)")
         return CheckResult("scenario.samplers", "SKIP", "no sampler entries in SCENARIOS")
     problems = []
     for key, sampler in samplers:
@@ -618,42 +648,66 @@ def check_meta_v2(h: DomainHandle) -> CheckResult:
                        "salts >= 1; substream/source ids present and distinct")
 
 
-def check_seed_key_helpers(h: DomainHandle) -> CheckResult:
-    """v2 drift guard (spec §4.2, §5.2): every SeedSequence(...) in the world
-    layers is either inside intrinsic_key()/meta_key() or takes a key built by
-    one of them — raw inline keys cannot silently diverge from the template."""
-    if _declared_scheme(h) != "v2":
-        return CheckResult("scheme.v2_keys", "SKIP", "v1/undeclared domain (frozen keys)")
+def raw_seed_key_sites(tree: ast.Module, label: str) -> list[str]:
+    """``label:lineno`` for every ``SeedSequence(...)`` that neither sits inside
+    a key helper nor takes one's output."""
     helper_names = {"intrinsic_key", "meta_key"}
 
     def call_name(func) -> str:
         return getattr(func, "attr", None) or getattr(func, "id", "") or ""
 
-    strays = []
-    for role in ("uncertainty", "scenarios", "grids"):
+    sites: list[str] = []
+
+    def visit(node, fn_stack):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            fn_stack = fn_stack + [node.name]
+        if isinstance(node, ast.Call) and call_name(node.func) == "SeedSequence":
+            inside_helper = any(n in helper_names for n in fn_stack)
+            arg_ok = (
+                len(node.args) == 1
+                and isinstance(node.args[0], ast.Call)
+                and call_name(node.args[0].func) in helper_names
+            )
+            if not (inside_helper or arg_ok):
+                sites.append(f"{label}:{node.lineno}")
+        for child in ast.iter_child_nodes(node):
+            visit(child, fn_stack)
+
+    visit(tree, [])
+    return sites
+
+
+def check_seed_key_helpers(h: DomainHandle) -> CheckResult:
+    """v2 drift guard (spec §4.2, §5.2): every SeedSequence(...) in the world
+    layers is either inside intrinsic_key()/meta_key() or takes a key built by
+    one of them — raw inline keys cannot silently diverge from the template.
+
+    The mdp layer is scanned too, at WARN. A domain with deterministic dynamics
+    ships no uncertainty module (§1, §4.3), so the helper its template defines
+    is not there to call, and the reset-time draw such a domain owns gets its
+    key written out by hand — the one drawer the guard was blind to. The
+    helpers are importable (``mdp_ir.runtime``), so the fix is an import, but
+    every domain in this shape predates the scan: WARN in the form
+    `schema.no_enumeration` established, to promote once the set is clean.
+    """
+    if _declared_scheme(h) != "v2":
+        return CheckResult("scheme.v2_keys", "SKIP", "v1/undeclared domain (frozen keys)")
+    strays: list[str] = []
+    mdp_strays: list[str] = []
+    for role in ("uncertainty", "scenarios", "grids", "mdp"):
         tree = h.trees.get(role)
         if tree is None:
             continue
-
-        def visit(node, fn_stack):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                fn_stack = fn_stack + [node.name]
-            if isinstance(node, ast.Call) and call_name(node.func) == "SeedSequence":
-                inside_helper = any(n in helper_names for n in fn_stack)
-                arg_ok = (
-                    len(node.args) == 1
-                    and isinstance(node.args[0], ast.Call)
-                    and call_name(node.args[0].func) in helper_names
-                )
-                if not (inside_helper or arg_ok):
-                    strays.append(f"{role}:{node.lineno}")
-            for child in ast.iter_child_nodes(node):
-                visit(child, fn_stack)
-
-        visit(tree, [])
+        found = raw_seed_key_sites(tree, role)
+        (mdp_strays if role == "mdp" else strays).extend(found)
     if strays:
         return CheckResult("scheme.v2_keys", "FAIL",
                            f"raw SeedSequence outside intrinsic_key()/meta_key(): {strays}")
+    if mdp_strays:
+        return CheckResult("scheme.v2_keys", "WARN",
+                           f"raw SeedSequence in the mdp layer: {mdp_strays} — key a "
+                           f"reset-time draw through meta_key()/intrinsic_key() "
+                           f"(mdp_ir.runtime) so the template cannot drift (spec §6.3)")
     return CheckResult("scheme.v2_keys", "PASS",
                        "all SeedSequence calls go through the key helpers")
 
