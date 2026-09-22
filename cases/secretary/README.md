@@ -60,12 +60,14 @@ Code — where things are implemented:
 |---|---|
 | `secretary_schema.json` | **the authoritative IR** |
 | `secretary.signoff.json` | durable Phase-A fingerprint sign-off |
+| `secretary_uncertainty.py` | canonical v2 meta-key helper for the reset draw |
 | `secretary_scenarios.py` | setting-only scenario objects and `SCENARIOS` |
 | `secretary_mdp.py` | reset-time permutation draw, episode state, and deterministic transitions |
 | `secretary_gym.py` | relative-rank Gymnasium wrapper |
 | `secretary_ir_adapter.py` | interpreter-to-domain differential bridge |
 | `secretary.runplan.json` | confirmed `standard` specialist pass; no automatic L2+ escalation |
 | `secretary_ppo_train.py` / `secretary_ppo_eval.py` | leveled PPO training, checkpointing, and shared-protocol evaluation |
+| `secretary_select.py` | disjoint checkpoint screen, top-five confirmation, and local winner promotion |
 | `secretary_benchmark_dp.py` / `_eval.py` | exact backward-induction solution and protocol evaluator |
 | `secretary_benchmark_threshold.py` / `_eval.py` | literature-optimal finite-`N` threshold and evaluator |
 | `secretary_benchmark_random.py` / `_eval.py` | seeded random-action floor and evaluator |
@@ -114,12 +116,13 @@ episode-for-episode on all 8,192 seeds. Their Monte Carlo mean is consistent
 with the analytic optimum `0.371042778713`. L1 beats the random baseline by
 66.75 SE and passes the campaign gate. L0 is reporting-only and never gates.
 
-**Shipped: `standard_ppo.zip` from the 1.8M-step L1 checkpoint** — it won the
+**Selected locally: `standard_ppo.zip` from the 1.8M-step L1 checkpoint** — it won the
 disjoint checkpoint-selection screen, then tied the exact reference on the
 protocol block. The 2M terminal network remains beside it as
 `standard_ppo_final.zip`; selection and terminal artifacts are not conflated.
 The compact fitted cutoff-37 rule is also reproducible, but the trained
-artifact ships because this campaign’s deliverable is the learned policy.
+artifact is the campaign’s deployable policy. Model and VecNormalize files
+remain under ignored `results/`; they are never committed or contributed.
 
 How it was reached: `ESCALATION.md` §MAP and findings #E1–#E4.
 
@@ -140,23 +143,27 @@ commands reproduce `results/` from an empty folder.
 
 ```bash
 # build and evaluate the exact references and random floor
-../.venv/bin/python secretary_benchmark_dp.py -s standard
-../.venv/bin/python secretary_benchmark_dp_eval.py -s standard --n-seeds 8192 --first-seed 0
-../.venv/bin/python secretary_benchmark_threshold_eval.py -s standard --n-seeds 8192 --first-seed 0
-../.venv/bin/python secretary_benchmark_random_eval.py -s standard --n-seeds 8192 --first-seed 0
+python secretary_benchmark_dp.py -s standard
+python secretary_benchmark_dp_eval.py -s standard --n-seeds 8192 --first-seed 0
+python secretary_benchmark_threshold_eval.py -s standard --n-seeds 8192 --first-seed 0
+python secretary_benchmark_random_eval.py -s standard --n-seeds 8192 --first-seed 0
 
 # train L1 and faithful-default L0
-OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 ../.venv/bin/python secretary_ppo_train.py -s standard --level L1 --tag backbone
-OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 ../.venv/bin/python secretary_ppo_train.py -s standard --level L0 --learning-rate 0.0003 --lr-final 0.0003 --clip-init 0.2 --clip-final 0.2 --n-envs 1 --n-steps 2048 --batch-size 64 --gae-lambda 0.95 --ent-coef 0 --target-kl 0 --no-norm-obs --no-norm-reward --checkpoint-every-frac 0 --tag control
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python secretary_ppo_train.py -s standard --level L1 --tag backbone
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python secretary_ppo_train.py -s standard --level L0 --learning-rate 0.0003 --lr-final 0.0003 --clip-init 0.2 --clip-final 0.2 --n-envs 1 --n-steps 2048 --batch-size 64 --gae-lambda 0.95 --ent-coef 0 --target-kl 0 --no-norm-obs --no-norm-reward --checkpoint-every-frac 0 --tag control
 
-# evaluate the selected artifact after the disjoint checkpoint screen
-OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 ../.venv/bin/python secretary_ppo_eval.py -s standard --model-path results/standard/PPO_20260922_161352_L1_obsrelative_actaccept_rewsuccess_backbone/standard_ppo.zip --n-seeds 8192 --first-seed 0
+# reproduce the 20-checkpoint screen, confirm the top five, and atomically
+# promote both the winning model and its matching normalization sidecar locally
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python secretary_select.py results/standard/PPO_*_L1_*_backbone --screen-seeds 2048 --screen-first 1000000 --top-k 5 --protocol-seeds 8192 --protocol-first 0
+
+# score the faithful-default terminal control (it trained without normalization)
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python secretary_ppo_eval.py -s standard --model-path results/standard/PPO_*_L0_*_control/standard_ppo_final.zip --no-require-vecnorm --n-seeds 8192 --first-seed 0
 
 # readback, fitted-rule score, figure, and deployment smoke test
-../.venv/bin/python secretary_policy_probe.py --model-path results/standard/PPO_20260922_161352_L1_obsrelative_actaccept_rewsuccess_backbone/standard_ppo.zip
-../.venv/bin/python secretary_benchmark_fitted_eval.py -s standard --fit-path results/standard/PPO_20260922_161352_L1_obsrelative_actaccept_rewsuccess_backbone/interpret/fitted_rule.json --n-seeds 8192 --first-seed 0
-MPLCONFIGDIR=/tmp/secretary-mpl ../.venv/bin/python secretary_plot_policy.py --model-path results/standard/PPO_20260922_161352_L1_obsrelative_actaccept_rewsuccess_backbone/standard_ppo.zip
-../.venv/bin/python secretary_policy.py --model-path results/standard/PPO_20260922_161352_L1_obsrelative_actaccept_rewsuccess_backbone/standard_ppo.zip --episodes 5
+python secretary_policy_probe.py --model-path results/standard/PPO_*_L1_*_backbone/standard_ppo.zip
+python secretary_benchmark_fitted_eval.py -s standard --fit-path results/standard/PPO_*_L1_*_backbone/interpret/fitted_rule.json --n-seeds 8192 --first-seed 0
+MPLCONFIGDIR=/tmp/secretary-mpl python secretary_plot_policy.py --model-path results/standard/PPO_*_L1_*_backbone/standard_ppo.zip
+python secretary_policy.py --model-path results/standard/PPO_*_L1_*_backbone/standard_ppo.zip --episodes 5
 ```
 
 The gate commands are in `CLAUDE.md`.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +18,8 @@ from mdp_ir.testing import (
 
 from secretary_mdp import advance, init_state
 from secretary_scenarios import scenario_standard
+from secretary_select import _blocks_overlap, _checkpoints, _vecnorm_for
+from secretary_uncertainty import meta_key
 from secretary_benchmark_dp import solve
 from secretary_benchmark_threshold import (
     optimal_skip_count,
@@ -59,6 +62,29 @@ def test_reset_draw_is_pure_and_stored_only_in_state():
     assert a.arrival_order != c.arrival_order
     assert set(a.arrival_order) == set(range(1, scenario_standard.n_candidates + 1))
     assert not hasattr(scenario_standard, "arrival_order")
+
+
+def test_reset_draw_uses_the_declared_v2_meta_key():
+    assert meta_key(0, 17, scenario_standard.seed_salt) == [
+        0,
+        0,
+        17,
+        scenario_standard.seed_salt,
+    ]
+
+
+def test_selector_pairs_each_checkpoint_with_its_own_normalizer(tmp_path: Path):
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    model = checkpoint_dir / "standard_ppo_1800000_steps.zip"
+    normalizer = checkpoint_dir / "standard_ppo_vecnormalize_1800000_steps.pkl"
+    model.write_bytes(b"model")
+    normalizer.write_bytes(b"normalizer")
+
+    assert _checkpoints(tmp_path) == [model]
+    assert _vecnorm_for(model) == normalizer
+    assert not _blocks_overlap(1_000_000, 2_048, 0, 8_192)
+    assert _blocks_overlap(8_000, 2_048, 0, 8_192)
 
 
 def test_relative_rank_and_forced_final_selection():

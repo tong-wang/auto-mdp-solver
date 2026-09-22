@@ -50,7 +50,10 @@ class SecretaryPolicy:
         if scenario not in SCENARIOS:
             raise ValueError(f"unknown scenario {scenario!r}")
         if action_mode != "accept" or observation_mode != "relative":
-            raise ValueError("the shipped policy requires action_mode='accept' and observation_mode='relative'")
+            raise ValueError(
+                "the selected policy requires action_mode='accept' and "
+                "observation_mode='relative'"
+            )
         self.model_path = Path(model_path).resolve()
         self.vecnorm_path = (
             Path(vecnorm_path).resolve()

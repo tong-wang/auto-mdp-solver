@@ -25,7 +25,12 @@ def main() -> None:
     domain_dir = Path(__file__).resolve().parent
     with (run_dir / "probe/action_surface.tsv").open() as stream:
         rows = list(csv.DictReader(stream, delimiter="\t"))
-    records = [row for row in rows if int(row["relative_rank"]) == 1 and int(row["period"]) < 99]
+    horizon = max(int(row["period"]) for row in rows) + 1
+    records = [
+        row for row in rows
+        if int(row["relative_rank"]) == 1
+        and int(row["period"]) < horizon - 1
+    ]
     periods = [int(row["period"]) for row in records]
     probabilities = [float(row["accept_probability"]) for row in records]
     net_actions = [int(row["net_action"]) for row in records]

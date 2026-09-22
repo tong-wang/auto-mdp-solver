@@ -27,6 +27,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--first-seed", type=int, default=0)
     parser.add_argument("--batch-envs", type=int, default=64)
     parser.add_argument("--deterministic", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--require-vecnorm",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Fail rather than silently score normalized training without its sidecar.",
+    )
     return parser
 
 
@@ -96,11 +102,17 @@ def main() -> None:
         else model_path.parent / "vecnormalize.pkl"
     )
     if not vecnorm_path.exists() and model_path.parent.name == "checkpoints":
-        stem = model_path.stem.replace("_steps", "_steps")
+        stem = model_path.stem
         step = stem.rsplit("_", 2)[-2] if "_steps" in stem else ""
         matches = sorted(model_path.parent.glob(f"*vecnormalize*{step}*steps.pkl"))
         if matches:
             vecnorm_path = matches[0]
+    if args.require_vecnorm and not vecnorm_path.exists():
+        raise SystemExit(
+            f"VecNormalize sidecar not found for {model_path}; pass "
+            "--vecnorm-path or explicitly use --no-require-vecnorm only for "
+            "a run trained without normalization"
+        )
     scenario = SCENARIOS[args.scenario_name]
     model = PPO.load(model_path, device="cpu")
     normalizer = _normalizer(vecnorm_path if vecnorm_path.exists() else None, scenario, args)

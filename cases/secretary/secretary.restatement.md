@@ -1,6 +1,6 @@
 # Secretary MDP restatement
 
-**Status:** awaiting Phase-A sign-off
+**Status:** signed off 2026-09-22
 **MDP fingerprint:** `36aa528b6f34`
 **Schema:** `secretary/secretary_schema.json`
 

@@ -73,6 +73,8 @@ python -m mdp_ir secretary/secretary_schema.json
 python -m mdp_conformance secretary
 python -m mdp_ir.laws secretary
 python -m mdp_ir.differential secretary/secretary_schema.json --episodes 40 --all-instances
+# Exercise the complete horizon; the default random decision policy stops early.
+python -m mdp_ir.differential secretary/secretary_schema.json --decision accept=0 --episodes 10 --all-instances
 
 # from secretary/
 pytest secretary_test.py

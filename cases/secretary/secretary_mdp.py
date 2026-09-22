@@ -18,6 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from secretary_scenarios import SecretaryScenario
+from secretary_uncertainty import meta_key
 
 
 @dataclass(slots=True)
@@ -47,8 +48,13 @@ def _draw_arrival_order(
     episode_seed: int,
 ) -> tuple[int, ...]:
     """Draw the reset-time permutation using seed scheme v2."""
-    seed_key = [0, 0, int(episode_seed), scenario.seed_salt]
-    rng = np.random.default_rng(np.random.SeedSequence(seed_key))
+    # The v0.11.4 IR expresses this reset draw through a world sampler, but the
+    # domain deliberately keeps the scenario settings-only and stores the
+    # realization in episode state (ESCALATION.md F1).  Keep the draw here at
+    # state construction while still using the canonical meta-key boundary.
+    rng = np.random.default_rng(np.random.SeedSequence(
+        meta_key(0, episode_seed, scenario.seed_salt)
+    ))
     return tuple(int(value) for value in rng.choice(
         np.arange(1, scenario.n_candidates + 1),
         size=scenario.n_candidates,

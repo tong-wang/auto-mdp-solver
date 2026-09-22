@@ -84,6 +84,13 @@ generated `init_state` performs the seeded draw and stores it in
 `fa8de02d146e` to `36aa528b6f34`; conformance, laws, and the 40-episode
 bit-exact differential all pass.
 
+deviation: auto-mdp-solver v0.11.4 has no sanctioned generated-code shape for
+an IR world sampler whose realization is episode state while the scenario
+remains settings-only. The generated domain therefore performs this draw at
+`init_state`; `secretary_uncertainty.meta_key` still owns the canonical v2
+seed-key construction. This is intentional and documented rather than hidden.
+No upstream proposal was filed while work was restricted to this project.
+
 rule: If randomness is redrawn for every reset while the setting remains
 fixed, classify the realization as episode state even when the IR interpreter
 uses a world-sampler primitive to initialize it; never copy that interpreter
@@ -198,9 +205,9 @@ hypothesis: A competitive L1 artifact should implement the predicted
 skip-then-accept-record rule; a fitted cutoff whose score differs from the net
 by at most 1% of the exact bar confirms the structure.
 
-runs: all 20 L1 checkpoints on selection seeds `1_000_000..1_002_047`; top
-five on protocol seeds `0..8191`; `secretary_policy_probe.py`; fitted-rule
-protocol evaluation.
+runs: `secretary_select.py` over all 20 L1 checkpoints on selection seeds
+`1_000_000..1_002_047`, with the top five confirmed on protocol seeds
+`0..8191`; `secretary_policy_probe.py`; fitted-rule protocol evaluation.
 
 verdict:
 
