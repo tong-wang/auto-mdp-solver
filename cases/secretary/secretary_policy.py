@@ -20,8 +20,6 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from secretary_gym import SecretaryEnv
 from secretary_scenarios import SCENARIOS, SecretaryScenario, SecretaryScenarioSource
@@ -55,6 +53,9 @@ class SecretaryPolicy:
         observation_mode: str = "relative",
         scenario: str = "standard",
     ) -> None:
+        from stable_baselines3 import PPO
+        from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+
         if scenario not in SCENARIOS:
             raise ValueError(f"unknown scenario {scenario!r}")
         if action_mode != "accept" or observation_mode != "relative":
