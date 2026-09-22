@@ -60,7 +60,7 @@ Code — where things are implemented:
 |---|---|
 | `secretary_schema.json` | **the authoritative IR** |
 | `secretary.signoff.json` | durable Phase-A fingerprint sign-off |
-| `secretary_uncertainty.py` | canonical v2 meta-key helper for the reset draw |
+| `secretary_uncertainty.py` | seeded uniform hidden-ranking source and `sample()` |
 | `secretary_scenarios.py` | setting-only scenario objects and `SCENARIOS` |
 | `secretary_mdp.py` | reset-time permutation draw, episode state, and deterministic transitions |
 | `secretary_gym.py` | relative-rank Gymnasium wrapper |

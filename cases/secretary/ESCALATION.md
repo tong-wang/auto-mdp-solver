@@ -87,8 +87,10 @@ bit-exact differential all pass.
 deviation: auto-mdp-solver v0.11.4 has no sanctioned generated-code shape for
 an IR world sampler whose realization is episode state while the scenario
 remains settings-only. The generated domain therefore performs this draw at
-`init_state`; `secretary_uncertainty.meta_key` still owns the canonical v2
-seed-key construction. This is intentional and documented rather than hidden.
+`init_state`; `secretary_uncertainty.RankingUncertainty` describes the uniform
+ranking distribution, owns its canonical v2 seed stream, and implements
+`sample()`. `init_state` invokes that source once per reset and stores the
+realization in state. This is intentional and documented rather than hidden.
 No upstream proposal was filed while work was restricted to this project.
 
 rule: If randomness is redrawn for every reset while the setting remains

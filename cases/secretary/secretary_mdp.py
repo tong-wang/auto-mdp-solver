@@ -15,10 +15,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
-
 from secretary_scenarios import SecretaryScenario
-from secretary_uncertainty import meta_key
+from secretary_uncertainty import RankingUncertainty
 
 
 @dataclass(slots=True)
@@ -43,31 +41,15 @@ class SecretaryState:
         )
 
 
-def _draw_arrival_order(
-    scenario: SecretaryScenario,
-    episode_seed: int,
-) -> tuple[int, ...]:
-    """Draw the reset-time permutation using seed scheme v2."""
-    # The v0.11.4 IR expresses this reset draw through a world sampler, but the
-    # domain deliberately keeps the scenario settings-only and stores the
-    # realization in episode state (ESCALATION.md F1).  Keep the draw here at
-    # state construction while still using the canonical meta-key boundary.
-    rng = np.random.default_rng(np.random.SeedSequence(
-        meta_key(0, episode_seed, scenario.seed_salt)
-    ))
-    return tuple(int(value) for value in rng.choice(
-        np.arange(1, scenario.n_candidates + 1),
-        size=scenario.n_candidates,
-        replace=False,
-    ))
-
-
 def init_state(
     scenario: SecretaryScenario,
     episode_seed: int,
 ) -> tuple[SecretaryState, dict]:
     """Draw and store a fresh episode instance, before the first candidate."""
-    arrival_order = _draw_arrival_order(scenario, episode_seed)
+    # Sampling is triggered only at initialization; the source owns the
+    # distribution and seed mapping, and state owns the realized permutation.
+    ranking = RankingUncertainty(scenario.n_candidates)
+    arrival_order = ranking.sample(episode_seed, scenario.seed_salt)
     state = SecretaryState(
         period=0,
         terminated=False,
