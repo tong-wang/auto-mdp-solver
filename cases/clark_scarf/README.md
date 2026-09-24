@@ -76,7 +76,8 @@ Documents — where to read about the case:
 | `clark_scarf.scenarios.md` | the scenario set, its axes, and why each constant was chosen |
 | `ESCALATION.md` | the campaign — design tree, changelogs, numbered findings (#E1–#E10) with verdicts |
 | `INTERPRET.md` | the policy readback (spec §14): what the trained nets actually do, and the verdict on the `confirm` stance |
-| `clark_scarf_readback_raw.svg` / `_echelon.svg` | the readback figures — echelon position after ordering against before, one panel per echelon |
+| `figures/policy_sweep_n3_l2_p09_raw_t25.svg` | the readback figure for the raw arm — the learned rule as a function, one panel per echelon |
+| `figures/policy_sweep_n3_l2_p09_echelon_t25.svg` | the same for the echelon arm |
 | `PLAYBOOK.md` | the case-close digest (guide §10): five lever entries, one frame move, one modeling rule, and what did not transfer |
 | `CLAUDE.md` | operating brief for an agent changing this folder, and the solver version its numbers were produced under |
 
