@@ -8,6 +8,22 @@ N levels as §3's scheme `[N] → … → [2] → [1]` describes.
 
 IR: `clark_scarf_schema.json` · scenario set: `clark_scarf.scenarios.md`
 
+**Fingerprints (FROZEN 2026-08-22, Phase-A sign-off):**
+`model = 8692bea53c9d` · `mdp = 7cb728c5e945` · `structural = ba41ecd2680a`
+(F10; previously `da62301e56b4` / `7138a8f1ce4e`).
+
+**The model hash did not move.** `8692bea53c9d` is byte-identical before and
+after F10 — which is the whole claim, checked rather than asserted: the
+continuous branch is the *same theory*, differently rendered. Only `mdp`, which
+covers the rendering, moved.
+
+**Two renderings of one model.** Since F10 the IR carries two demand
+candidates. `gamma` is the **default** and is the paper's own model; `poisson`
+is the integer-lattice narrowing the original campaign ran on. They are
+separate *frames*: scores are never subtracted across them, each carries its
+own leaderboard, and cells are named `g1_n3_l2_p09` (continuous) vs
+`n3_l2_p09` (lattice).
+
 ---
 
 ## The problem in prose
@@ -101,9 +117,50 @@ the head-to-head-versus-separate-branches question does not arise.
 
 | bin | contents |
 |---|---|
-| realized per transition | **retailer demand** — Poisson, mean 10, independent across periods. The only stochastic primitive. |
+| realized per transition | **retailer demand** — mean 10, independent across periods. The only stochastic primitive. Two candidates: `gamma` (default, continuous — the paper's density φ(t)) and `poisson` (the lattice narrowing). Moment-matched at θ=1, so they differ in the lattice and nothing else. |
 | drawn once per episode by nature (world latent) | **none** — the paper holds costs and the demand distribution fixed across the horizon; nothing is redrawn per episode |
 | the experimenter's training range | the swept axes below — design layer, not part of the model |
+
+## What the model says, and what the rendering chose
+
+The paper's §2 poses a general **density** φ(t): the model never required
+integer demand. The original campaign nonetheless rendered it on an integer
+lattice, and bought something real with it — the decomposition DP is *exactly*
+solvable there, brute-force verified to 0.000000, which is what makes
+"100.7% of optimal" a claim rather than a gesture.
+
+F10 separates the two. The lattice is now stated once, as a `narrowed` clause
+scoped to the `poisson` selection, rather than twice and inconsistently:
+
+| element | before F10 | after |
+|---|---|---|
+| `stock`, `pipe` | type `int_vector` / `int_matrix` **and** a `narrowed` clause naming the poisson selection as the cause | type is real; `narrowed` alone carries the lattice |
+| `ship` | `feasibility: [non_negative, integer]` | `feasibility: [non_negative]`; integrality narrowed under poisson |
+
+Those two statements contradicted each other: if the *selection* causes the
+lattice, the base type cannot be integer without putting a rendering choice
+into the model's shape. Relaxing the types was verified to leave every Poisson
+instance bit-exact before it was committed.
+
+**What the continuous rendering costs.** The DP's demand must be binned before
+a lattice recursion can convolve with it. That binning preserves the mean
+exactly at every horizon and inflates the variance by exactly **1/12** per
+aggregation — Sheppard's correction, the variance of a uniform over one lattice
+cell. So the gamma DP returns a real, near-optimal policy rather than the
+optimum: role `feasible`, not `exact`. A `Benchmark` entry carries one role and
+has no per-instance scoping, so the IR cannot yet say "exact here, feasible
+there" — an upstream proposal is owed, and until it lands the §9.9 ordering
+gate must not be run with `--ir` on a `g*_` cell.
+
+**What it buys.** `shape = demand_mean/θ`, `scale = θ`, so the mean is
+`demand_mean` for any θ and every instance's override carries over untouched.
+`var = demand_mean·θ`, which makes **θ a dispersion axis** — demand variability
+at fixed mean. Poisson structurally cannot offer it: its variance is locked to
+its mean. Not swept yet; θ = 1 everywhere, which reproduces Poisson's variance.
+
+Gamma rather than lognormal because it is closed under convolution at fixed
+scale: demand over `m` periods is exactly `Gamma(m·k, θ)`, which is the
+quantity the decomposition needs, so only the value function is gridded.
 
 ## The scenario set
 
@@ -117,7 +174,23 @@ decision can touch. Same delay, different control.
 
 Each cell is its own trained policy — both axes change the observation and action
 width, so no single policy spans them. **Stage 0 picks one cell** to build
-against; proposed canonical target `n3_l2_p09`.
+against; canonical target `n3_l2_p09` on the lattice branch, `g1_n3_l2_p09`
+on the continuous one.
+
+**Every cell is mirrored across both renderings** — 8 campaign cells and 2
+differential fixtures, ×2 = **20 named instances**. Mirrored rather than
+sampled so that every cell stays *pairable*: the "is the lattice a harmless
+simplification?" comparison needs matched pairs, and this domain is the only
+place it can be asked, having both renderings and an exact reference on one
+side. Naming is `g{θ}_` prefixed — `g1`, and `g2`/`g05`/`g025` if θ is ever
+swept — in the same terse style as the existing axes (`n3` = 3 echelons,
+`l2` = leadtime 2, `p09` = shortage 9.0). Prefix so the continuous cells sort
+together; the lattice cells keep their bare names because 1129 run artifacts
+and the entire discrete campaign log refer to them.
+
+Every instance **pins its candidate explicitly**, following `examples/mab`.
+Without that, making gamma the default would have silently re-rendered all ten
+existing cells.
 
 Train/eval strategy: **specialist** per cell.
 
@@ -165,6 +238,7 @@ An MLP can express a cumulative sum (a lower-triangular matrix of ones), so a
 | **1-comparative** | — *(standing: every campaign asks it)* | how does RL compare with the existing solutions — the exact DP **and** the heuristics? | no |
 | **2-structural** | **bypass** *(primary)* | is the echelon transform *required* to solve the problem well? Evidence is the outcome alone: the ordered `means` split `echelon ⊂ raw` and its cross-link delta | no |
 | **2-structural** | **confirm** *(secondary)* | is the learned policy nonetheless echelon-structured — does it match `y_k = min(x̄_k(n), x_{k+1})`? | **yes** — `clark_scarf_policy_probe.py`, spec §14 |
+| **2-structural** | **bypass** *(primary, continuous branch)* | the same question, asked where it can finally be asked cleanly — see below | no |
 
 The stances are not interchangeable, and the pair is deliberate: `raw ≈
 echelon` is a **success** under bypass — the coordinates were not needed — and
@@ -181,6 +255,27 @@ interpretation artifact to it. **Both stances are now declared** in the IR
 root — bypass primary, confirm secondary — and the check PASSes, reporting
 that the probe and `INTERPRET.md` the confirm stance owes are both present.
 Root-level, so declaring them moved neither fingerprint.)*
+
+### Why the continuous branch re-asks the primary question
+
+ESCALATION **#E11** voided the discrete campaign's answer. `target_discrete`'s
+decode computes the echelon position from *simulator state* and applies the
+order-up-to form, so the transform was supplied through the **action
+interface** whatever the agent observed. That left `ship_discrete` as the only
+echelon-free encoding — but it spends roughly half its categorical head on
+clipped-equivalent actions, so it is echelon-free and *handicapped*.
+
+The continuous rendering resolves the dilemma: a **fraction-of-capacity**
+action reads `ship_capacity` — raw on-hand at the source, never
+`echelon_position` — and needs no rounding and no wasted bins. It is the first
+instrument that is neither disqualified nor handicapped, which is why the
+branch inherits the question rather than opening a new one.
+
+Two things do **not** carry over and must be re-measured on this branch: the
+**1.57 training-seed floor** (measured on the lattice) and the per-arm tuned
+centres (PLAYBOOK **LV2**: a shared-centre delta confounds the lever with
+centre-fit — demonstrated on this domain when `norm_obs` reversed sign between
+the L1 and tuned centres).
 
 ## Invariants transcribed into the IR
 
@@ -304,3 +399,37 @@ over. Conflating the two double-charges pipeline stock.
 
 Shortage is 0 here — the retailer never ran out under this policy. Later periods
 in the full 30-period episode do stock out, which is where the trade-off bites.
+
+### The same period on the continuous branch (the DEFAULT rendering)
+
+The block above is the lattice branch, kept because it is the evidence that
+F10 did not move it — it re-renders verbatim. This one is the default
+rendering: same instance shape, same decision, same episode seed, gamma demand.
+
+Read the two side by side and the difference is exactly the lattice and
+nothing else. Demand is `6.01` where the lattice drew `8`; stock carries
+fractions (`13.99`) where the lattice carried whole units; every cost column
+follows continuously. Nothing structural moves — same widths, same event
+order, same pipeline shape — which is the point of a moment-matched
+counterpart.
+
+```step7b
+python -m mdp_ir.interpreter clark_scarf/clark_scarf_schema.json \
+  --instance g1_n3_l2_p09 --decision ship=10 --episode-seed 3 --max-periods 8
+```
+
+```
+clark_scarf v0.4  episode_seed=3 instance=g1_n3_l2_p09
+t                 ship  demand              arrived              shipped                stock                                         pipe  holding  shortage  shipping  total  reward
+0  [10.00,10.00,10.00]    6.01  [10.00,10.00,10.00]  [10.00,10.00,10.00]  [13.99,10.00,10.00]  [[10.00,10.00],[10.00,10.00],[10.00,10.00]]    72.98      0.00      0.00  72.98  -72.98
+1  [10.00,10.00,10.00]   14.58  [10.00,10.00,10.00]  [10.00,10.00,10.00]   [9.41,10.00,10.00]  [[10.00,10.00],[10.00,10.00],[10.00,10.00]]    63.82      0.00      0.00  63.82  -63.82
+2  [10.00,10.00,10.00]    7.53  [10.00,10.00,10.00]  [10.00,10.00,10.00]  [11.88,10.00,10.00]  [[10.00,10.00],[10.00,10.00],[10.00,10.00]]    68.76      0.00      0.00  68.76  -68.76
+3  [10.00,10.00,10.00]   11.31  [10.00,10.00,10.00]  [10.00,10.00,10.00]  [10.57,10.00,10.00]  [[10.00,10.00],[10.00,10.00],[10.00,10.00]]    66.15      0.00      0.00  66.15  -66.15
+4  [10.00,10.00,10.00]    8.07  [10.00,10.00,10.00]  [10.00,10.00,10.00]  [12.50,10.00,10.00]  [[10.00,10.00],[10.00,10.00],[10.00,10.00]]    70.00      0.00      0.00  70.00  -70.00
+5  [10.00,10.00,10.00]    6.17  [10.00,10.00,10.00]  [10.00,10.00,10.00]  [16.33,10.00,10.00]  [[10.00,10.00],[10.00,10.00],[10.00,10.00]]    77.66      0.00      0.00  77.66  -77.66
+6  [10.00,10.00,10.00]   12.94  [10.00,10.00,10.00]  [10.00,10.00,10.00]  [13.39,10.00,10.00]  [[10.00,10.00],[10.00,10.00],[10.00,10.00]]    71.79      0.00      0.00  71.79  -71.79
+7  [10.00,10.00,10.00]   13.77  [10.00,10.00,10.00]  [10.00,10.00,10.00]   [9.62,10.00,10.00]  [[10.00,10.00],[10.00,10.00],[10.00,10.00]]    64.25      0.00      0.00  64.25  -64.25
+episode total = 555.41   reward total = -555.41   periods = 8
+eval metrics: undiscounted_cost = 555.41
+```
+

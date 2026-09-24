@@ -78,7 +78,11 @@ import numpy as np
 from clark_scarf_mdp import echelon_position, echelon_stock
 from clark_scarf_scenarios import SCENARIOS, ClarkScarfScenario
 
-BETA = 0.95
+# NO module-level discount here (F11, upstream #68). The recursion solves at
+# `scenario.beta`, because a reference solved at a different discount than the
+# one it is scored with is not a bar, it is a different problem's answer. The
+# literal this replaced was one of four; naming the constant in the IR is what
+# made a single authority possible.
 _TAIL = 1e-12
 
 
@@ -97,6 +101,51 @@ def _poisson_pmf(rate: float) -> tuple[np.ndarray, np.ndarray]:
             break
     p = np.asarray(vals, dtype=np.float64)
     return np.arange(len(p)), p / p.sum()
+
+
+def _gamma_pmf(shape: float, scale: float) -> tuple[np.ndarray, np.ndarray]:
+    """Gamma binned onto the integer lattice: P(0)=F(.5), P(d)=F(d+.5)-F(d-.5).
+
+    THIS is where the gamma branch's DP stops being exact. The recursion below
+    is unchanged and still solves its grid exactly; what is approximate is the
+    demand distribution fed to it, because a density has to be binned before a
+    lattice DP can convolve with it. The error is a property of the bin width,
+    not of the solver, and it is why the `dp` benchmark cannot carry role
+    `exact` on this branch (see the IR's `narrowed` on `ship`).
+    """
+    from scipy.stats import gamma as _g          # declared in requirements.txt
+    hi = int(np.ceil(_g.ppf(1.0 - _TAIL, a=shape, scale=scale))) + 1
+    cdf = _g.cdf(np.arange(hi + 1) + 0.5, a=shape, scale=scale)
+    p = np.concatenate([[cdf[0]], np.diff(cdf)])
+    return np.arange(hi + 1), p / p.sum()
+
+
+def _lead_time_demand(demand, n_periods: int) -> tuple[np.ndarray, np.ndarray]:
+    """Demand aggregated over ``n_periods``, as a lattice distribution.
+
+    One function, both renderings — every call site asks the same question and
+    each family answers it exactly, so nothing here is duplicated per branch:
+
+      poisson   D ~ Poisson(n*mu)          exact on the lattice
+      gamma     D ~ Gamma(n*k, theta)      exact by convolution closure,
+                                           then binned (see `_gamma_pmf`)
+
+    Note what the old call sites assumed: `_poisson_pmf(mean * n)`, i.e. that
+    aggregating over n periods means scaling the MEAN. That is true for Poisson
+    and false in general — for gamma you scale the SHAPE and leave the scale
+    alone — so the periods are now passed explicitly rather than pre-multiplied
+    into a rate.
+    """
+    fam = getattr(demand, "family", "poisson")
+    if fam == "poisson":
+        return _poisson_pmf(float(demand.mean()) * n_periods)
+    if fam == "gamma":
+        st = demand.settings
+        return _gamma_pmf(float(st["shape"]) * n_periods, float(st["scale"]))
+    raise NotImplementedError(
+        f"no lead-time demand distribution for family {fam!r}; the DP needs one "
+        f"per family and cannot infer it from moments alone"
+    )
 
 
 @dataclass(slots=True)
@@ -150,11 +199,12 @@ class ClarkScarfDP:
         b = sc.p_short + sc.h_install[0]     # effective echelon backorder penalty
         mean = float(sc.demand.mean())
 
-        d_vals, d_p = _poisson_pmf(mean)                   # one period
+        beta = sc.beta
+        d_vals, d_p = _lead_time_demand(sc.demand, 1)      # one period
         # availability binds at the DECISION point L periods on -> L draws
-        DL_vals, DL_p = _poisson_pmf(mean * L)
+        DL_vals, DL_p = _lead_time_demand(sc.demand, L)
         # cost is assessed END-OF-PERIOD, one draw further on -> L+1 draws
-        DR_vals, DR_p = _poisson_pmf(mean * (L + 1))
+        DR_vals, DR_p = _lead_time_demand(sc.demand, L + 1)
 
         def shift_expect(f: np.ndarray, vals: np.ndarray, p: np.ndarray) -> np.ndarray:
             """E[f(y - X)] on the grid, clamping below the grid's floor.
@@ -194,7 +244,7 @@ class ClarkScarfDP:
                         Lam[i - 1][s + L], DL_vals, DL_p
                     )
 
-                C = (BETA**L) * stage + BETA * shift_expect(V_next[i], d_vals, d_p)
+                C = (beta**L) * stage + beta * shift_expect(V_next[i], d_vals, d_p)
 
                 j = int(np.argmin(C))
                 ybar[s, i] = int(g[j])

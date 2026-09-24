@@ -36,9 +36,9 @@ rate above the chain.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
-from clark_scarf_uncertainty import DemandGenerator, PoissonDemand
+from clark_scarf_uncertainty import DemandGenerator, FamilyDemand, PoissonDemand
 
 
 
@@ -66,6 +66,14 @@ class ClarkScarfScenario:
     c_ship: tuple[float, ...] = (0.0, 0.0, 0.0, 0.0)
     p_short: float = 9.0                                   # retailer backlog penalty
     ship_max: float = 200.0                                # action-scale cap
+    # The objective's discount, materializing the IR constant `beta` (F11,
+    # upstream #68). It lives HERE, on the instance, and not as a module
+    # constant in four scripts, because that is what naming it in the IR buys:
+    # `objective.discount_factor` reads "beta", so an instance may render this
+    # model at another discount and everything that scores must follow the
+    # instance rather than a literal it was written beside. Every current
+    # instance is 0.95 (`human_confirmed` at the Phase-A sign-off).
+    beta: float = 0.95
 
     seed_salt: int = 1
 
@@ -84,6 +92,11 @@ class ClarkScarfScenario:
             f"instance selects."
         )
         assert self.horizon >= 1, "horizon must be >= 1."
+        assert 0.0 < self.beta <= 1.0, (
+            f"beta={self.beta} must be in (0, 1] -- the model declares the "
+            f"quantity's domain as real in [0, 1] and a zero discount is not a "
+            f"finite-horizon objective."
+        )
         assert len(self.h_install) >= self.n_echelons, (
             f"h_install must have at least n_echelons={self.n_echelons} entries, "
             f"got {len(self.h_install)}. Entries beyond that are never read."
@@ -187,13 +200,38 @@ _DEMAND_MEAN = 10.0
 _HORIZON = 50
 
 
+_DEMAND_SCALE = 1.0   # gamma theta; see the IR constant `demand_scale`
+
+
+def _gamma(mean: float, scale: float = _DEMAND_SCALE) -> FamilyDemand:
+    """Continuous demand, moment-matched to `PoissonDemand(mean)` at scale 1.
+
+    Built as `FamilyDemand` — the same class the differential adapter routes
+    every non-`poisson` candidate to — rather than a bespoke `GammaDemand`.
+    One class, one sampling path: a second implementation of the same
+    distribution would be invisible to the differential, which exercises the
+    adapter's path only, and would be free to drift from it.
+
+    shape = mean/theta and scale = theta, so mean is exactly `mean` for any
+    theta and var = mean*theta. theta = 1 gives var = mean, which is Poisson's
+    own variance — the branches differ in the lattice and in nothing else.
+    """
+    return FamilyDemand("gamma", {"shape": mean / scale, "scale": scale},
+                        source_id=_DEMAND_STREAM_ID)
+
+
+_DEMAND_STREAM_ID = 0   # matches the IR slot's stream_id and PoissonDemand's default
+
+
 def _make(name: str, n: int, lead: int, p: float, **over) -> ClarkScarfScenario:
+    mean = over.pop("demand_mean", _DEMAND_MEAN)
+    demand = over.pop("demand", None) or PoissonDemand(mean)
     return ClarkScarfScenario(
         scenario_name=name,
         horizon=over.pop("horizon", _HORIZON),
         n_echelons=n,
         leadtime=lead,
-        demand=PoissonDemand(over.pop("demand_mean", _DEMAND_MEAN)),
+        demand=demand,
         h_install=_H[n],
         p_short=p,
         **over,
@@ -223,6 +261,76 @@ SCENARIOS: dict[str, ClarkScarfScenario] = {
         "verify_l3", 2, 3, 9.0, horizon=12, demand_mean=4.0, ship_max=80.0
     ),
 }
+
+# -- the continuous branch ---------------------------------------------------
+#
+# The `g{theta}_` mirror of every cell above. A separate FRAME, not a competing arm:
+# scores are never subtracted across the two (the lattice changes the problem,
+# not just its solution), so each branch carries its own leaderboard and its
+# own campaign log. Continuous is the IR's DEFAULT candidate -- it is the
+# paper's own model (section 2 poses a density) -- while the Poisson cells keep
+# their names because 1129 run artifacts and the whole discrete campaign log
+# refer to them.
+_GAMMA_SPECS: dict[str, dict] = {
+    "n2_l1_p09": dict(n=2, lead=1, p=9.0),
+    "n2_l2_p09": dict(n=2, lead=2, p=9.0),
+    "n3_l1_p09": dict(n=3, lead=1, p=9.0),
+    "n3_l2_p09": dict(n=3, lead=2, p=9.0),
+    "n4_l1_p09": dict(n=4, lead=1, p=9.0),
+    "n4_l2_p09": dict(n=4, lead=2, p=9.0),
+    "n3_l2_p04": dict(n=3, lead=2, p=4.0),
+    "n3_l2_p19": dict(n=3, lead=2, p=19.0),
+    "verify_tiny": dict(n=2, lead=1, p=4.0, horizon=4, demand_mean=2.0, ship_max=40.0),
+    "verify_l3": dict(n=2, lead=3, p=9.0, horizon=12, demand_mean=4.0, ship_max=80.0),
+}
+def _gamma_tag(scale: float = _DEMAND_SCALE) -> str:
+    """`g{theta}` with the decimal point dropped — g1, g2, g05, g025.
+
+    theta rides in the NAME because it is a design axis we expect to sweep:
+    var = mean*theta, so it moves demand variability at fixed mean, which is
+    the axis Poisson structurally cannot offer. Same terse style as the
+    existing axes (n3 = 3 echelons, l2 = leadtime 2, p09 = shortage 9.0), so
+    a cell reads left to right as rendering-then-structure. The mean needs no
+    token: the base name already carries it (verify_tiny at 2, verify_l3 at 4).
+    """
+    txt = f"{scale:g}".replace("0.", "0").replace(".", "")
+    return f"g{txt}"
+
+
+for _base, _spec in _GAMMA_SPECS.items():
+    _name = f"{_gamma_tag()}_{_base}"
+    _kw = dict(_spec)
+    _mean = _kw.pop("demand_mean", _DEMAND_MEAN)
+    SCENARIOS[_name] = _make(
+        _name, _kw.pop("n"), _kw.pop("lead"), _kw.pop("p"),
+        demand=_gamma(_mean), **_kw,
+    )
+
+
+# -- the undiscounted twins (F12) --------------------------------------------
+#
+# `_b1` renders the SAME model at beta = 1. Possible at all only because the IR
+# names the discount (F11): before that, beta was a literal in the objective and
+# a second discount meant re-rendering the whole domain, which would have
+# re-based every recorded number instead of opening a cell beside them.
+#
+# Each twin is its OWN FRAME. A different objective is a different problem, so
+# no score crosses between a cell and its twin -- not even to say "worse".
+# What they exist to ask is what beta = 0.95 was suppressing: beta^45 is 0.10,
+# so the last fifth of the horizon carries almost no weight in the objective
+# while carrying 45 of 83 undiscounted units of the RL-vs-DP gap, and the
+# raw-echelon separation this campaign is FOR reads +1.57 discounted against
+# +43.62 undiscounted on the same two policies.
+#
+# The DP stays exactly solvable: finite-horizon backward induction takes
+# beta = 1 as the ordinary case, and `verify_tiny_b1` proves it rather than
+# assuming it -- the brute force reads `scenario.beta` on both recursions, so
+# the fixture checks the decomposition against the joint optimum at the SAME
+# discount it was solved with.
+for _twin, _src in (("n3_l2_p09_b1", "n3_l2_p09"),
+                    ("verify_tiny_b1", "verify_tiny"),
+                    (f"{_gamma_tag()}_n3_l2_p09_b1", f"{_gamma_tag()}_n3_l2_p09")):
+    SCENARIOS[_twin] = replace(SCENARIOS[_src], scenario_name=_twin, beta=1.0)
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@
         },
         "leadtime_k": {
           "domain": "integer >= 1",
-          "source": "p.1783: delivery lag \u03bb; the paper admits per-installation lags and states no upper bound. leadtime_k = 0 is out of scope, see out_of_scope",
+          "source": "p.1783: delivery lag λ; the paper admits per-installation lags and states no upper bound. leadtime_k = 0 is out of scope, see out_of_scope",
           "stochastic": false
         },
         "c_ship": {
@@ -52,7 +52,7 @@
         },
         "demand": {
           "domain": "distribution on [0, inf), independent across periods; stationarity not required by the model",
-          "source": "p.1783: density \u03c6(t), 'the demands being independent from period to period. (The demand distributions may actually differ from period to period.)' -- neither a family, nor integrality, nor stationarity is model structure",
+          "source": "p.1783: density φ(t), 'the demands being independent from period to period. (The demand distributions may actually differ from period to period.)' -- neither a family, nor integrality, nor stationarity is model structure",
           "stochastic": true
         }
       },
@@ -61,7 +61,7 @@
         "leadtime_k = 0: void under the A -> S -> D event order -- a lag-0 dispatch would land before its own dispatch"
       ],
       "dynamics": [
-        "A: forall k: stock_k += pipe_{k,1};  forall k: pipe_{k,\u00b7} <- shift(pipe_{k,\u00b7}) (drop the head, append 0)",
+        "A: forall k: stock_k += pipe_{k,1};  forall k: pipe_{k,·} <- shift(pipe_{k,·}) (drop the head, append 0)",
         "S: a_k = min(ship_k, stock_{k+1}) for k < n_echelons;  a_N = ship_N (outside supplier, unclipped);  forall k < n_echelons: stock_{k+1} -= a_k;  forall k: pipe_{k,leadtime_k} += a_k",
         "D: stock_1 -= D_t,  D_t ~ demand_t",
         "objective: minimize E[ sum_{t=0..horizon_T-1} discount_factor^t * (holding_t + shortage_t + shipping_t) ] where holding_t = h_install_1 * max(stock_1, 0) + sum_{k=2..n_echelons} h_install_k * stock_k + sum_{k=1..n_echelons-1} h_install_{k+1} * sum_{s=1..leadtime_k} pipe_{k,s} (in-transit stock charged at its SOURCE's rate, Assumption 3 / F1), shortage_t = p_short * max(-stock_1, 0), and shipping_t = sum_{k=1..n_echelons} c_ship_k * a_k (on executed shipments)"
@@ -138,10 +138,29 @@
             "value": 200.0,
             "axis": "demand",
             "desc": "upper bound on any single shipment = 20 x demand_mean. Caps the ACTION SCALE, not a physical limit; a bare constant so instances that move demand_mean resize it too."
+          },
+          {
+            "name": "demand_scale",
+            "value": 1.0,
+            "axis": "demand",
+            "desc": "gamma scale theta. Parameterized so shape = demand_mean/theta and scale = theta, hence mean = demand_mean by construction -- every instance that overrides demand_mean (verify_l3 at 4, verify_tiny at 2) carries over untouched. var = demand_mean*theta and CV = sqrt(theta/demand_mean), so theta is a DISPERSION axis: theta=1 reproduces Poisson's variance exactly (mean=var), which is why the gamma branch is the same demand with the lattice removed rather than a different problem. Poisson structurally cannot carry this axis -- its variance is locked to its mean -- so opening theta is a capability the continuous rendering buys. Not swept yet: EXPERIMENT DESIGN, a later choice."
+          },
+          {
+            "name": "beta",
+            "value": 0.95,
+            "axis": "",
+            "desc": "the objective's discount factor -- the paper's alpha (costs n periods out discounted by alpha^n, p.1783). A DESIGN choice, not a model claim: the paper fixes the form and not the value, and mdp.model declares the quantity's domain as real in [0, 1]. Named rather than written into the objective so an instance can render this model at another discount (upstream #68, v0.9.29); a value with no name cannot be overridden by an instance. Confirmed 0.95 at the Phase-A sign-off (`human_confirmed`), the same provenance as demand_mean and p_short. SWEPT since F12: `n3_l2_p09_b1`, `g1_n3_l2_p09_b1` and `verify_tiny_b1` render the same model undiscounted. Each twin is its OWN FRAME -- a different objective is a different problem, so no score crosses between a cell and its twin."
+          },
+          {
+            "name": "dp_slack",
+            "value": 0.001,
+            "axis": "",
+            "desc": "spec 9.9 implementation slack for the `dp` benchmark: the band max(tolerance, z*SE) inside which a feasible arm scoring better than the reference is reported rather than failed. Named because ONE entry serves two renderings whose numerical error differs in size and in kind (upstream #68). 0.001 is the POISSON value: the decomposition is exact on the lattice and its only numerical caveat is the pmf truncated at dropped mass < 1e-9 per period, ~1e-4 in metric units over the horizon. The gamma instances override it -- see their entry."
           }
         ],
         "instances": {
           "n2_l1_p09": {
+            "demand": "poisson",
             "n_echelons": 2,
             "leadtime": 1,
             "p_short": 9.0,
@@ -153,6 +172,7 @@
             ]
           },
           "n2_l2_p09": {
+            "demand": "poisson",
             "n_echelons": 2,
             "leadtime": 2,
             "p_short": 9.0,
@@ -164,6 +184,7 @@
             ]
           },
           "n3_l1_p09": {
+            "demand": "poisson",
             "n_echelons": 3,
             "leadtime": 1,
             "p_short": 9.0,
@@ -175,6 +196,7 @@
             ]
           },
           "n3_l2_p09": {
+            "demand": "poisson",
             "n_echelons": 3,
             "leadtime": 2,
             "p_short": 9.0,
@@ -185,7 +207,21 @@
               0.0
             ]
           },
+          "n3_l2_p09_b1": {
+            "demand": "poisson",
+            "n_echelons": 3,
+            "leadtime": 2,
+            "p_short": 9.0,
+            "h_install": [
+              2.0,
+              1.0,
+              0.5,
+              0.0
+            ],
+            "beta": 1.0
+          },
           "n4_l1_p09": {
+            "demand": "poisson",
             "n_echelons": 4,
             "leadtime": 1,
             "p_short": 9.0,
@@ -197,6 +233,7 @@
             ]
           },
           "n4_l2_p09": {
+            "demand": "poisson",
             "n_echelons": 4,
             "leadtime": 2,
             "p_short": 9.0,
@@ -208,6 +245,7 @@
             ]
           },
           "n3_l2_p04": {
+            "demand": "poisson",
             "n_echelons": 3,
             "leadtime": 2,
             "p_short": 4.0,
@@ -219,6 +257,7 @@
             ]
           },
           "n3_l2_p19": {
+            "demand": "poisson",
             "n_echelons": 3,
             "leadtime": 2,
             "p_short": 19.0,
@@ -230,6 +269,7 @@
             ]
           },
           "verify_tiny": {
+            "demand": "poisson",
             "n_echelons": 2,
             "leadtime": 1,
             "p_short": 4.0,
@@ -243,7 +283,24 @@
             "demand_mean": 2.0,
             "ship_max": 40.0
           },
+          "verify_tiny_b1": {
+            "demand": "poisson",
+            "n_echelons": 2,
+            "leadtime": 1,
+            "p_short": 4.0,
+            "h_install": [
+              1.5,
+              0.5,
+              0.0,
+              0.0
+            ],
+            "horizon_T": 4,
+            "demand_mean": 2.0,
+            "ship_max": 40.0,
+            "beta": 1.0
+          },
           "verify_l3": {
+            "demand": "poisson",
             "n_echelons": 2,
             "leadtime": 3,
             "p_short": 9.0,
@@ -256,6 +313,156 @@
             "horizon_T": 12,
             "demand_mean": 4.0,
             "ship_max": 80.0
+          },
+          "g1_n2_l1_p09": {
+            "demand": "gamma",
+            "n_echelons": 2,
+            "leadtime": 1,
+            "p_short": 9.0,
+            "h_install": [
+              1.5,
+              0.5,
+              0.0,
+              0.0
+            ],
+            "dp_slack": 2.0
+          },
+          "g1_n2_l2_p09": {
+            "demand": "gamma",
+            "n_echelons": 2,
+            "leadtime": 2,
+            "p_short": 9.0,
+            "h_install": [
+              1.5,
+              0.5,
+              0.0,
+              0.0
+            ],
+            "dp_slack": 2.0
+          },
+          "g1_n3_l1_p09": {
+            "demand": "gamma",
+            "n_echelons": 3,
+            "leadtime": 1,
+            "p_short": 9.0,
+            "h_install": [
+              2.0,
+              1.0,
+              0.5,
+              0.0
+            ],
+            "dp_slack": 2.0
+          },
+          "g1_n3_l2_p09": {
+            "demand": "gamma",
+            "n_echelons": 3,
+            "leadtime": 2,
+            "p_short": 9.0,
+            "h_install": [
+              2.0,
+              1.0,
+              0.5,
+              0.0
+            ],
+            "dp_slack": 2.0
+          },
+          "g1_n3_l2_p09_b1": {
+            "demand": "gamma",
+            "n_echelons": 3,
+            "leadtime": 2,
+            "p_short": 9.0,
+            "h_install": [
+              2.0,
+              1.0,
+              0.5,
+              0.0
+            ],
+            "dp_slack": 2.0,
+            "beta": 1.0
+          },
+          "g1_n4_l1_p09": {
+            "demand": "gamma",
+            "n_echelons": 4,
+            "leadtime": 1,
+            "p_short": 9.0,
+            "h_install": [
+              2.5,
+              1.5,
+              1.0,
+              0.5
+            ],
+            "dp_slack": 2.0
+          },
+          "g1_n4_l2_p09": {
+            "demand": "gamma",
+            "n_echelons": 4,
+            "leadtime": 2,
+            "p_short": 9.0,
+            "h_install": [
+              2.5,
+              1.5,
+              1.0,
+              0.5
+            ],
+            "dp_slack": 2.0
+          },
+          "g1_n3_l2_p04": {
+            "demand": "gamma",
+            "n_echelons": 3,
+            "leadtime": 2,
+            "p_short": 4.0,
+            "h_install": [
+              2.0,
+              1.0,
+              0.5,
+              0.0
+            ],
+            "dp_slack": 2.0
+          },
+          "g1_n3_l2_p19": {
+            "demand": "gamma",
+            "n_echelons": 3,
+            "leadtime": 2,
+            "p_short": 19.0,
+            "h_install": [
+              2.0,
+              1.0,
+              0.5,
+              0.0
+            ],
+            "dp_slack": 2.0
+          },
+          "g1_verify_tiny": {
+            "demand": "gamma",
+            "n_echelons": 2,
+            "leadtime": 1,
+            "p_short": 4.0,
+            "h_install": [
+              1.5,
+              0.5,
+              0.0,
+              0.0
+            ],
+            "horizon_T": 4,
+            "demand_mean": 2.0,
+            "ship_max": 40.0,
+            "dp_slack": 2.0
+          },
+          "g1_verify_l3": {
+            "demand": "gamma",
+            "n_echelons": 2,
+            "leadtime": 3,
+            "p_short": 9.0,
+            "h_install": [
+              1.5,
+              0.5,
+              0.0,
+              0.0
+            ],
+            "horizon_T": 12,
+            "demand_mean": 4.0,
+            "ship_max": 80.0,
+            "dp_slack": 2.0
           }
         }
       }
@@ -284,7 +491,7 @@
         {
           "name": "stock",
           "role": "core",
-          "type": "int_vector",
+          "type": "float_vector",
           "length": "n_echelons",
           "element_bounds": [
             "-40 * demand.mean",
@@ -293,14 +500,14 @@
           "observability": "observable",
           "desc": "stock[k] = physical on-hand inventory at installation k+1 (0-indexed: stock[0] is the retailer, which may go negative when demand is backlogged; upper installations are non-negative). Exactly n_echelons long -- the width NAMES the chain length, so an instance renders the levels it has and there is no inert padding. Echelon stock is the running sum with the in-flight terms offset one level (Assumption 3); see the objective's holding component.",
           "narrowed": {
-            "to": "integer lattice",
-            "by": "selection: demand = poisson (integer support) + design: integer shipment quantities (the gym's discrete action lattices)"
+            "to": "integer lattice, under the `poisson` selection ONLY -- the base type is real, which is what the model layer declares (demand: distribution on [0, inf), the paper's density phi(t))",
+            "by": "selection: demand = poisson (integer support) + design: integer shipment quantities (the gym's discrete action lattices). Under the `gamma` selection NEITHER holds and the state is real-valued. Stating the lattice as the state variable's TYPE was an over-commitment: it put a rendering choice in the model's shape, contradicting this very clause, which already named the selection as the cause. Found while adding the continuous branch."
           }
         },
         {
           "name": "pipe",
           "role": "core",
-          "type": "int_matrix",
+          "type": "float_matrix",
           "length": [
             "n_echelons",
             "leadtime"
@@ -311,8 +518,8 @@
           ],
           "observability": "observable",
           "narrowed": {
-            "to": "integer lattice",
-            "by": "selection: demand = poisson + design: integer shipment quantities"
+            "to": "integer lattice, under the `poisson` selection ONLY -- the base type is real, which is what the model layer declares (demand: distribution on [0, inf), the paper's density phi(t))",
+            "by": "selection: demand = poisson (integer support) + design: integer shipment quantities (the gym's discrete action lattices). Under the `gamma` selection NEITHER holds and the state is real-valued. Stating the lattice as the state variable's TYPE was an over-commitment: it put a rendering choice in the model's shape, contradicting this very clause, which already named the selection as the cause. Found while adding the continuous branch."
           },
           "desc": "pipe[k][s] = units in flight into installation k+1, landing after s+1 more arrival events. BOTH axes name a scenario constant -- n_echelons links, each exactly leadtime slots -- so an instance renders precisely the shape it selects and there is no cap on either dimension. The A event shifts every link by slice-and-concat; a dispatch enters at the last slot. Quantified over k, not enumerated: the per-link rule is stated once."
         }
@@ -372,12 +579,11 @@
             "rationale": "ship_max = 200 = 20 x mean demand: an ACTION-SCALE cap, not a physical limit -- it only has to sit safely above any shipment a sensible policy would make (mean demand is 10). Carried as a bare constant so instances that move demand_mean resize it too (verify_tiny overrides to 40). Confirmed at the Phase-A sign-off."
           },
           "feasibility": [
-            "non_negative",
-            "integer"
+            "non_negative"
           ],
           "narrowed": {
-            "to": "bounded [0, ship_max], integer feasibility",
-            "by": "implementation: ship_max action-scale cap + design: integer quantities so the DP reference is exact on the lattice rather than gridded"
+            "to": "bounded [0, ship_max]; integer feasibility under the `poisson` selection ONLY",
+            "by": "implementation: ship_max action-scale cap + design: integer quantities so the DP reference is exact on the lattice rather than gridded. Under `gamma` the quantity is real and the DP reference is a GRID APPROXIMATION, so its benchmark role cannot be `exact` on that branch."
           },
           "dim": "n_echelons",
           "desc": "ship[k] = quantity dispatched on link k this period, one per link, all links moving simultaneously. Width NAMES the chain length (dim: n_echelons), so the action is exactly as wide as the instance has links. Link k draws from installation k+2 and is clipped to what that installation holds; the TOP link (k = n_echelons-1) draws from the unlimited outside supplier and is capped only by ship_max."
@@ -396,7 +602,7 @@
               "sub_stream": null
             }
           ],
-          "default": "poisson",
+          "default": "gamma",
           "candidates": {
             "poisson": {
               "generator": "PoissonDemand",
@@ -405,7 +611,17 @@
                 "rate": "demand_mean"
               },
               "is_discrete": true,
-              "desc": "fixed-rate Poisson retailer demand, i.i.d. and stationary across periods. Both the family and the STATIONARITY are selections/design: the paper's section 2 poses a general density \u03c6(t) and its parenthetical explicitly permits per-period distributions ('The demand distributions may actually differ from period to period') -- an earlier desc misquoted the paper as holding the distribution fixed. No draw spec: under THIS selection the slot carries no world latent."
+              "desc": "fixed-rate Poisson retailer demand, i.i.d. and stationary across periods. Both the family and the STATIONARITY are selections/design: the paper's section 2 poses a general density φ(t) and its parenthetical explicitly permits per-period distributions ('The demand distributions may actually differ from period to period') -- an earlier desc misquoted the paper as holding the distribution fixed. No draw spec: under THIS selection the slot carries no world latent."
+            },
+            "gamma": {
+              "generator": "FamilyDemand",
+              "family": "gamma",
+              "settings": {
+                "shape": "demand_mean / demand_scale",
+                "scale": "demand_scale"
+              },
+              "is_discrete": false,
+              "desc": "DEFAULT. Continuous retailer demand, i.i.d. and stationary across periods. This is the paper's OWN model: section 2 poses a general density phi(t), so the continuous rendering is the faithful one and the integer lattice is the narrowing (see `poisson`). Moment-matched to Poisson(demand_mean) at theta=1, so the two branches differ in lattice and in nothing else. Gamma rather than lognormal because it is closed under convolution at fixed scale: lead-time demand over L periods is exactly Gamma(L*demand_mean/theta, theta), which is the quantity the Clark-Scarf decomposition needs, so the demand side of the DP stays analytic and only the value function is gridded. Generator is `FamilyDemand`, the domain's family-driven zero-code path -- the differential adapter already routes any non-`poisson` candidate to it, so this branch needed no new generator class. That the extension point was there and worked is a fact about the original build, not a coincidence."
             }
           },
           "desc": "retailer demand, the only stochastic primitive in the model"
@@ -452,7 +668,7 @@
       },
       "objective": {
         "sense": "minimize",
-        "discount_factor": 0.95,
+        "discount_factor": "beta",
         "per_step_components": [
           {
             "name": "holding",
@@ -501,10 +717,15 @@
         "default": true,
         "features": [
           {
+            "derived": "period_frac",
+            "expr": "period / T"
+          },
+          {
             "ref": "stock"
           },
           {
-            "ref": "pipe"
+            "derived": "pipe_observable",
+            "expr": "[[pipe[k][s] for k in range(n_echelons)] for s in range(leadtime - 1)]"
           }
         ]
       },
@@ -512,30 +733,54 @@
         "name": "echelon",
         "features": [
           {
+            "derived": "period_frac",
+            "expr": "period / T"
+          },
+          {
             "derived": "echelon_stock",
             "expr": "[sum([stock[j] for j in range(k + 1)]) + sum([sum(pipe[j]) for j in range(k)]) for k in range(n_echelons)]"
           },
           {
             "derived": "echelon_transit_per_slot",
-            "expr": "[sum([sum(pipe[j]) for j in range(k + 1)]) for k in range(n_echelons)]"
+            "expr": "[[sum([pipe[j][s] for j in range(k + 1)]) for k in range(n_echelons)] for s in range(leadtime - 1)]"
+          }
+        ]
+      },
+      {
+        "name": "raw_ttg",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "T - period"
+          },
+          {
+            "ref": "stock"
+          },
+          {
+            "derived": "pipe_observable",
+            "expr": "[[pipe[k][s] for k in range(n_echelons)] for s in range(leadtime - 1)]"
+          }
+        ]
+      },
+      {
+        "name": "echelon_ttg",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "T - period"
+          },
+          {
+            "derived": "echelon_stock",
+            "expr": "[sum([stock[j] for j in range(k + 1)]) + sum([sum(pipe[j]) for j in range(k)]) for k in range(n_echelons)]"
+          },
+          {
+            "derived": "echelon_transit_per_slot",
+            "expr": "[[sum([pipe[j][s] for j in range(k + 1)]) for k in range(n_echelons)] for s in range(leadtime - 1)]"
           }
         ]
       }
     ],
     "action_modes": [
-      {
-        "name": "target_discrete",
-        "default": true,
-        "encodes": "ship",
-        "type": "discrete",
-        "bounds": [
-          0,
-          "ship_max"
-        ],
-        "transform": "",
-        "feasibility_strategy": "clip",
-        "desc": "DEFAULT. The bin index is the echelon ORDER-UP-TO level y_k; the shipment is clip(y_k - u_k, 0, capacity). Per-link grids (MultiDiscrete([41,81,121]) at n3_l2_p09) because echelon k covers k+1 levels and its target scales accordingly. This is the form Clark & Scarf prove optimal and the point is representational: in QUANTITY coordinates the optimal action is q = ybar_k(t) - u_k, a state-dependent function; in TARGET coordinates it is ybar_k(t), mid-horizon a constant. Same policy class, far easier function. Measured 1030.02 vs 1059.04 for ship_discrete (ESCALATION #E9)."
-      },
       {
         "name": "ship_discrete",
         "default": false,
@@ -550,8 +795,8 @@
         "desc": "DEFAULT. One categorical head per link (MultiDiscrete); the bin index IS the shipment quantity in whole units, 0 .. 4x mean demand. Discrete because the problem is: demand is Poisson and every stock is integral (the decisions are marked `integer`), so a fractional shipment would put non-integers into an integer state and cost the DP reference its exactness. A categorical head also carries no action-scale hazard -- it reweights rather than crawling a Gaussian mean, so every quantity is reachable from the first update."
       },
       {
-        "name": "ship_rel",
-        "default": false,
+        "name": "ship_fraction",
+        "default": true,
         "encodes": "ship",
         "type": "continuous",
         "bounds": [
@@ -560,10 +805,10 @@
         ],
         "transform": "",
         "feasibility_strategy": "clip",
-        "desc": "q = mean_demand * (1 + 3*a) on a symmetric [-1,1] box, so raw action 0 ships exactly mean demand. This campaign's first fix for the action-scale hazard; it worked (~20x better than `ship`) but treats the symptom rather than the cause. Kept as evidence, not as a recommendation."
+        "desc": "The decision is a FRACTION of what the source can supply: the action IS the fraction: q = a * ship_capacity[k] with a in [0,1], no affine remap, so an action of 0.7 reads as '70% of what my source can supply' wherever it is printed -- which matters because this domain does policy readbacks (spec 14). ONE mode for both renderings. Rounding is keyed on the DEMAND DISTRIBUTION, not on the action mode: under a discrete selection the shipment is rounded half-up so stocks stay on the lattice and the DP reference keeps its exactness; under a continuous one nothing rounds and distinct actions give distinct quantities. That is `narrowed` on this decision implemented rather than encoded structurally -- it already reads 'integer feasibility under the `poisson` selection ONLY'. A separate discrete-fraction mode was built and then removed: a fraction is one decision, and giving it two action modes puts a rendering choice into the action space, the same category error `narrowed` exists to prevent. Half-UP and not numpy's rint (half-to-even), which against a state-varying cap hands even quantities three times the prior mass of odd ones -- a parity bias invisible in any aggregate score. A symmetric [-1,1] box was used first, reasoning that SB3's Gaussian starts at raw 0 so [0,1] would start by shipping nothing. That imported a caveat from `ship`, where raw 0 meant 'ship nothing' AND the useful range was ~1.5% of the box: the failure was the unreachability, not the zero, and here the box IS the useful range. What the two actually trade is the initial action distribution -- SB3 clips an unbounded Gaussian, so [0,1] puts ~50% of initial mass at 0 and [-1,1] ~16% -- and [-1,1] loses that trade under the ship_capacity cap, because it would centre the TOP link at half of ship_max, ten times mean demand, every episode at initialization. The fraction is of ship_capacity UNCLAMPED -- the IR's own per-link bound, nothing added and no constant invented. Below the top link that is the source's on-hand stock, so a=+1 is 'ship everything available' in every state (LV1: the useful extreme keeps a CONSTANT address); on the top link it is ship_max, the declared bound [0, ship_max]. Echelon-free (#E11/FM3): it reads ship_capacity, raw on-hand, never echelon_position. No mask applies or is needed -- the fraction is taken OF the cap, so `feasibility_strategy: clip` never fires (LV3). KNOWN CONSEQUENCE, carried deliberately: ship_max is 20x mean demand, so the top link's useful region occupies a narrow part of the action range and the encoding inherits `ship`'s action-scale hazard there -- left as a TRAINING question for an L0/L1 result rather than pre-engineered away. Two earlier bounds were withdrawn: a min(available, 4x mean) clamp, and a constant justified from the range of shipments the DP POLICY makes, which sets the action space from the reference solution (#E11/FM3 one layer down) and samples only states the DP visits, not the depleted ones an agent trains through."
       },
       {
-        "name": "ship",
+        "name": "ship_absolute",
         "default": false,
         "encodes": "ship",
         "type": "continuous",
@@ -573,7 +818,7 @@
         ],
         "transform": "",
         "feasibility_strategy": "clip",
-        "desc": "Identity on [0, ship_max] -- the paper-native encoding. Carries the action-scale hazard: SB3's Gaussian starts at raw 0 with std 1, so early actions cover ~[0,3] of a box 20x mean demand wide, and raw 0 means 'ship nothing' -- measured at 22560 against an optimum of 982. Retained as the naive control."
+        "desc": "NAIVE CONTROL. Identity on [0, ship_max] -- the paper-native encoding, and the measurement that motivates every other mode here. It carries the action-scale hazard by construction: SB3's Gaussian starts at raw 0 with std 1, so early actions cover ~[0,3] of a box 20x mean demand wide, and raw 0 means 'ship nothing' -- measured at 22560 against an optimum of 982. Renamed from `ship` so the contrast with `ship_fraction` is in the name: absolute quantity vs fraction of what the source can supply."
       }
     ],
     "reward_modes": [
@@ -637,27 +882,27 @@
     {
       "name": "dp",
       "role": "exact",
-      "basis": "the Clark & Scarf decomposition (Theorems 1-2): the chain solved as N one-dimensional problems, each with Theorem 2's induced penalty. EXACT as an algorithm; the one numerical caveat is that the Poisson pmf is truncated at a high quantile (dropped mass < 1e-9 per period) while the simulator's sampler is not, so the bar may be optimistic by at most ~1e-4 in metric units over the 50-period horizon (1e-9 x p_short x a generous demand ceiling x T). Optimality is not taken on the theorems' word: clark_scarf_dp_exactness.py brute-forces the full joint state on verify_tiny and the gap is 0.000000 (ESCALATION #E1, which is where a 30%-suboptimal first draft was caught).",
-      "tolerance": 0.001,
-      "source": "spec \u00a79.9 role; declared 2026-08-17 against upstream #23, filed from this campaign"
+      "basis": "the Clark & Scarf decomposition (Theorems 1-2): the chain solved as N one-dimensional problems, each with Theorem 2's induced penalty. EXACT as an algorithm; the one numerical caveat is that the Poisson pmf is truncated at a high quantile (dropped mass < 1e-9 per period) while the simulator's sampler is not, so the bar may be optimistic by at most ~1e-4 in metric units over the 50-period horizon (1e-9 x p_short x a generous demand ceiling x T). Optimality is not taken on the theorems' word: clark_scarf_dp_exactness.py brute-forces the full joint state on verify_tiny and the gap is 0.000000 (ESCALATION #E1, which is where a 30%-suboptimal first draft was caught). SCOPE, since v0.4 gained a second demand candidate: this role describes the `poisson` branch, where the lattice is the true state space and the decomposition is provably optimal on it. Under `gamma` the SAME solver is fed a binned density -- mean exact at every horizon, variance inflated by exactly 1/12 per aggregation (Sheppard's correction, the variance of a uniform over one lattice cell) -- so what it returns is a real, near-optimal policy rather than the optimum, which is role `feasible` by the taxonomy, not `exact`. A Benchmark entry carries ONE role and has no per-instance scoping, so this cannot be stated in the IR today: UPSTREAM PROPOSAL owed (a role that depends on which catalog candidate an instance selects). Until then, do NOT run the §9.9 ordering gate with --ir on a g*_ cell: it would read `exact` and call a legitimate win over a 1/12-inflated bar a defect. No gamma DP arm exists on any leaderboard yet, so the claim above is true of everything currently scored. TOLERANCE IS PER INSTANCE (upstream #68, v0.9.29): `dp_slack` is 0.001 on the poisson instances, where that caveat is the whole of it, and 2.0 on the gamma ones, where this same code feeds the lattice recursion a BINNED density. There the bar is a policy computed from a distribution the simulator does not draw from, so its critical numbers can sit a full lattice unit off the continuous optimum's; the worst single-unit target perturbation measured on g1_n3_l2_p09 costs 1.75 (0.176% of the bar), and 2.0 covers it. On the lattice no such term exists -- the targets are optimal there, not approximate.",
+      "tolerance": "dp_slack",
+      "source": "spec §9.9 role; declared 2026-08-17 against upstream #23, filed from this campaign"
     },
     {
       "name": "echelon",
       "role": "feasible",
       "basis": "echelon base-stock WITHOUT the decomposition -- the echelon idea alone, targets fitted per level. Feasible by construction: it runs under the real information set.",
-      "source": "spec \u00a79.9 role; declared 2026-08-17"
+      "source": "spec §9.9 role; declared 2026-08-17"
     },
     {
       "name": "local",
       "role": "feasible",
       "basis": "local (installation) base-stock: each level reorders to its own target, ignoring the level below. Pre-1960 practice, and the control the echelon idea is priced against.",
-      "source": "spec \u00a79.9 role; declared 2026-08-17"
+      "source": "spec §9.9 role; declared 2026-08-17"
     },
     {
       "name": "random",
       "role": "feasible",
       "basis": "uniform random shipments within the action box -- the floor, present so the ladder has a bottom and a broken eval is visible.",
-      "source": "spec \u00a79.9 role; declared 2026-08-17"
+      "source": "spec §9.9 role; declared 2026-08-17"
     }
   ],
   "research_questions": {
@@ -675,6 +920,13 @@
         "claim": "The raw-trained policy IS an echelon base-stock rule -- it recovers the aggregation and applies Clark & Scarf's own critical numbers.",
         "instrument": "Stage-5 readback on policy-own trajectories: spread of the implied order-up-to level where the clip is slack, and invariance of the decision to redistributing a fixed echelon position across installations",
         "priority": "secondary"
+      },
+      {
+        "stance": "bypass",
+        "structure": "the echelon coordinate transform, on the continuous branch",
+        "claim": "Same claim as the primary entry, asked where it can finally be asked cleanly. ESCALATION #E11 voided the discrete campaign's answer because `target_discrete`'s decode computed the echelon position from simulator state, so the transform was supplied through the ACTION interface whatever the observation was; that left only `ship_discrete`, which is echelon-free but spends ~half its categorical head on clipped-equivalent actions. A continuous fraction-of-capacity action is echelon-free AND well-conditioned -- it reads ship_capacity, raw on-hand at the source, never echelon_position -- so it is the first instrument that is neither disqualified nor handicapped.",
+        "instrument": "paired per-seed cost difference between observation modes at 8192 CRN seeds on the g*_ cells, each branch tuned to its own centre (PLAYBOOK LV2), with a training-seed floor re-measured for this rendering rather than inherited -- 1.57 was measured on the lattice",
+        "priority": "primary on the continuous branch"
       }
     ]
   }

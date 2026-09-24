@@ -12,7 +12,6 @@ from clark_scarf_mdp import (
     ClarkScarfState,
     advance1,
     advance2,
-    echelon_position,
     echelon_stock,
     init_state,
     ship_capacity,
@@ -53,6 +52,24 @@ def to_echelon(
     return [es] + cts
 
 
+_TTG_SUFFIX = "_ttg"
+
+
+def split_obs_mode(observation_mode: str) -> tuple[str, bool]:
+    """``"echelon_ttg"`` -> ``("echelon", True)``.
+
+    The time encoding rides on the mode NAME rather than a separate flag so
+    that the IR can declare it: spec §7 (v0.9.33) makes `features` exhaustive
+    and the declared menu the implemented menu, and there is nowhere in the IR
+    to say "this mode, but with a different time feature". Four names, four
+    declared modes, and `test_declared_features_are_exactly_what_the_gym_
+    renders` covers all of them.
+    """
+    if observation_mode.endswith(_TTG_SUFFIX):
+        return observation_mode[: -len(_TTG_SUFFIX)], True
+    return observation_mode, False
+
+
 def observation(
     scenario: ClarkScarfScenario,
     state: ClarkScarfState,
@@ -81,17 +98,19 @@ def observation(
     component-wise running sum, which is invertible — see `from_echelon` and
     the coordinate-change test that pins it.
     """
+    coords, ttg = split_obs_mode(observation_mode)
     n = scenario.n_echelons
     n_transit = scenario.leadtime - 1
     stock = list(state.stock[:n])
     transits = [[state.pipeline[k][s] for k in range(n)] for s in range(n_transit)]
     blocks = [stock] + transits
 
-    if observation_mode == "echelon":
+    if coords == "echelon":
         blocks = to_echelon(stock, transits)
 
-    period_frac = state.period / scenario.horizon
-    return np.asarray([period_frac] + [x for b in blocks for x in b], dtype=np.float32)
+    time_feat = (scenario.horizon - state.period) if ttg else (
+        state.period / scenario.horizon)
+    return np.asarray([time_feat] + [x for b in blocks for x in b], dtype=np.float32)
 
 
 def from_echelon(blocks: list[list[float]]) -> list[list[float]]:
@@ -138,37 +157,66 @@ class ClarkScarfEnv(gym.Env):
     of ones), so if ``raw`` underperforms, that is an optimization finding
     rather than an impossibility.
 
-    Both modes are prefixed by the normalized period, because the horizon is
-    finite and the optimal critical numbers are time-varying (the paper's
-    ``x_bar_n`` subscript). It is mode-independent, so it does not disturb the
-    comparison.
+    The ACTION mode is part of what the agent is given, too. A
+    ``target_discrete`` mode once decoded through ``echelon_position`` and the
+    order-up-to form, which handed the agent Clark & Scarf's two central
+    constructs whatever it observed and voided the campaign's structure claim
+    (ESCALATION #E11). It has been REMOVED rather than kept as a non-default:
+    on a branch whose question is whether the agent finds that structure, an
+    encoding that supplies it is not a lever, it is a leak. Every surviving
+    mode is echelon-free — each reads only ``ship_capacity``, raw on-hand at
+    the source.
 
-    Action — ``"ship"``: one shipment quantity per link, an N-vector.
-    Feasibility is a per-component box: each link is clipped to what its source
-    installation holds, and the top link (drawing from the outside supplier) to
-    the action-scale cap. Raw action 0 means "ship nothing" — a live, low-value
-    action, which is where SB3's Gaussian initializes.
+    Both OBSERVATION modes are prefixed by the normalized period, because the
+    horizon is finite and the optimal critical numbers are time-varying (the
+    paper's ``x_bar_n`` subscript). It is mode-independent, so it does not
+    disturb the comparison.
+
+    Action — the IR decision ``ship``: one shipment quantity per link, an
+    N-vector. Feasibility is a per-component box: each link is clipped to what
+    its source installation holds, and the top link (drawing from the outside
+    supplier) to the action-scale cap ``ship_max``. Three encodings of that one
+    decision survive, and each is echelon-free:
+
+    * ``ship_fraction`` (default) — the action IS the fraction of what the
+      source can supply, on ``[0,1]``, rounded iff the demand distribution is
+      discrete. The rounding is a property of the RENDERING, not of the
+      encoding, which is why there is no second "discrete fraction" mode;
+    * ``ship_discrete`` — whole units on a categorical head, the lattice
+      branch's arm and the encoding every recorded run used;
+    * ``ship_absolute`` — identity on ``[0, ship_max]``, the paper-native
+      encoding kept as the naive control. Raw action 0 means "ship nothing"
+      there, and the useful range is a sliver of the box, which is why it
+      measured 22560 against an optimum of 982 — the result the other two
+      encodings exist because of.
 
     Reward: ``-total_cost`` per period.
     """
 
     metadata = {"render_modes": []}
 
-    OBS_MODES = ("raw", "echelon")
-    ACTION_MODES = ("ship_discrete", "target_discrete", "ship_rel", "ship")
+    OBS_MODES = ("raw", "echelon", "raw_ttg", "echelon_ttg")
+    # Exactly the modes the IR declares, in its order. Spec §7: what the gym
+    # renders, the IR declares -- and the menu holds in BOTH directions, so a
+    # mode implemented here and named nowhere in `gym.action_modes` is a
+    # rendering nobody froze. `ship_fraction_bins` and `ship_scaled` were in
+    # that state and are removed rather than declared: this board runs
+    # `ship_discrete` only, and an encoding kept for a parked frame is code
+    # that no gate exercises. The earlier downstream campaign's history has
+    # both if the density work resumes.
+    ACTION_MODES = ("ship_discrete", "ship_fraction", "ship_absolute")
 
     # `ship_discrete` grid: quantities 0 .. DISCRETE_SPAN * mean demand, in
     # whole units — demand is Poisson and every stock is integral, so a whole
     # unit is the natural resolution and nothing finer is meaningful
     DISCRETE_SPAN = 4
-    # `ship_rel` spread: a = +1 maps to RELATIVE_SPREAD+1 times mean demand
-    RELATIVE_SPREAD = 3.0
 
     def __init__(
         self,
         scenario: ClarkScarfScenario,
         observation_mode: str = "raw",
-        action_mode: str = "ship_discrete",
+        action_mode: str = "ship_fraction",
+        order_max: float | None = None,
         logger_filename: str | None = None,
     ) -> None:
         super().__init__()
@@ -184,6 +232,20 @@ class ClarkScarfEnv(gym.Env):
         self.scenario = scenario
         self.observation_mode = observation_mode
         self.action_mode = action_mode
+        # DIAGNOSTIC LEVER (L2(gym), temporary). An upper bound on what the TOP
+        # link — the one drawing from the unlimited outside supplier — may be
+        # asked to ship. The IR's `ship_max` is UNTOUCHED and the model stays
+        # frozen: this caps what the encoding can REQUEST, not what the
+        # environment allows, so `step` still clips to `ship_capacity` exactly
+        # as before and the feasible set is unchanged.
+        #
+        # Why it exists: with the fraction taken of `ship_capacity`, the top
+        # link's cap is `ship_max` = 20x mean demand, and the trained L1 policy
+        # carried a learned std of 0.178 in fraction units there = **35.6 units
+        # of per-period action noise, 3.6x mean demand**, against a DP that
+        # ships ~10. This lever tests whether that scale is what costs the
+        # continuous head its 1570-vs-993 gap.
+        self.order_max = order_max
 
         self.n_live = scenario.n_echelons
         # observable pipeline slots at the decision point: post-A the LAST
@@ -208,30 +270,24 @@ class ClarkScarfEnv(gym.Env):
 
     # -- spaces --------------------------------------------------------------
 
-    def _target_bins(self) -> list[int]:
-        """Per-link target grids for `target_discrete`.
-
-        Echelon k's position covers k+1 levels, so its order-up-to level scales
-        with k — hence a per-link range rather than one shared grid.
-        MultiDiscrete allows different bin counts per dimension, so nothing is
-        wasted on the lower links.
-        """
-        mean = float(self.scenario.demand.mean())
-        return [int((k + 1) * self.DISCRETE_SPAN * mean) + 1
-                for k in range(self.n_live)]
-
     @property
     def n_bins(self) -> int:
         """Number of whole-unit shipment choices per link, for `ship_discrete`."""
         return int(self.DISCRETE_SPAN * float(self.scenario.demand.mean())) + 1
 
     def _build_action_space(self) -> gym.spaces.Space:
-        if self.action_mode == "target_discrete":
-            return gym.spaces.MultiDiscrete(self._target_bins())
         if self.action_mode == "ship_discrete":
             return gym.spaces.MultiDiscrete([self.n_bins] * self.n_live)
-        if self.action_mode == "ship_rel":
-            return gym.spaces.Box(-1.0, 1.0, shape=(self.n_live,), dtype=np.float32)
+        if self.action_mode == "ship_fraction":
+            # a fraction lives in [0,1] and the space says so. NOT symmetric:
+            # the [-1,1] convention exists for quantities that are signed
+            # DEVIATIONS from a reference quantity, and a fraction is not one. Mapping (a+1)/2 would buy a slightly
+            # better initial action distribution at the cost of every readback,
+            # figure and trajectory carrying the indirection — and under the
+            # `ship_capacity` cap it would centre the TOP link at half of
+            # ship_max, ten times mean demand, which makes that link's known
+            # scale problem worse rather than better.
+            return gym.spaces.Box(0.0, 1.0, shape=(self.n_live,), dtype=np.float32)
         return gym.spaces.Box(
             low=0.0,
             high=float(self.scenario.ship_max),
@@ -244,11 +300,26 @@ class ClarkScarfEnv(gym.Env):
 
         ``ship_discrete`` (default) — MultiDiscrete, one categorical head per
             link; the bin index **is** the shipment quantity in whole units.
-        ``target_discrete`` — the bin index is the echelon **order-up-to level**
-            ``y_k``; the shipment is ``clip(y_k - u_k, 0, capacity)``. An
-            available alternative encoding; untested on this campaign.
-        ``ship_rel`` — q = mean * (1 + SPREAD * a) on a symmetric [-1,1] box.
-        ``ship`` — identity on [0, ship_max]; the paper-native encoding.
+        ``ship_fraction`` — the decision is a FRACTION of what the source can
+            supply: ``q = (a+1)/2 * ship_capacity[k]`` on a symmetric [-1,1]
+            box, rounded half-up iff the demand distribution is discrete (see
+            ``_fraction_to_quantities``). One mode, both renderings: a fraction
+            is one decision and integrality is a property of the rendering, so
+            splitting it into a discrete and a continuous mode would put a
+            rendering choice into the action space. Echelon-free — it reads
+            ``ship_capacity``, raw on-hand at the source, never
+            ``echelon_position`` (#E11/FM3), so an arm using it can carry a
+            structure claim. "Ship everything available" sits at a CONSTANT
+            address (``a = +1``) in every state, which is LV1 applied to the
+            availability constraint, and no mask applies or is needed because
+            the fraction is taken OF the cap (LV3).
+        ``ship_absolute`` — identity on [0, ship_max]; the paper-native
+            encoding, kept as the NAIVE CONTROL. It carries the action-scale
+            hazard by construction: SB3's Gaussian starts at raw 0 with std 1,
+            so early actions cover ~[0,3] of a box 20x mean demand wide, and
+            raw 0 means "ship nothing" — measured at 22560 against an optimum
+            of 982. That measurement is the reason the other encodings exist,
+            so the mode earns its place by failing legibly.
 
         Why discrete is the default, and not a rescaled Gaussian:
 
@@ -262,18 +333,96 @@ class ClarkScarfEnv(gym.Env):
            from the first update.
 
         """
-        if self.action_mode == "target_discrete":
-            # the bin index IS the echelon order-up-to level y_k; the shipment
-            # is whatever it takes to get there
-            u = echelon_position(self.scenario, self._state)
-            return np.array([max(0.0, float(act[k]) - u[k])
-                             for k in range(self.n_live)])
         if self.action_mode == "ship_discrete":
             return np.asarray(act, dtype=np.float64)     # bin index == quantity
-        if self.action_mode == "ship":
-            return np.clip(act, 0.0, float(self.scenario.ship_max))
-        mean = float(self.scenario.demand.mean())
-        return np.maximum(0.0, mean * (1.0 + self.RELATIVE_SPREAD * act))
+        if self.action_mode == "ship_fraction":
+            return self._fraction_to_quantities(act)
+        return np.clip(act, 0.0, float(self.scenario.ship_max))   # ship_absolute
+
+    def _effective_caps(self) -> np.ndarray:
+        """The cap the fraction encodings take their fraction OF, per link.
+
+        It is ``ship_capacity`` itself, unclamped — the IR's own per-link bound
+        on a shipment, with nothing added. Below the top link that is the source
+        installation's on-hand stock, so ``a = +1`` (or the top bin) means
+        "ship everything available" in every state, which is the LV1 property
+        these encodings exist for. On the top link it is ``ship_max``, the
+        decision's declared upper bound (``bounds: [0, ship_max]``).
+
+        An earlier version clamped this to ``min(available, DISCRETE_SPAN*mean)``
+        and a later one substituted a dedicated action-scale constant for the
+        top link. Both are withdrawn, and the reason is worth keeping: the
+        clamp's value had been justified from the range of shipments the *DP
+        policy* makes, which sets the action space from the reference solution
+        — the #E11 / FM3 failure, one layer down — and it samples only states
+        the DP visits, so it says nothing about the depleted states an agent
+        actually trains through. Structural reasoning gives a different answer
+        anyway: the top echelon must cover ``n_echelons`` levels of committed
+        flow over ``leadtime`` periods, so a legitimate recovery shipment can
+        approach ``(n_echelons*leadtime + 1)*demand_mean`` = 70 here, well past
+        the 40 the clamp allowed. Rather than invent a third constant, the
+        encoding uses the bound the schema already declares.
+
+        KNOWN CONSEQUENCE, carried deliberately: ``ship_max`` is generous
+        (20x mean demand), so on the top link the useful region occupies a
+        narrow part of the action box and the encoding inherits the action-scale
+        hazard that `ship_absolute` pays for. That is left as a TRAINING question, to be
+        answered by an L0/L1 result rather than pre-engineered away with a
+        number nobody can derive. If it bites, the documented alternatives are a
+        structure-derived scale ((n_echelons*leadtime + 1)*demand_mean), or an
+        absolute encoding on the unconstrained link only.
+        """
+        caps = np.asarray(ship_capacity(self.scenario, self._state), dtype=np.float64)
+        if self.order_max is not None:
+            caps[self.n_live - 1] = min(caps[self.n_live - 1], float(self.order_max))
+        return caps
+
+    def _fraction_to_quantities(self, act: np.ndarray) -> np.ndarray:
+        """Fraction of the per-link cap; integral iff the RENDERING is.
+
+        The action IS the fraction: ``q = a * ship_capacity[k]`` with
+        ``a`` in ``[0,1]``. No affine remap — an action of 0.7 means "70% of
+        what my source can supply" wherever it is read, which matters because
+        this domain does policy readbacks (§14).
+
+        A symmetric ``[-1,1]`` box was used first, on the reasoning that SB3's
+        Gaussian starts at raw 0 and a ``[0,1]`` box would therefore start by
+        shipping nothing. That imported a caveat from `ship_absolute`, where raw 0 meant
+        "ship nothing" **and** the useful range was ~1.5% of the box, hence
+        unreachable — the failure was the unreachability, not the zero. Here
+        the box *is* the useful range. What the two choices actually trade is
+        the initial action distribution (SB3 clips an unbounded Gaussian, so
+        ``[0,1]`` puts ~50% of initial mass at 0 and ``[-1,1]`` ~16%), and
+        ``[-1,1]`` loses that trade under the `ship_capacity` cap: it would
+        centre the TOP link at half of ship_max, ten times mean demand, every
+        episode at initialization.
+
+        **Rounding is keyed on the demand distribution, not on the action
+        mode.** The decision is a fraction and stays a fraction; whether the
+        quantity it resolves to must land on an integer is a property of the
+        *rendering*, and the IR already says so — `narrowed` on `ship` reads
+        "integer feasibility under the `poisson` selection ONLY", caused by
+        "selection: demand = poisson + design: integer shipment quantities".
+        This is that clause implemented rather than encoded structurally. Under
+        a discrete selection the shipment is rounded half-up so stocks stay on
+        the lattice and the DP reference keeps its exactness; under a
+        continuous one nothing rounds and distinct actions give distinct
+        quantities.
+
+        Half-UP and not ``np.rint``: rint rounds halves to EVEN, which against
+        a state-varying cap hands even quantities three times the prior mass of
+        odd ones — a parity bias invisible in any aggregate score.
+
+        There is deliberately no second "discrete fraction" mode. A fraction is
+        one decision; giving it two action modes would put a rendering choice
+        into the action space, which is the same category error `narrowed`
+        exists to prevent.
+        """
+        frac = np.clip(np.asarray(act, dtype=np.float64), 0.0, 1.0)
+        q = frac * self._effective_caps()
+        if self.scenario.demand.is_discrete:
+            q = np.floor(q + 0.5)
+        return q
 
     def _build_observation_space(self) -> gym.spaces.Box:
         """Size the box to the genuinely REACHABLE range, not a typical one.
@@ -297,11 +446,16 @@ class ClarkScarfEnv(gym.Env):
         hi_lvl = mean + float(sc.ship_max) * sc.horizon
         lo_lvl = -float(sc.demand.max()) * sc.horizon
         # echelon entries are running sums over up to n_live levels
-        scale = self.n_live if self.observation_mode == "echelon" else 1
+        coords, ttg = split_obs_mode(self.observation_mode)
+        scale = self.n_live if coords == "echelon" else 1
         n_blocks = 1 + self.n_transit
         width = self.n_live * n_blocks
+        # the time entry: `period / horizon` lives in [0, 1], `time_to_go` in
+        # [0, horizon]. The envelope must cover what is rendered or
+        # `contains()` fails under random actions (the Stage-2 gate)
+        t_hi = float(sc.horizon) if ttg else 1.0
         low = np.concatenate([[0.0], np.full(width, lo_lvl * scale)]).astype(np.float32)
-        high = np.concatenate([[1.0], np.full(width, hi_lvl * scale)]).astype(np.float32)
+        high = np.concatenate([[t_hi], np.full(width, hi_lvl * scale)]).astype(np.float32)
         return gym.spaces.Box(low=low, high=high, dtype=np.float32)
 
     # -- observation ---------------------------------------------------------
@@ -383,21 +537,6 @@ class ClarkScarfEnv(gym.Env):
         can never emit an action the env would have to alter.
         """
         caps = ship_capacity(self.scenario, self._state)
-        if self.action_mode == "target_discrete":
-            # feasible targets are u_k <= y_k <= x_{k+1}: never below the
-            # current position (that is just "ship nothing", already reachable
-            # at y_k = u_k) and never above what the level up holds
-            u = echelon_position(self.scenario, self._state)
-            x = echelon_stock(self.scenario, self._state)
-            out = []
-            for k, nb in enumerate(self._target_bins()):
-                lo = int(min(max(0, np.ceil(u[k])), nb - 1))
-                hi = x[k + 1] if k + 1 < self.n_live else float(nb - 1)
-                hi = int(min(max(lo, np.floor(hi)), nb - 1))
-                m = np.zeros(nb, dtype=bool)
-                m[lo : hi + 1] = True
-                out.append(m)
-            return np.concatenate(out)
         n = self.n_bins
         mask = np.zeros((self.n_live, n), dtype=bool)
         for k in range(self.n_live):

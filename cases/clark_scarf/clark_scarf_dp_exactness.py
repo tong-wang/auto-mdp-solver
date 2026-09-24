@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from clark_scarf_benchmark_dp import BETA, ClarkScarfDP, _poisson_pmf
+from clark_scarf_benchmark_dp import ClarkScarfDP, _poisson_pmf
 from clark_scarf_scenarios import SCENARIOS, ClarkScarfScenario
 
 
@@ -104,7 +104,7 @@ class JointDP:
                     b = np.clip(I1 - q0 + q1, 0, n1 - 1)
                     cand = np.where(feasible, G[a, b], np.inf)
                     best = np.minimum(best, cand)
-            self.V[t] = ec + BETA * best
+            self.V[t] = ec + self.sc.beta * best
 
     def value_at(self, s0: int, s1: int, t: int = 0) -> float:
         return float(self.V[t][int(s0) - self.s0[0], int(s1) - self.s1[0]])
@@ -134,7 +134,7 @@ class JointDP:
                     a = min(max(i + q0, 0), n0 - 1)
                     b = min(max(j - q0 + q1, 0), n1 - 1)
                     nxt[i, j] = G[a, b]
-            V = ec + BETA * nxt
+            V = ec + sc.beta * nxt
         return V
 
 

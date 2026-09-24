@@ -41,6 +41,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from pathlib import Path
 
@@ -52,7 +53,8 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from clark_scarf_benchmark_dp import ClarkScarfDP
 from clark_scarf_gym import ClarkScarfEnv
 from clark_scarf_eval_common import eval_seed_block, rollout_seeds
-from clark_scarf_mdp import echelon_position, echelon_stock, ship_capacity
+from clark_scarf_mdp import (echelon_position, echelon_stock, init_state,
+                             ship_capacity)
 from clark_scarf_scenarios import SCENARIOS
 
 CLIP_EPS = 1e-6
@@ -72,13 +74,38 @@ def _load_policy(model_path: Path, scenario, obs_mode: str, act_mode: str):
             if line.startswith("mask: "):
                 masked = line.split(": ", 1)[1].strip() == "True"
     model = (MaskablePPO if masked else PPO).load(str(model_path), device="cpu")
-    vn_path = model_path.parent / "vecnormalize.pkl"
+
+    # The normalizer this policy trained under. Two names are in play: runs that
+    # carried a live selection callback wrote `vecnormalize.pkl` beside the
+    # chosen artifact; every run since §9.7's machinery was removed writes
+    # `vecnormalize_final.pkl` at the end of training. Looking for only the
+    # first silently yields vn=None, and the probe then reads back a policy fed
+    # observations it never saw -- the #E1 silent-corruption class, which cost
+    # this campaign a full readback round (#E11).
     vn = None
-    if vn_path.exists():
-        vn = VecNormalize.load(str(vn_path), DummyVecEnv(
-            [lambda: ClarkScarfEnv(scenario, observation_mode=obs_mode,
-                                   action_mode=act_mode)]))
-        vn.training = False
+    for cand in ("vecnormalize.pkl", "vecnormalize_final.pkl"):
+        vn_path = model_path.parent / cand
+        if vn_path.exists():
+            vn = VecNormalize.load(str(vn_path), DummyVecEnv(
+                [lambda: ClarkScarfEnv(scenario, observation_mode=obs_mode,
+                                       action_mode=act_mode)]))
+            vn.training = False
+            print(f"[probe] VecNormalize loaded from {vn_path.name} "
+                  f"(norm_obs={vn.norm_obs})")
+            break
+
+    # REFUSE rather than read back raw. A policy trained under normalization and
+    # queried without it is a DIFFERENT policy, and every statistic below would
+    # be a well-formed description of something that was never trained.
+    if vn is None and args_f.exists():
+        for line in args_f.read_text().splitlines():
+            if line.startswith("norm_obs: ") and line.split(": ", 1)[1].strip() == "True":
+                raise SystemExit(
+                    f"[probe] REFUSING: the run's args record norm_obs=True and no "
+                    f"normalizer was found beside {model_path.name} (looked for "
+                    f"vecnormalize.pkl, vecnormalize_final.pkl). Reading this "
+                    f"policy back on raw observations would describe a policy "
+                    f"that was never trained.")
 
     def act(obs_batch: np.ndarray, masks: np.ndarray | None = None) -> np.ndarray:
         o = vn.normalize_obs(obs_batch) if (vn is not None and vn.norm_obs) else obs_batch
@@ -111,6 +138,93 @@ def collect(scenario, act, obs_mode: str, act_mode: str, n_ep: int = 400) -> dic
             if term or trunc:
                 break
     return {k: np.asarray(v, dtype=np.float64) for k, v in rows.items()}
+
+
+def sweep_policy(scenario, act, obs_mode: str, act_mode: str, period: int,
+                 span: float = 1.5) -> dict:
+    """ENUMERATE the input, read the output: the policy as a function, not a sample.
+
+    This is a pure function plot and has nothing to do with training or eval
+    realizations. For each echelon k and each echelon position u on a grid, one
+    synthetic state is built, the policy is queried **deterministically**, and
+    the ordered-up-to level y = u + q is recorded. One input, one output.
+
+    Two properties the trajectory-based reads cannot have:
+
+    * **The sweep is centred on the kink.** Each echelon is swept over its own
+      window, `span` times the distance from its floor to its critical number,
+      so the shutoff sits at the right third of the axis (span = 1.5): enough
+      room past it to show the policy has actually stopped, without the dead
+      space a wide sweep leaves. It still runs past every critical number, which
+      a trajectory sample never reaches because a good policy does not visit
+      deeply overstocked states.
+    * **The source cannot bind.** `stock[k+1]` is set past the largest
+      shippable quantity, so what is drawn is the order the policy WANTS, never
+      a truncation of it. The top echelon draws on the outside supplier and is
+      unconstrained already.
+
+    **The state convention, stated because it is a choice.** Echelon position
+    `u_k` sums inventory position over levels 0..k, so one `u_k` is reachable by
+    many splits and this policy is measurably sensitive to which. The slice here
+    holds **the rest of the chain at the DP's own optimum** — every level other
+    than k carries the increment the optimal policy would hold, `ybar_j -
+    ybar_{j-1}` — and varies only installation k's on-hand stock. So each curve
+    reads "with the rest of the chain stocked optimally, how does this echelon
+    respond to its own position?".
+
+    An earlier convention put the whole echelon position on level k and emptied
+    everything below it. That produced non-monotone curves — for the top echelon
+    it emptied the entire downstream, a state no sane chain occupies — and is
+    the wrong question: it varies the echelon of interest AND the rest of the
+    chain at once. Recorded so it is not re-invented.
+    """
+    from clark_scarf_gym import observation as gym_observation
+
+    env = ClarkScarfEnv(scenario, observation_mode=obs_mode, action_mode=act_mode)
+    N, L = scenario.n_echelons, scenario.leadtime
+    max_ship = float(env.n_bins - 1) if act_mode == "ship_discrete" else float(scenario.ship_max)
+    env.reset(seed=0)          # stand the env up so its decoders are live
+    base, _ = init_state(scenario, episode_seed=0)
+    ybar = ClarkScarfDP(scenario).ybar[period][:N].astype(float)
+    # the optimal per-level increment: what level j holds when every echelon
+    # sits at its own critical number
+    inc = [float(ybar[0])] + [float(ybar[j] - ybar[j - 1]) for j in range(1, N)]
+
+    # Each echelon gets its OWN window, centred on its critical number, so the
+    # kink lands mid-axis instead of crowding the left with dead space to its
+    # right. Under this convention u_k starts at ybar_{k-1} (the chain below is
+    # at the optimum), and the kink sits at u_k = ybar_k, i.e. own = inc[k] —
+    # so sweeping own over [0, span*inc[k]] puts the kink at the middle when
+    # span = 2. Lengths differ per echelon, hence lists rather than one array.
+    out = {"u": [], "y": [], "q": []}
+
+    for k in range(N):
+        width = max(4.0, span * inc[k])
+        grid = np.arange(0.0, float(np.ceil(width)) + 1.0)
+        uu = np.zeros(len(grid)); yy = np.zeros(len(grid)); qq = np.zeros(len(grid))
+        for i, own in enumerate(grid):
+            st = copy.deepcopy(base)
+            st.period = period
+            st.terminated = False
+            st.pipeline = [[0.0] * L for _ in range(len(st.pipeline))]
+            st.stock = [0.0] * len(st.stock)
+            for j in range(N):                          # rest of the chain at the optimum
+                st.stock[j] = inc[j]
+            st.stock[k] = float(own)                    # the one level we vary
+            if k < N - 1:
+                st.stock[k + 1] = max(inc[k + 1], max_ship + 1.0)   # source cannot bind
+            u = echelon_position(scenario, st)[k]
+            uu[i] = float(u)
+            o = gym_observation(scenario, st, obs_mode)
+            # the synthetic state IS the query; the env is only a decoder here,
+            # so point it at that state before masks/quantities are read off it
+            env._state = st
+            a = act(o[None, :], env.action_masks()[None, :])[0]
+            q = env._to_quantities(np.asarray(a, dtype=np.float64).reshape(-1))
+            qq[i] = float(q[k])
+            yy[i] = float(u) + float(q[k])
+        out["u"].append(uu); out["y"].append(yy); out["q"].append(qq)
+    return out
 
 
 def structural_form(scenario, d: dict) -> dict:
@@ -230,13 +344,24 @@ def offset_sweep(scenario, model_path: Path, obs_mode: str, act_mode: str,
     component must recover most of the gap; if it does not, the attribution is
     wrong and the escalation ladder built on it is void.
 
-    Only meaningful for `target_discrete`, where the action component IS the
-    order-up-to level and a constant offset is a constant shift of the fitted
-    rule. Scored under the Stage-4 protocol (same CRN block, deterministic,
-    VecNormalize injected) so it is directly paired with the net.
+    NOT CURRENTLY RUNNABLE, and deliberately so. It required `target_discrete`,
+    where the action component IS the order-up-to level so that a constant
+    offset is a constant shift of the fitted rule. That mode has been removed:
+    its decode computed `echelon_position` from simulator state and handed the
+    agent the structure under test, which is what voided this campaign's
+    original answer (ESCALATION #E11).
+
+    Re-implementing it on an echelon-free encoding is owed and is not hard —
+    the implied order-up-to level is `u_k + q_k` from the EXECUTED shipment
+    rather than read off the action, which works for any mode and is what #E11
+    said the reopened campaign should have measured in the first place. Left
+    failing loudly rather than silently adapted, because a probe that quietly
+    changes what it measures is worse than one that stops.
     """
-    assert act_mode == "target_discrete", (
-        "an offset is only interpretable when the action IS the target"
+    raise NotImplementedError(
+        "offset sweep needs re-implementation on an echelon-free encoding: "
+        "derive the implied order-up-to level as u_k + q_k from the executed "
+        "shipment instead of reading it off the action (ESCALATION #E11)"
     )
     act = _load_policy(model_path, scenario, obs_mode, act_mode)
     env0 = ClarkScarfEnv(scenario, observation_mode=obs_mode, action_mode=act_mode)

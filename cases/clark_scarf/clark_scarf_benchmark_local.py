@@ -38,7 +38,7 @@ from pathlib import Path
 
 import numpy as np
 
-from clark_scarf_benchmark_dp import _poisson_pmf
+from clark_scarf_benchmark_dp import _lead_time_demand
 from clark_scarf_mdp import inventory_position, ship_capacity
 from clark_scarf_scenarios import SCENARIOS, ClarkScarfScenario
 
@@ -55,7 +55,7 @@ class LocalBaseStock:
         mean = float(sc.demand.mean())
         b = sc.p_short + sc.h_install[0]
         # LOCAL lead time only — the level does not know it sits behind others
-        vals, p = _poisson_pmf(mean * (sc.leadtime + 1))
+        vals, p = _lead_time_demand(sc.demand, sc.leadtime + 1)
         cdf = np.cumsum(p)
         targets = []
         for k in range(sc.n_echelons):

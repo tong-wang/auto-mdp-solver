@@ -34,6 +34,14 @@ METRICS = (
 ActFn = Callable[[np.ndarray, Sequence[ClarkScarfEnv]], np.ndarray]
 
 
+# §9.7's screen block. The block that RANKS must be disjoint from the block
+# that REPORTS (the protocol block starts at 0), or a checkpoint is chosen on
+# the seeds that later judge it. Lives here rather than in the train script
+# because the screen, the train script and any future evaluator must all agree
+# on it, and none of them owns it.
+SELECT_SEED_OFFSET = 1_000_000
+
+
 def eval_seed_block(n_seeds: int, offset: int = 0) -> np.ndarray:
     """Episode seeds ``offset … offset+n_seeds-1`` (spec §9.2)."""
     return np.arange(offset, offset + n_seeds, dtype=np.int64)
@@ -44,7 +52,7 @@ def rollout_seeds(
     scenario: ClarkScarfScenario,
     observation_mode: str,
     seeds: np.ndarray,
-    action_mode: str = "ship",
+    action_mode: str = "ship_absolute",
     act_fn: ActFn,
     batch: int = 64,
     progress_every: int = 20_000,
@@ -54,11 +62,13 @@ def rollout_seeds(
     Batched only for speed; each episode is independent and keyed by its own
     episode seed, so batching cannot change any result.
 
-    ``action_mode`` defaults to ``"ship"`` — the identity encoding — because a
-    benchmark computes a shipment QUANTITY directly. An RL arm must pass the
-    mode its policy was trained under, or the action is decoded wrongly.
+    ``action_mode`` defaults to ``"ship_absolute"`` — the identity encoding —
+    because a benchmark computes a shipment QUANTITY directly. An RL arm must
+    pass the mode its policy was trained under, or the action is decoded wrongly.
     """
-    beta = 0.95
+    # the instance's own discount (F11): the IR names it, the scenario carries
+    # it, and every arm on one leaderboard is scored with the same one
+    beta = scenario.beta
     out = {m: np.zeros(len(seeds), dtype=np.float64) for m in METRICS}
 
     for start in range(0, len(seeds), batch):
@@ -231,7 +241,13 @@ def benchmark_main(arm: str, build_policy, description: str) -> None:
         seeds=seeds,
         act_fn=act_fn,
         batch=args.batch_envs,
-        action_mode="ship",          # benchmarks emit quantities directly
+        # benchmarks emit quantities directly, so they want the IDENTITY
+        # encoding -- named `ship_absolute` since the three-mode rename. It was
+        # left as the old `ship` here and the gym's assert has refused every
+        # benchmark eval since: the recorded rows predate the rename and are
+        # reproducible (a replay through this mode matches them to 9e-13), but
+        # nothing could regenerate them until this line was corrected.
+        action_mode="ship_absolute",
     )
     outfile = resolve_outfile(args.scenario_name, arm, args.outdir, args.outfile)
     write_record(outfile, args.scenario_name, arm, per_seed)
