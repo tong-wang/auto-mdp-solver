@@ -5,7 +5,8 @@ what will bite you, never what the answer is.**
 
 Opened 2026-09-14 with an **empty result history by construction** — the code,
 the IR and the gates are inherited; no number is. An earlier campaign on this
-same domain ran downstream and is not cited from here. Moving a number across
+same domain is published at tag **`v0.11.5`** and is not cited from here — that
+tag is the address for every citation of it. Moving a number across
 is a deliberate act that re-earns it at this pin, never a quotation.
 
 ## This domain is GENERATED — the skill is authoritative
@@ -54,19 +55,19 @@ which was a measurement of different code:
 | gate | result |
 |---|---|
 | `mdp_ir` validate | structural fingerprint `d2462f976e61`, 24 instances |
-| conformance | **27/30 passed**, zero FAIL |
+| conformance | **26/30 passed**, zero FAIL (27/30 with a local `results/`: `run.provenance` SKIPs without one, and `results/` does not ship) |
 | laws | 8/9 (`mixture_equivalence` SKIPs, no mixtures declared) |
 | differential | MATCH ×24 under `--all-instances` |
-| `pytest` | 134 passed |
+| `pytest` | **134 passed** under `auto-mdp-solver[domain]` (torch + SB3); **112 passed, 22 skipped** under the torch-free `[dev]` install CI uses |
 
 **Re-verified twice on 2026-09-24, because a version stamp is a claim about
 code rather than about a number.** (i) Against **0.11.3**, the plugin release
 installed at the time: identical, and checkably so — the five `mdp_*` packages
 are byte-identical to 0.11.0 (`diff -r` empty for `mdp_ir`, `mdp_conformance`,
-`mdp_gates`, `mdp_tuning`, `mdp_stage`). (ii) Against **upstream HEAD
-(v0.11.6)**, which is what CI actually runs — it installs the harness from the
-repo, not a released version — and where **ten harness `.py` files have
-changed** since 0.11.0, `mdp_conformance/checks.py` and `mdp_ir/schema.py`
+`mdp_gates`, `mdp_tuning`, `mdp_stage`). (ii) Against **`main` at v0.11.5**,
+which is what CI actually runs — it installs the harness from the repo, not a
+released version — and where **seven harness `.py` files have changed** since
+0.11.0, `mdp_conformance/checks.py` and `mdp_ir/schema.py`
 among them, one commit of which alters how `desc`/`note` participate in the
 freeze token. Result there: `structural_fingerprint` **unmoved** at
 `d2462f976e61`, conformance 26/30 zero FAIL, laws 8/9, differential MATCH x24.

@@ -1,8 +1,8 @@
 # clark_scarf (ordinal board) — escalation log
 
 Opened 2026-09-14. **Empty history by construction**: the code, the IR and the
-gates are inherited; no result is. An earlier campaign on this same domain ran
-downstream, and its board and log are not cited here — if a number from it is
+gates are inherited; no result is. An earlier campaign on this same domain is published at
+tag **`v0.11.5`**, and its board and log are not cited here — if a number from it is
 ever wanted, it is moved in deliberately and re-earned at this pin, not quoted
 across.
 

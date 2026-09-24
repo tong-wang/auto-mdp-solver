@@ -565,10 +565,6 @@ def test_every_narrowed_element_names_its_layer(domain):
         )
 
 
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-v"]))
-
-
 # -- `ship_fraction`: one decision, rounded iff the RENDERING is discrete ----
 
 
@@ -1710,3 +1706,7 @@ def test_deployable_policy_resolves_modes_from_the_run(domain, tmp_path, monkeyp
         "-a", "ship_fraction", "--episodes", "1"])
     with pytest.raises(SystemExit, match="did not train with"):
         pol.main()
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, "-v"]))
