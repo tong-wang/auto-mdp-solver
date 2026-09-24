@@ -703,6 +703,7 @@ def test_custom_head_params_survive_save_and_load(domain, tmp_path):
     The globals are SABOTAGED here before reloading: if a value is being read
     from them rather than from the checkpoint, this test fails.
     """
+    pytest.importorskip("stable_baselines3")
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -1004,6 +1005,7 @@ def test_the_launch_surface_is_protocol_and_never_run_identity():
     not reach the run name — otherwise adopting the check would re-key every
     result dir and orphan the campaign's own join keys.
     """
+    pytest.importorskip("sb3_contrib")
     import importlib
 
     d = str(Path(__file__).resolve().parent)
@@ -1029,6 +1031,7 @@ def test_the_launch_surface_is_protocol_and_never_run_identity():
 def test_declared_deviations_parse_both_forms():
     """`dest` alone declares "this moved"; `dest=value` pins where to, and the
     check then refuses a run whose value disagrees with its own banner."""
+    pytest.importorskip("sb3_contrib")
     import importlib
 
     d = str(Path(__file__).resolve().parent)
@@ -1060,6 +1063,7 @@ def test_ordinal_head_is_a_proper_distribution():
     failed to sum to one: `Categorical(logits=...)` silently re-softmaxes, and
     the head would train against a distribution nobody declared.
     """
+    pytest.importorskip("torch")
     import torch as th
 
     oh = _ordinal()
@@ -1085,6 +1089,7 @@ def test_ordinal_head_can_represent_every_shipment_quantity():
     reference policy however well it is trained, and the failure would look
     like a tuning problem. Checked for EVERY quantity on EVERY link.
     """
+    pytest.importorskip("torch")
     import math
 
     import torch as th
@@ -1120,6 +1125,7 @@ def test_ordinal_head_init_is_the_documented_prior():
     exploration these arms begin from has changed and every comparison against
     the categorical head is measuring something new.
     """
+    pytest.importorskip("torch")
     import torch as th
     from torch.nn import functional as F
 
@@ -1143,6 +1149,7 @@ def test_ordinal_head_refuses_a_continuous_action_space():
     """An encoding that is only sound under one action space must REFUSE the
     others rather than document it — the rule this folder already applies to
     `--mask`."""
+    pytest.importorskip("stable_baselines3")
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -1168,6 +1175,7 @@ def test_ordinal_head_params_survive_save_and_load(domain, tmp_path):
     non-default value comes back intact, which fails if
     `_get_constructor_parameters` stops carrying it.
     """
+    pytest.importorskip("stable_baselines3")
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -1194,6 +1202,7 @@ def test_ordinal_head_trains_and_its_actions_are_legal(domain):
     layout error would surface as a shape or a log_prob mismatch during the
     first update rather than as a bad score.
     """
+    pytest.importorskip("stable_baselines3")
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -1281,6 +1290,7 @@ def test_no_live_selection_machinery_exists():
     such runs, not to this one, which has none. So it is gone, and this test
     pins its absence rather than its default.
     """
+    pytest.importorskip("sb3_contrib")
     import importlib
 
     d = str(Path(__file__).resolve().parent)
@@ -1323,6 +1333,7 @@ def test_deployable_policy_refuses_a_missing_normalizer(domain, tmp_path):
     only by the live selection callback, so with that off, the old default path
     resolves to nothing.
     """
+    pytest.importorskip("stable_baselines3")
     import importlib
 
     from stable_baselines3 import PPO
@@ -1366,6 +1377,7 @@ def test_eval_finds_the_run_args_from_a_checkpoint_path():
     fire because it tests `norm_obs` from an empty mapping. The `L?` in an arm
     string was the visible half of that.
     """
+    pytest.importorskip("sb3_contrib")
     import importlib.util as u
 
     d = Path(__file__).resolve().parent
@@ -1403,6 +1415,7 @@ def _dgauss():
 
 
 def test_dgauss_head_is_a_proper_distribution():
+    pytest.importorskip("torch")
     import torch as th
 
     dg = _dgauss()
@@ -1422,6 +1435,7 @@ def test_dgauss_head_reaches_every_bin_at_moderate_m():
     the mode at |m| <= 1, with no saturating input. The hurdle head needed
     ~3.7 logit-units of one scalar before its argmax could leave zero, and a
     sigmoid mu would have rebuilt that cliff at the support edges."""
+    pytest.importorskip("torch")
     import torch as th
 
     dg = _dgauss()
@@ -1446,6 +1460,7 @@ def test_dgauss_init_is_genuinely_flat_with_a_live_argmax():
     start near-flat (no bin over ~1.3x any other) with its argmax mid-range —
     a live action that moves continuously with mu, so an undertrained policy
     evaluates as a mediocre shipper, never as a constant catastrophe."""
+    pytest.importorskip("torch")
     import torch as th
 
     dg = _dgauss()
@@ -1461,6 +1476,7 @@ def test_dgauss_init_is_genuinely_flat_with_a_live_argmax():
 
 
 def test_dgauss_head_refuses_a_continuous_action_space():
+    pytest.importorskip("stable_baselines3")
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -1476,6 +1492,7 @@ def test_dgauss_head_refuses_a_continuous_action_space():
 
 
 def test_dgauss_head_params_survive_save_and_load(domain, tmp_path):
+    pytest.importorskip("stable_baselines3")
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -1493,6 +1510,7 @@ def test_dgauss_head_params_survive_save_and_load(domain, tmp_path):
 
 
 def test_dgauss_head_trains_and_its_actions_are_legal(domain):
+    pytest.importorskip("stable_baselines3")
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -1524,6 +1542,7 @@ def test_dgauss_sigmoid_variant_is_the_atomless_twin():
     survives save/load, because a head rebuilt with the wrong variant is a
     policy that never trained.
     """
+    pytest.importorskip("torch")
     import torch as th
 
     dg = _dgauss()
@@ -1575,6 +1594,7 @@ def test_every_model_loader_refuses_a_missing_normalizer(domain, tmp_path):
     name check that cannot fail is the defect this campaign filed upstream as
     issue #89, reproduced in its own test file.
     """
+    pytest.importorskip("stable_baselines3")
     import importlib
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
@@ -1616,6 +1636,7 @@ def test_select_refuses_to_rank_checkpoints_without_normalizers(
     refusal must fire before any checkpoint is scored — this drives `main()` to
     prove it does.
     """
+    pytest.importorskip("stable_baselines3")
     import importlib
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
@@ -1656,6 +1677,7 @@ def test_deployable_policy_resolves_modes_from_the_run(domain, tmp_path, monkeyp
     wiring mistake, and nothing raised. The modes must come off the run, and an
     explicit mode that contradicts the run must be refused.
     """
+    pytest.importorskip("stable_baselines3")
     import importlib
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
