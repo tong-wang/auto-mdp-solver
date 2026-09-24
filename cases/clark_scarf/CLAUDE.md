@@ -70,9 +70,9 @@ released version — and where **seven harness `.py` files have changed** since
 0.11.0: `mdp_conformance/checks.py`, `mdp_stage/gate.py`, and five under
 `harness/tests/`. Result there: `structural_fingerprint` **unmoved** at
 `d2462f976e61`, conformance 26/30 zero FAIL, laws 8/9, differential MATCH x24.
-The engine moved and the verdict did not. Separately, the unpublished
-v0.11.6 alters how `desc`/`note` participate in the freeze token; run against
-that too, the verdict is again the same.
+The engine moved and the verdict did not. Separately, v0.11.6 (unpublished
+when this stamp was taken) alters how `desc`/`note` participate in the freeze
+token; run against that too, the verdict is again the same.
 
 The stamp above was first taken with `research.deliverables` FAILing — the
 declared `confirm` stance owed the spec §14 readback and `INTERPRET.md` did not
