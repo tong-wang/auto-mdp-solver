@@ -58,7 +58,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from clark_scarf_benchmark_dp import ClarkScarfDP
-from clark_scarf_policy_probe import _load_policy, collect
+from clark_scarf_policy_probe import _load_policy, collect, sweep_policy
 from clark_scarf_scenarios import SCENARIOS
 
 # dataviz categorical slots 1 (blue) and 2 (orange) on a light surface — the
@@ -134,6 +134,52 @@ def build_figure(D: dict, title: str, static: bool = False) -> go.Figure:
     return fig
 
 
+def build_sweep_figure(D: dict, title: str, static: bool = False) -> go.Figure:
+    """The policy as a FUNCTION: one input, one output, over an enumerated grid.
+
+    Not a sample of anything. Each point is a synthetic state queried
+    deterministically, so the curve is the rule itself — including where it
+    stops ordering, which no trajectory sample reaches because a good policy
+    does not visit deeply overstocked states.
+    """
+    N = D["n_echelons"]
+    fig = make_subplots(
+        rows=1, cols=N, shared_yaxes=False,
+        subplot_titles=[f"echelon {k + 1} — ȳ = {D['ybar'][k]}" for k in range(N)],
+        horizontal_spacing=0.06)
+    for k in range(N):
+        u, y = D["u"][k], D["y"][k]
+        grid = np.arange(np.floor(u.min()), np.ceil(u.max()) + 1)
+        fig.add_trace(go.Scatter(
+            x=grid, y=grid, mode="lines", name="order nothing (y = u)",
+            line=dict(color=GREY, width=1, dash="dot"),
+            showlegend=(k == 0), hoverinfo="skip"), row=1, col=k + 1)
+        sx, sy = _stair(grid, np.maximum(grid, D["ybar"][k]))
+        fig.add_trace(go.Scatter(
+            x=sx, y=sy, mode="lines", name="Clark & Scarf: y = max(u, ȳ)",
+            line=dict(color=ORANGE, width=2.5, shape=STEP), showlegend=(k == 0),
+            hovertemplate="u=%{x:.0f}<br>DP y=%{y:.0f}<extra></extra>"),
+            row=1, col=k + 1)
+        px, py = _stair(u, y)
+        fig.add_trace(go.Scatter(
+            x=px, y=py, mode="lines", name="the learned rule",
+            line=dict(color=BLUE, width=2.5, shape=STEP), showlegend=(k == 0),
+            hovertemplate="u=%{x:.0f}<br>y=%{y:.0f}<extra></extra>"),
+            row=1, col=k + 1)
+        fig.add_hline(y=D["ybar"][k], line=dict(color=ORANGE, width=1, dash="dash"),
+                      row=1, col=k + 1)
+        fig.update_xaxes(title_text="echelon position before ordering  u",
+                         row=1, col=k + 1)
+        fig.update_yaxes(title_text="after ordering  y" if k == 0 else None,
+                         row=1, col=k + 1)
+    fig.update_layout(
+        title=title, template="plotly_white",
+        width=D["width"], height=D["height"],
+        legend=dict(orientation="h", yanchor="bottom", y=1.12, x=0),
+        margin=dict(l=70, r=30, t=110, b=60))
+    return fig
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Overlay the PPO and DP shipping rules.")
     p.add_argument("-s", "--scenario_name", default="n3_l2_p09",
@@ -150,6 +196,17 @@ def main() -> None:
     p.add_argument("--width", type=int, default=1180)
     p.add_argument("--height", type=int, default=460)
     p.add_argument("--inline-js", action="store_true")
+    p.add_argument("--sweep", action="store_true",
+                   help="ENUMERATE the input and read the output: the policy as "
+                        "a deterministic function over a grid of echelon "
+                        "positions, with the rest of the chain at the DP "
+                        "optimum and the source freed. Swept past every "
+                        "critical number, so the plot shows where ordering "
+                        "STOPS. Nothing to do with training or eval draws.")
+    p.add_argument("--span", type=float, default=1.5,
+                   help="sweep width per echelon, as a multiple of the distance "
+                        "from its floor to its critical number. 1.5 puts the "
+                        "kink at the right third of the axis.")
     args = p.parse_args()
 
     sc = SCENARIOS[args.scenario_name]
@@ -167,6 +224,40 @@ def main() -> None:
 
     dp = ClarkScarfDP(sc)
     act = _load_policy(model_path, sc, obs_mode, act_mode)
+    if args.sweep:
+        S = sweep_policy(sc, act, obs_mode, act_mode, period, args.span)
+        N = sc.n_echelons
+        D = {"n_echelons": N, "u": S["u"], "y": S["y"],
+             "ybar": dp.ybar[period][:N].astype(int),
+             "width": args.width, "height": args.height}
+        print(f"[plot] SWEEP (enumerated states)  {obs_mode}/{act_mode}  "
+              f"period={period}  "
+              f"{[len(a) for a in S['u']]} inputs per echelon")
+        print(f"[plot] DP critical numbers at t={period}: {D['ybar'].tolist()}")
+        for k in range(N):
+            q, u = S["q"][k], S["u"][k]
+            off = u[q <= 0]
+            print(f"[plot]   echelon {k+1}: DP ȳ={D['ybar'][k]:3d} | u "
+                  f"{u.min():.0f}..{u.max():.0f} | stops ordering at "
+                  f"u={off[0]:.0f} ({100*(off[0]-u.min())/(u.max()-u.min()):.0f}% "
+                  f"across the axis)" if len(off) else
+                  f"[plot]   echelon {k+1}: DP ȳ={D['ybar'][k]:3d} | policy NEVER "
+                  f"stops ordering over the swept range")
+        stem = args.outstem or f"policy_sweep_{args.scenario_name}_{obs_mode}_t{period}"
+        title = (f"The learned rule as a function — {args.scenario_name}, "
+                 f"obs={obs_mode}, period {period}")
+        figures = Path("figures"); figures.mkdir(exist_ok=True)
+        svg = figures / f"{stem}.svg"
+        build_sweep_figure(D, title, static=True).write_image(str(svg))
+        print(f"[plot] static  -> {svg}")
+        out = Path("results") / args.scenario_name / "figures"
+        out.mkdir(parents=True, exist_ok=True)
+        build_sweep_figure(D, title).write_html(
+            str(out / f"{stem}.html"),
+            include_plotlyjs=True if args.inline_js else "cdn")
+        print(f"[plot] interactive -> {out / (stem + '.html')}")
+        return
+
     d = collect(sc, act, obs_mode, act_mode, args.episodes)
 
     sel = d["t"] == period

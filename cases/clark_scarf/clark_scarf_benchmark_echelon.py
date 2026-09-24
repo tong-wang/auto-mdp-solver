@@ -55,7 +55,7 @@ from pathlib import Path
 
 import numpy as np
 
-from clark_scarf_benchmark_dp import _poisson_pmf
+from clark_scarf_benchmark_dp import _lead_time_demand
 from clark_scarf_mdp import echelon_position, echelon_stock
 from clark_scarf_scenarios import SCENARIOS, ClarkScarfScenario
 
@@ -74,7 +74,7 @@ class EchelonBaseStock:
         targets = []
         for i in range(1, sc.n_echelons + 1):
             ratio = b / (b + sc.h_install[i - 1])
-            vals, p = _poisson_pmf(mean * (i * sc.leadtime + 1))
+            vals, p = _lead_time_demand(sc.demand, i * sc.leadtime + 1)
             cdf = np.cumsum(p)
             targets.append(int(vals[int(np.searchsorted(cdf, ratio))]))
         # targets must not decrease up the chain: echelon i+1 contains echelon i,

@@ -43,7 +43,7 @@ but wrong shipment.
 
 Not standalone, by design
 -------------------------
-`target_discrete` decodes a bin index as an echelon **order-up-to level**, so
+`ship_fraction` decodes an action as a fraction of what the source can supply, so
 turning it into a quantity needs `echelon_position()`, and the availability
 clip needs `ship_capacity()` — both imported from `clark_scarf_mdp`. Spec §12
 requires importing that math rather than duplicating it, so this module
@@ -69,7 +69,7 @@ path with
 
     python clark_scarf_policy.py --model-path <run>/n3_l2_p09_ppo.zip \\
         --vecnorm-path <run>/vecnormalize.pkl --episodes 512
-    python clark_scarf_ppo_eval.py -s n3_l2_p09 -o raw -a target_discrete \\
+    python clark_scarf_ppo_eval.py -s g1_n3_l2_p09 -o raw -a ship_fraction \\
         --model-path <run>/n3_l2_p09_ppo.zip --vecnorm-path <run>/vecnormalize.pkl \\
         --n-seeds 512
 
@@ -84,7 +84,7 @@ from pathlib import Path
 
 import numpy as np
 
-from clark_scarf_gym import from_echelon, observation
+from clark_scarf_gym import from_echelon, observation, split_obs_mode
 from clark_scarf_mdp import (
     ClarkScarfState,
     advance1,
@@ -106,7 +106,7 @@ class ClarkScarfPolicy:
         *,
         scenario: str,
         observation_mode: str = "raw",
-        action_mode: str = "target_discrete",
+        action_mode: str = "ship_fraction",
     ) -> None:
         from stable_baselines3 import PPO
 
@@ -119,9 +119,34 @@ class ClarkScarfPolicy:
         # VecNormalize stats are part of the I/O contract, not an optimization:
         # the network was trained on normalized inputs and is meaningless
         # without them. Default to the file beside the model (spec §8.3/§9.5).
+        # Two names are possible: `vecnormalize.pkl` comes from the deprecated
+        # live-selection callback (§9.7), `vecnormalize_final.pkl` from the end
+        # of every run, and a screened checkpoint carries its own beside it.
         if vecnorm_path is None:
-            candidate = model_path.parent / "vecnormalize.pkl"
-            vecnorm_path = candidate if candidate.exists() else None
+            vecnorm_path = next(
+                (c for c in (model_path.parent / "vecnormalize.pkl",
+                             model_path.parent / "vecnormalize_final.pkl")
+                 if c.exists()), None)
+        if vecnorm_path is None:
+            # REFUSE rather than ship an unnormalized policy. This class IS the
+            # deliverable (§12), so a silent fallback does not produce a worse
+            # number, it produces a policy that never trained — and the only
+            # symptom is a drift against `ppo_eval` that nothing is obliged to
+            # check. Passing vecnorm_path=False is the explicit opt-out for a
+            # run that genuinely trained without normalization.
+            args_f = next(model_path.parent.glob("*_ppo_args.txt"), None)
+            trained_normed = bool(args_f) and any(
+                l.strip() == "norm_obs: True"
+                for l in args_f.read_text(errors="replace").splitlines())
+            if trained_normed:
+                raise FileNotFoundError(
+                    f"the run at {model_path.parent} records norm_obs=True but "
+                    f"no VecNormalize statistics were found beside the model "
+                    f"(vecnormalize.pkl / vecnormalize_final.pkl). This policy "
+                    f"is meaningless without them; pass vecnorm_path explicitly."
+                )
+        if vecnorm_path is False:          # explicit opt-out
+            vecnorm_path = None
         self._obs_rms = None
         self._clip_obs = 10.0
         self._eps = 1e-8
@@ -174,15 +199,17 @@ class ClarkScarfPolicy:
         empty last pipeline slot is restored.
         """
         n, L = self.scenario.n_echelons, self.scenario.leadtime
+        coords, ttg = split_obs_mode(self.observation_mode)
         blocks = [list(obs[1 + i * n : 1 + (i + 1) * n]) for i in range(L)]
-        if self.observation_mode == "echelon":
+        if coords == "echelon":
             blocks = from_echelon(blocks)
         stock, transits = blocks[0], blocks[1:]
 
         # transits carries slots 0 … L-2; slot L-1 is empty pre-dispatch
         pipeline = [[transits[s][k] for s in range(L - 1)] + [0.0] for k in range(n)]
         return ClarkScarfState(
-            period=int(round(float(obs[0]) * self.scenario.horizon)),
+            period=int(round(self.scenario.horizon - float(obs[0]))) if ttg
+            else int(round(float(obs[0]) * self.scenario.horizon)),
             terminated=False,
             stock=list(stock),
             pipeline=pipeline,
@@ -201,12 +228,15 @@ class ClarkScarfPolicy:
         the clip — so the two cannot drift.
         """
         n = self.scenario.n_echelons
-        if self.action_mode == "target_discrete":
-            u = echelon_position(self.scenario, state)
-            raw = [max(0.0, float(action[k]) - u[k]) for k in range(n)]
+        if self.action_mode == "ship_fraction":
+            caps0 = ship_capacity(self.scenario, state)
+            frac = [float(np.clip(action[k], 0.0, 1.0)) for k in range(n)]
+            raw = [frac[k] * caps0[k] for k in range(n)]
+            if self.scenario.demand.is_discrete:
+                raw = [float(np.floor(v + 0.5)) for v in raw]
         elif self.action_mode == "ship_discrete":
             raw = [float(action[k]) for k in range(n)]
-        elif self.action_mode == "ship":
+        elif self.action_mode == "ship_absolute":
             raw = [float(np.clip(action[k], 0.0, self.scenario.ship_max)) for k in range(n)]
         else:
             raise ValueError(f"unsupported action_mode {self.action_mode!r}")
@@ -228,7 +258,8 @@ def _smoke(policy: ClarkScarfPolicy, episodes: int = 3, beta: float | None = Non
     not land near the eval record.
     """
     sc = policy.scenario
-    beta = 0.95 if beta is None else beta
+    # the instance's discount, not a literal beside the replay (F11)
+    beta = sc.beta if beta is None else beta
     print(
         f"=== {sc.scenario_name}: N={sc.n_echelons} L={sc.leadtime} T={sc.horizon} "
         f"| obs={policy.observation_mode} act={policy.action_mode} "
@@ -249,23 +280,65 @@ def _smoke(policy: ClarkScarfPolicy, episodes: int = 3, beta: float | None = Non
     print(f"  mean over {episodes} episodes = {np.mean(totals):.4f}")
 
 
+def _resolve_run_dir(model_path: Path, scenario: str) -> Path:
+    """The run directory that owns this model, from anywhere inside the run.
+
+    A checkpoint's parent is `checkpoints/`, not the run dir, so resolving the
+    args file as `model_path.parent` silently finds nothing for exactly the
+    artifacts §9.7 tells you to ship. Walks up until the args file appears.
+    """
+    here = model_path.parent
+    for cand in (here, *here.parents[:3]):
+        if (cand / f"{scenario}_ppo_args.txt").exists():
+            return cand
+    return here
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--model-path", required=True)
     ap.add_argument("--vecnorm-path", default=None)
     ap.add_argument("-s", "--scenario", default="n3_l2_p09")
-    ap.add_argument("-o", "--observation-mode", default="raw", choices=["raw", "echelon"])
-    ap.add_argument("-a", "--action-mode", default="target_discrete")
+    ap.add_argument("-o", "--observation-mode", default=None, choices=["raw", "echelon"],
+                    help="defaults to the run's own args file")
+    ap.add_argument("-a", "--action-mode", default=None,
+                    help="defaults to the run's own args file")
     ap.add_argument("--episodes", type=int, default=3)
     args = ap.parse_args()
+
+    # Read the modes off the RUN rather than off a CLI default. Both are as
+    # load-bearing as the model file: a policy replayed in an action mode it did
+    # not train with is silently mis-scored, never an error — a `ship_discrete`
+    # net decoded as `ship_fraction` replays at ~35x its true cost, which is the
+    # magnitude of the random baseline and so reads as a plausible bad policy
+    # rather than as a wiring mistake. `clark_scarf_ppo_eval.py` has resolved
+    # these from the args file since #E1; this was the last consumer that did
+    # not, and it is the one a reader runs first.
+    rec = {}
+    run_dir = _resolve_run_dir(Path(args.model_path).resolve(), args.scenario)
+    f = run_dir / f"{args.scenario}_ppo_args.txt"
+    if f.exists():
+        rec = dict(l.split(": ", 1) for l in f.read_text().splitlines() if ": " in l)
+    obs_mode = args.observation_mode or rec.get("observation_mode", "raw").strip()
+    act_mode = args.action_mode or rec.get("action_mode", "ship_fraction").strip()
+    for flag, chosen, key in (("-o", obs_mode, "observation_mode"),
+                              ("-a", act_mode, "action_mode")):
+        recorded = rec.get(key, "").strip()
+        if recorded and chosen != recorded:
+            raise SystemExit(
+                f"[policy] REFUSING: {flag} says {chosen!r} but the run trained "
+                f"with {key}={recorded!r}. Replaying a policy in a mode it did "
+                f"not train with is silently mis-scored, never an error.")
+    print(f"[policy] obs={obs_mode} act={act_mode}"
+          f"{' (from the run args)' if not (args.observation_mode and args.action_mode) else ''}")
 
     _smoke(
         ClarkScarfPolicy(
             args.model_path,
             args.vecnorm_path,
             scenario=args.scenario,
-            observation_mode=args.observation_mode,
-            action_mode=args.action_mode,
+            observation_mode=obs_mode,
+            action_mode=act_mode,
         ),
         episodes=args.episodes,
     )

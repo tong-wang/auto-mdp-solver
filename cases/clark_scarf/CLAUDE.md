@@ -1,258 +1,177 @@
-# CLAUDE.md — `clark_scarf/` (serial multi-echelon inventory, Clark & Scarf 1960)
+# CLAUDE.md — `clark_scarf/` (ordinal board)
 
-Domain-local operating brief. **Pointer-first: this file says where to look
-and what will bite you, never what the answer is.** Anything that changes as
-the campaign progresses lives in the docs below and is linked, not copied.
+Domain-local operating brief. **Pointer-first: this file says where to look and
+what will bite you, never what the answer is.**
 
-A single product moves down a serial chain of stocking points: level 1 is a
-retailer facing Poisson demand, level N buys from an unlimited outside
-supplier. Each period every link dispatches simultaneously (N numbers, one per
-link), clipped to what its source installation holds; shipments take `leadtime`
-periods to land and cannot be recalled. Unmet demand backlogs. Minimize
-expected discounted cost (β = 0.95) over 50 periods — echelon holding up the
-chain versus the retailer's shortage penalty.
-
-**Every `(n_echelons, leadtime, p_short)` cell is a SEPARATE LEADERBOARD.**
-Chain length and lead time change the observation and action width, so no
-policy spans them and no score may be compared across cells. `p_short` changes
-the cost scale, so those are not comparable either. The two *observation
-modes* (`raw`, `echelon`) within one cell **are** comparable — that comparison
-is the whole point of the campaign.
+Opened 2026-09-14 with an **empty result history by construction** — the code,
+the IR and the gates are inherited; no number is. An earlier campaign on this
+same domain ran downstream and is not cited from here. Moving a number across
+is a deliberate act that re-earns it at this pin, never a quotation.
 
 ## This domain is GENERATED — the skill is authoritative
 
-`clark_scarf/` was produced by the **auto-mdp-solver** skill from
-`clark_scarf_schema.json`. It is not a hand-written project, and it must not
-drift into one.
-
-**Before changing anything here, read the skill docs — they are authoritative
-over this file, over the code, and over local habit:**
+Produced by the **auto-mdp-solver** skill from `clark_scarf_schema.json`. It is
+not a hand-written project and must not drift into one.
 
 | doc | governs |
 |---|---|
-| `MDP_PROJECT_SPEC.md` | architecture, layering, naming, RNG/seed tree, script + eval conventions (§1–§14) |
-| `SKILL.md` | the pipeline stages, their gates, and what each stage must emit |
-| `ESCALATION_LOG_GUIDE.md` | the campaign log (§MAP, §FRAME-CHANGELOG, §IR-CHANGELOG, §LEDGER) and the §10 playbook digest |
+| `MDP_PROJECT_SPEC.md` | architecture, layering, naming, RNG/seed tree, script + eval conventions |
+| `SKILL.md` | the pipeline stages, their gates, what each stage must emit |
+| `ESCALATION_LOG_GUIDE.md` | the campaign log (§MAP, changelogs, §CONFIG-REGISTRY, §LEDGER) |
 
-Consequences, each already paid for somewhere:
-
-- **Check the spec before inventing a mechanism.** The pipeline usually has
-  one already, and its version composes with the gates.
-- **Structural changes go through the IR first**, then the code, then the
-  gates — never code-first. `clark_scarf_schema.json` is the source of truth;
-  `clark_scarf_scenarios.py` and friends materialize it.
-  Observation/architecture levers are NOT IR changes — they live in the gym /
-  train script with their own executable gate; only the *problem* goes
-  through the schema.
-- **Re-run the gates after any IR change and after any solver bump** — the
-  IR depends on host behavior, not just on this folder. A moved fingerprint
-  owes a §IR-CHANGELOG entry (guide §5, tripwire 2).
+- **Check the spec before inventing a mechanism.** The pipeline usually has one.
+- **Structural changes go through the IR first**, then the code, then the gates
+  — never code-first. Observation/architecture levers are NOT IR changes; they
+  live in the gym / train script with their own executable gate.
+- **Re-run the gates after any IR change and after any solver bump.** A moved
+  fingerprint owes a §IR-CHANGELOG entry.
 - **A deliberate deviation from the spec is recorded, not silent** — in the
-  code comment, in the log, and as an upstream proposal
-  (`UPSTREAM_PROPOSAL_*.md`, filed via the mdp-propose skill) if the spec
-  should change.
-
-The repo-root `CLAUDE.md` carries the cross-domain rules.
+  code comment, in the log, and as an upstream proposal if the spec should change.
 
 ## Where the answers are
 
 | doc | what it is |
 |---|---|
-| `README.md` | layout, usage commands, leaderboards (benchmarks final; PPO pending Stage 4) |
-| `ESCALATION.md` | the campaign: §MAP, changelogs, numbered findings (#E…) with verdicts |
-| `ESCALATION.md` §UPSTREAM | the proposal round — eleven filed, eleven accepted, with issue links and dispositions. The drafts are deleted by design: the issue cannot drift from what was argued, a local copy can |
-| `INTERPRET.md` | policy readback (spec §14) — the tier-2 *confirm* deliverable. The raw-trained crown recovers Clark & Scarf's base-stock rule with the paper's own critical numbers (#E8) |
-| `clark_scarf_policy.py` | the **deployable** policy (spec §12): model + vecnorm + action transform behind `act(obs)`; its docstring is the observation contract |
-| `PLAYBOOK.md` | the guide-§10 case-close digest: two lever entries (action encoding; pricing a representation lever at L2) and one frame move (verify the reference on a brute-forceable fixture), stated at trigger level. Process/spec lessons are NOT here — they went upstream as #18–#29, see ESCALATION §UPSTREAM |
+| `ESCALATION.md` | the campaign: §MAP, changelogs, §CONFIG-REGISTRY, numbered findings |
+| `README.md` | layout, commands, the four benchmark bars |
 | `clark_scarf_schema.json` | **the IR — authoritative** for the problem definition |
-| `clark_scarf.restatement.md` | the frozen Phase-A restatement |
-| `clark_scarf.scenarios.md` | the scenario set, its axes, and why each value was chosen |
+| `clark_scarf.restatement.md` | the frozen Phase-A restatement (model-layer; travels with the IR) |
+| `clark_scarf.scenarios.md` | the scenario set, its axes, why each value was chosen |
+| `clark_scarf_configs.py` | the §CONFIG-REGISTRY data half. Run it to print origins and resolve an address |
+| `clark_scarf_policy.py` | the deployable policy (spec §12); its docstring is the observation contract |
 
-Round plans are deliberately **not** in this table: they live in `scratch/`
-and are deleted once their findings are in `ESCALATION.md` (see File
-hygiene).
+Pinned solver: **`auto-mdp-solver==0.11.0`**, installed from PyPI. Verify with
+`python -c "import importlib.metadata as m;
+print(m.version('auto-mdp-solver'))"`, and check the `mdp_*` packages resolve
+to site-packages rather than to a development checkout — a dev-tree import
+gates a pinned domain against unpinned code. Read the skill docs from the
+plugin cache matching that version; newer versions may sit beside it and are
+not what this folder runs.
 
-Built and last gated against **auto-mdp-solver v0.9.5**. Every gate figure
-below is at that version; re-run them after a version bump before trusting a
-new result — this case is the reason several v0.9.x fixes exist, and each was
-found by a bump changing behaviour under it.
+**Gated here 2026-09-24, at 0.11.0** — this stamp replaces the v0.10.12 one,
+which was a measurement of different code:
 
-Frozen Phase-A fingerprints: `mdp = da62301e56b4`, `structural = 7138a8f1ce4e`
-(**F9**, 2026-08-17: the last hardcoding removed — one `pipe` matrix
-(`length: ["n_echelons", "leadtime"]`), one `ship` vector
-(`dim: "n_echelons"`), `stock` unpadded, dynamics quantified, and
-`N_LEVELS_MAX` deleted from code and IR. Both records replay to the digit.
-F8 immediately before it declared `quantities[].stochastic` and grouped the
-file `model`/`design`/`rendering`, moving `mdp` alone.)
+| gate | result |
+|---|---|
+| `mdp_ir` validate | structural fingerprint `d2462f976e61`, 24 instances |
+| conformance | **27/30 passed**, zero FAIL |
+| laws | 8/9 (`mixture_equivalence` SKIPs, no mixtures declared) |
+| differential | MATCH ×24 under `--all-instances` |
+| `pytest` | 134 passed |
 
-Re-signed six times on 2026-08-17, one operator review round. The
-model/design/implementation boundary is machine-readable in the schema's
-`mdp.model`, gated by `model.boundary`, and now *visible in the file* via the
-grouped layout. Every campaign number replays to the digit at every
-re-signing — DP `982.362986`, crowned PPO `989.065774`. History: first freeze
-`53d5d1f9cd5e`; F1 → `2171a651d328`; F2 moved `structural` on a pin bump;
-**F3** generalized the pipeline from two named slots to a shift register
-(`83588654745e`/`26ab0de96d58`); **F4** restored shipping/ordering costs `c_k`
-and per-link lead times `L_k` to the model (`3fb17ad1eae9`/`31635a1de6fd`);
-**F5** corrected a paper misquote (stationarity) in a candidate desc; **F6**
-declared the model layer in-schema at the v0.9.0 pin, `structural` unmoved at
-both; **F7** removed the lead-time cap by transposing the register to
-per-installation vectors whose width *names* `leadtime`
-(`20f732827637`/`2ff6e8344181`) — the first `structural` move from a rendering
-change since F3; **F8** → the pair above. See §IR-CHANGELOG for each.
+**Re-verified twice on 2026-09-24, because a version stamp is a claim about
+code rather than about a number.** (i) Against **0.11.3**, the plugin release
+installed at the time: identical, and checkably so — the five `mdp_*` packages
+are byte-identical to 0.11.0 (`diff -r` empty for `mdp_ir`, `mdp_conformance`,
+`mdp_gates`, `mdp_tuning`, `mdp_stage`). (ii) Against **upstream HEAD
+(v0.11.6)**, which is what CI actually runs — it installs the harness from the
+repo, not a released version — and where **ten harness `.py` files have
+changed** since 0.11.0, `mdp_conformance/checks.py` and `mdp_ir/schema.py`
+among them, one commit of which alters how `desc`/`note` participate in the
+freeze token. Result there: `structural_fingerprint` **unmoved** at
+`d2462f976e61`, conformance 26/30 zero FAIL, laws 8/9, differential MATCH x24.
+The engine moved and the verdict did not.
 
-## Commands
+The stamp above was first taken with `research.deliverables` FAILing — the
+declared `confirm` stance owed the spec §14 readback and `INTERPRET.md` did not
+exist. It was written the same day and the gate now passes. The remaining WARN
+is `schema.no_enumeration` on the re-baked `h_install` vectors; the two SKIPs
+are `scenario.samplers` and `grids.registry`, neither of which this domain
+declares.
 
-Run from `clark_scarf/` unless noted. Always pin threads for training — torch
-oversubscribes.
-
-```bash
-# gates (conformance/laws/differential run from the PARENT of clark_scarf/)
-python -m mdp_ir clark_scarf/clark_scarf_schema.json
-python -m mdp_conformance clark_scarf
-python -m mdp_ir.laws clark_scarf
-python -m mdp_ir.differential clark_scarf/clark_scarf_schema.json --episodes 40 --all-instances
-pytest clark_scarf
-
-# layer smoke tests (from clark_scarf/)
-python clark_scarf_mdp.py          # fixed-policy episodes across chain lengths
-python clark_scarf_gym.py          # random episodes, every obs mode + the coordinate-change check
-
-# train / eval  (the record eval is DETERMINISTIC — see Traps)
-OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python clark_scarf_ppo_train.py -s n3_l2_p09 -o raw
-python clark_scarf_ppo_eval.py -s n3_l2_p09 --model-path results/n3_l2_p09/{run}/n3_l2_p09_ppo.zip
-
-# the deployable policy (spec §12) — replays against the raw MDP loop, no gym.
-# At 512 episodes it must reproduce ppo_eval to the digit; a drift means this
-# file and the gym have diverged on normalization or the action transform.
-python clark_scarf_policy.py --model-path results/n3_l2_p09/{run}/n3_l2_p09_ppo.zip \
-    --vecnorm-path results/n3_l2_p09/{run}/vecnormalize.pkl -s n3_l2_p09 --episodes 512
-```
+Fingerprints unmoved at this pin: `model 8692bea53c9d` / `mdp 9720fe8bbd74` /
+`structural d2462f976e61`. The `dp` bar's **982.362986** was last replayed at
+v0.10.12 and is **not** re-measured in the stamp above — say so rather than
+implying a fresh replay.
 
 ## File hygiene — the folder is the deliverable, not the workbench
 
-A new file belongs in `clark_scarf/` only if it is (a) spec-§1 layout, (b) an
-implementation a finding cites and someone must re-run to reproduce it
-(probes, extra gates), or (c) a campaign document (`README`, `ESCALATION`,
-`INTERPRET`, `PLAYBOOK`, `UPSTREAM_PROPOSAL_*`). **Everything else goes to
-`scratch/` (gitignored): launchers, monitors, one-off checks, throwaway
-analysis. All output goes to `results/` (gitignored).**
-
-**Round plans are never tracked.** A `*_PLAN.md` lives in `scratch/` while
-it is being drafted AND while it is being executed; findings go into
-`ESCALATION.md` and `README.md` **as they land**, and the plan is deleted
-once written up. If a plan is the only place a result exists, that is a bug
-in `ESCALATION.md`. **The probe a plan drives is the opposite — it stays,
-permanently**: an escalation entry cites numbers that only exist if the code
-behind them can be re-run. A probe is written in `clark_scarf/` from the start
-(it imports its siblings) and **committed in the same commit as the
-escalation entry that cites it** — `git log ESCALATION.md` then shows each
-finding beside the code that produced it. Design rationale that must outlive
-the round has two tracked homes, neither of them the plan: the escalation
-entry and the probe's module docstring.
-
-Check with `git status --short clark_scarf/`: untracked files should be rare
-and deliberate.
+A new file belongs here only if it is (a) spec-§1 layout, (b) an implementation
+a finding cites and someone must re-run to reproduce it, or (c) a campaign
+document. **Everything else goes to `scratch/` (gitignored): launchers,
+monitors, one-off checks, throwaway analysis. All output goes to `results/`
+(gitignored).** Round plans are never tracked; a probe is, and is committed in
+the same commit as the entry that cites it.
 
 ## Traps
 
-Seeded by the pipeline; **every trap the campaign pays for is added here the
-same day**, citing the finding (#E…) that paid for it.
+Every trap paid for here is added the same day, citing the finding. These are
+inherited because they are about the MODEL and the CODE, not about any result.
 
-- **Unseeded `reset()` must draw a fresh episode seed** — gymnasium auto-reset
-  passes no seed, so omitting that branch silently trains on `n_envs` fixed
-  exogenous paths while evals (which seed explicitly) keep looking healthy.
-  Guarded by `test_unseeded_resets_draw_fresh_episodes`; proposed upstream as a
-  conformance check (issue #18).
+- **Echelon STOCK is not echelon POSITION.** Holding is charged on echelon
+  *stock*, where stock in transit **to** a level belongs to the echelon
+  **above** it (Assumption 3). Echelon *position* `u = x_1 + w_1 + …` is a
+  different quantity — what `f_n(u)` optimizes over and what a base-stock rule
+  is stated on. Conflating them double-charges pipeline stock and biases the
+  shipping incentive against moving stock downstream, which is the exact
+  trade-off this domain measures. `echelon_stock()` and `echelon_position()`
+  are deliberately separate functions; do not merge them.
 - **`raw` and `echelon` must stay a pure change of coordinates.** They are
   informationally identical *only* because `echelon` sums stock and in-flight
   stock **separately**. A single running sum over their total is lossy at
-  `leadtime = 2` and would silently turn the headline experiment into a test
-  of information rather than representation.
-  `clark_scarf_test.py::test_raw_and_echelon_are_a_pure_change_of_coordinates`
-  is the guard — never weaken it.
-- **Echelon STOCK is not echelon POSITION.** Holding is charged on echelon
-  *stock*, where stock in transit **to** a level belongs to the echelon
-  **above** it (Assumption 3: "at a lower level **or in transit to a lower
-  level**"). Echelon *position* `u = x_1 + w_1 + …` is a different quantity —
-  what `f_n(u)` optimizes over and what a base-stock rule is stated on. The
-  first build conflated them and double-charged pipeline stock (2.0 vs 1.0 per
-  period at `n3_l2_p09`), biasing the shipping incentive against moving stock
-  downstream — the exact trade-off this campaign measures. `echelon_stock()`
-  and `echelon_position()` in `clark_scarf_mdp.py` are deliberately separate
-  functions; do not merge them.
-- **The observation box is a VALIDITY envelope, not a scale.** It is sized to
-  the reachable range (`mean + ship_max * horizon`), which is far wider than
-  sensible play, so `contains()` holds under random actions. Normalization is
-  VecNormalize's job. Do not "tighten" it — clipping into a smaller box
-  destroys the invertibility above.
-- **A sweep is not a domain, and a cap is not a model.** `leadtime` admits
-  any integer >= 1 (model); the campaign sweeps {1,2,3} (design). There is
-  **no lead-time cap** — every `pipe_k` declares `length: "leadtime"`, so the
-  width names the constant and each instance renders exactly the slots it
-  selects. It was not always so: F3 unrolled a fixed `LEADTIME_CAP = 4`, which
-  made `L = 5` unrepresentable, and F7 removed it. **A width that can name a
-  constant must name it** — a literal there is a ceiling nobody declared. The
-  three layers are recorded separately: machine-readable in the schema's
-  `mdp.model` (+ `narrowed` citations), gated upstream by `mdp_conformance`'s
-  `model.boundary`, and in prose in the restatement §Model envelope. The model
-  layer may not mention rendered names, cap literals, or solver tractability.
-  The first freeze violated this and had to be re-signed (F3).
-- **`model.boundary` PASSes with every width derived** — its inventory reads
-  `horizon_T (tier-2 horizon)`, `leadtime (tier-2 obs-dim)`,
-  `n_echelons (tier-1)`, `ship_max (tier-1)`. There is no unpaired cap because
-  there is no cap (F9). It briefly reported `n_levels_max` as unpaired — named
-  for no declared quantity, so its coverage went unchecked — and that residual
-  was closed by deleting the constant rather than by pairing it, which is the
-  better of the two fixes: nothing left to check.
-- **`N_LEVELS_MAX` is gone — do not reintroduce it (F9).** It existed only
-  because `Decision.dim` could not name a constant; upstream #33/#36 lifted
-  that, and the `ship` decision is now `dim: "n_echelons"`. A constant named
-  at `dim` classifies **tier-1**, so `grids.axes` warns about sweeping it —
-  correct, since chain length changes the action space and no policy spans
-  two widths. That warning is expected here, not a defect.
-- **A pin bump can move a frozen fingerprint with no IR edit.** v0.9.2 did:
-  `ModelQuantity.stochastic` escapes `_prune_absent`, so every IR declaring
-  `mdp.model` hashed differently (upstream #34). F8 made it moot here by
-  declaring the field on every quantity. **Re-gate before trusting any result
-  after a bump**, and never assume a moved token means someone edited the
-  model.
-- **A vector decision must be resolved PER INSTANCE, not once.** Five harness
-  sites built decision values from `dim`/`bounds`; all now thread the instance
-  through (upstream #33/#36/#38, v0.9.4). The failure mode this leaves behind
-  is subtle rather than loud: a width or bound taken from the *base* IR is a
-  plausible number that is simply wrong for the instance being run. Upstream
-  found the same bug live in `mab` — `arm` narrows from `(0, 9)` to `(0, 4)`
-  on its 5-arm instances, and the laws were being fed an index those instances
-  do not have. If you ever hand-build a decision dict here, pass the instance.
-- **A mixture NAME is not a scenario instance.** `decision_bounds` raises
-  `KeyError` on one, and the laws *are* called with mixture names — so any
-  code threading an instance into a decision builder needs
-  `inst if inst in scenario.instances else None`. This domain declares no
-  mixtures, so it never hit it; `inv_single` would have.
-- **There is no padding any more (F9).** Every state and action vector is
-  exactly `n_echelons` long, because all three widths NAME the constant. The
-  old trap here warned that inert slots must stay economically invisible; the
-  slots are gone, so the claim to hold is the one that replaced it — a width
-  must never become a literal. `h_install` and `c_ship` are still declared
-  four long, but that is a per-instance **data** tail nothing indexes past
-  `n_echelons`, not a rendering width.
+  `leadtime = 2` and would silently turn the headline experiment into a test of
+  information rather than representation.
+  `test_raw_and_echelon_are_a_pure_change_of_coordinates` is the guard — never
+  weaken it.
+- **An action mode's decode may not contain reference-theory constructs.** A
+  decode that computes echelon position from simulator state and ships
+  `clip(y − u)` supplies the paper's aggregation and its policy class whatever
+  the agent observes, so an arm using it can never support a structure-discovery
+  claim. Audit any new action mode's decode before crowning anything on it.
+- **The IR's `features` list is a CONTRACT, and no gate checks it** (spec §7).
+  Every component the observation renders must derive from a quantity the mode's
+  `features` names, in render order. `test_declared_features_are_exactly_what_
+  the_gym_renders` is the local guard, because upstream ships none. Add a
+  feature to the gym and you add a line to the IR in the same commit; `gym` is
+  outside every fingerprint, so it costs nothing to keep true.
+- **A head's hyperparameters must live INSIDE the model.** A class attribute or
+  a module global does not travel: `PPO.load` rebuilds the head with whatever
+  default is in force and scores a policy that was never trained. Pass them via
+  `policy_kwargs` and carry them in `_get_constructor_parameters`. Guarded for
+  the Beta, Gamma and ordinal heads.
+- **The ordinal head's init is a PRIOR, not a neutral start.** `P(ship = 0) =
+  0.5` against a flat categorical's 0.0244, with only the positive branch
+  near-flat. Defensible on a domain whose optimum ships nothing most periods,
+  but it is a real prior and it is pinned by test rather than inherited silently.
+- **The observation box is a VALIDITY envelope, not a scale.** Sized to the
+  reachable range so `contains()` holds under random actions. Normalization is
+  VecNormalize's job. Do not "tighten" it — clipping into a smaller box destroys
+  the invertibility above.
+- **A sweep is not a domain, and a cap is not a model.** There is no lead-time
+  cap: every `pipe_k` declares `length: "leadtime"`, so the width NAMES the
+  constant. **A width that can name a constant must name it** — a literal there
+  is a ceiling nobody declared.
+- **A vector decision must be resolved PER INSTANCE, not once.** A width or
+  bound taken from the *base* IR is a plausible number that is simply wrong for
+  the instance being run. If you hand-build a decision dict, pass the instance.
 - **`ClarkScarfScenario` must NOT be callable.** A self-returning `__call__`
   makes "did this resolve to a concrete scenario?" unanswerable and fails
-  `mdp_conformance`'s `scenario.samplers` check. Latent resolution belongs on
-  `ClarkScarfScenarioSource`.
-- **The record eval is DETERMINISTIC here** — the policy is a continuous
-  shipment quantity with no exploration role at eval time, and the benchmark
-  it is scored against (the Clark–Scarf DP) is deterministic. A stochastic
-  eval is a separate, labelled figure and never a record.
-- **The DP row is not unconditionally exact** — it truncates the Poisson pmf
-  at a high quantile while the simulator does not (mass < 1e-9). Say so
-  wherever "% of optimal" is quoted.
-- **Selection and terminal artifacts are different networks**
-  (`{scenario}_ppo.zip` vs `_ppo_final.zip`, spec §8.4) — say which one a
-  number came from.
-- **Compute sites/venues are cited by alias, never hostname** — venue
-  config lives at the repo root; a venue change is a confound to record,
-  not a detail.
-- **Never use `param`, `params`, or `param_*`** anywhere (conformance
-  fails).
+  `scenario.samplers`.
+- **The record eval is DETERMINISTIC here** — the policy is a shipment quantity
+  with no exploration role at eval time, and the benchmark it is scored against
+  is deterministic. A stochastic eval is a separate, labelled figure, never a record.
+- **The DP row is not unconditionally exact** — it truncates the Poisson pmf at
+  a high quantile while the simulator does not (mass < 1e-9). Say so wherever
+  "% of optimal" is quoted.
+- **A number from a run that stopped early is not a worse result — it is not a
+  result.** `mdp_gates.completion` blocks the verdict before any comparison; a
+  deliberate stop is declared with `--short-ok "<reason>"`. A killed run and a
+  silently dead one leave identical files, which is why the declaration is the
+  one input no artifact can carry.
+- **A masked run would FAIL `run.provenance`.** The args log records the
+  resolved `algo_class` and the IR declares `ppo` alone; `--mask` constructs
+  `MaskablePPO`. Declare `rl.algos` in the IR before running a masked arm.
+- **A different action mode is a different CELL, not an escalation.** The level
+  is read off the knobs that moved among **non-design** knobs;
+  `clark_scarf_configs.level()` is the implementation.
+- **`--show-space` does not show the space a launch with the same flags will
+  search.** It returns before `--train-arg` pins are parsed. Verify pins from
+  trial 0's args log, not from the banner.
+- **Every §8.6 derivation row needs a DEST, or it silently does not happen.**
+  Check `python -m mdp_tuning clark_scarf --show-space` against §8.6's table
+  before trusting any "L1 = the derivation" claim.
+- **A pin bump can move a frozen fingerprint with no IR edit.** Re-gate before
+  trusting any result after a bump, and never assume a moved token means someone
+  edited the model.
+- **Compute sites/venues are cited by alias, never hostname.**
+- **Never use `param`, `params`, or `param_*`** anywhere (conformance fails).

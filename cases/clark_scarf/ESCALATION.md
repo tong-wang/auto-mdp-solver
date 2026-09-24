@@ -1,1778 +1,1057 @@
-# ESCALATION.md — `clark_scarf`
+# clark_scarf (ordinal board) — escalation log
 
-Campaign log for the Clark & Scarf (1960) serial multi-echelon chain.
-Sections per `ESCALATION_LOG_GUIDE.md` §2.
-
----
-
-## §MAP — current frame (closed 2026-08-16)
-
-**The question.** Echelon stock is an artifact of the *paper's analysis*, not
-something a warehouse manager sees. Given only **raw installation stock**, does
-an RL policy rediscover the echelon aggregation Clark & Scarf prove is the right
-coordinate system?
-
-**Why it is a fair question.** The two observation modes are related by an
-invertible map, so they carry *identical information*. This is a test of
-**representation**, not information. An MLP can express a cumulative sum (a
-lower-triangular matrix of ones), so a `raw` shortfall would be an optimization
-finding, not an impossibility.
-
-**Target.** `n3_l2_p09` — 3 echelons, lead time 2, shortage 9. Specialist.
-The other 17 cells of the frozen grid are later passes.
-
-**The bar.** The exact Clark–Scarf DP, **verified optimal** against a
-brute-force joint DP over the full joint state on `verify_tiny` (gap 0.000000),
-not merely assumed from Theorems 1–2.
-
-**Established (Phase A + Stages 1–3).**
-
-| | |
-|---|---|
-| Phase A frozen model | `mdp = 771742e40b02`, `structural = 31635a1de6fd` — re-signed at F3–F6 (general pipeline; costs + per-link lags restored; stationarity misquote corrected; model layer declared in-schema at v0.9.0); results replay to the digit throughout |
-| Gates | differential MATCH 10/10 · laws 8/9 · conformance **15/17** no-fail · 29 domain tests (re-gated at the v0.8.3 pin, 2026-08-16; **re-gate owed at the current v0.8.8 pin**) |
-| Benchmarks (8192 CRN seeds) | DP **982.36** · `echelon_bs` 1021.13 · `local` 1120.92 · random 37069.12 |
-| Ladder | `local → echelon_bs` = 99.8 (price of the echelon idea) · `echelon_bs → DP` = 38.8 (price of Theorem 2) |
-| Gate classification | `random` + `local` are baselines; `echelon_bs` + `dp` are **references** — theory-informed arms must never gate an agent that has to discover the structure (#E2) |
-
-**The research questions.** Declared, so the deliverables are not decided by
-whoever remembers:
-
-| tier | question | status |
-|---|---|---|
-| **1-comparative** *(standing — every campaign asks it)* | how does RL compare with the existing solutions, exact and heuristic? | answered: **100.69%** of the exact optimum, beats the best heuristic by 32.06 (#E7) |
-| **2-structural**, stance **bypass** *(primary)* | is the echelon transform *required* to solve the problem well? | answered: **no** — −0.55 ± 0.14 at L1 (two-seed arms, inside the 1.57 floor) and point estimate −0.0014 at L2(hp); the seed-backed leg is L1's, and both agree on zero (#E4, #E7) |
-| **2-structural**, stance **confirm** *(secondary)* | is the learned policy nonetheless echelon-structured? | **answered: yes** — implied targets 37/59/79, IQR 0.0, identical to the DP's; echelon-invariant at levels 2–3 (#E8) |
-
-Carried in two stances because they read the same number differently:
-`raw ≈ echelon` is a **success** under bypass and **inconclusive** under
-confirm. Confirm is kept because echelon stock is *known* optimal, so a good
-enough policy has to arrive there.
-
-**Stage-4 starting configuration.** `ship_discrete` action (whole-unit
-quantities, one categorical head per link) + `raw` observation + no masking,
-at L0 (library defaults, `gamma = beta`) and L1 (the spec §8.6 derivation).
-Nothing beyond the spec's own derivation is assumed.
-
-**Open.** Nothing. Every design axis is closed (interface, masking,
-observation, `L2(hp)`), both research questions are answered, A2's readback
-shipped as `INTERPRET.md`, and A5 was closed **unrun** — it defended a tier-3
-quantity the campaign never claims (see the frontier).
-
-**Status: CLOSED 2026-08-16.** Both research questions answered — tier 1 at
-100.69% of a verified optimum, tier 2 on both stances (bypass *and* confirm).
-Carried open at close, deliberately and not as debt hidden by the closure —
-struck through as each resolved afterwards, so the row records both what was
-carried and how it ended rather than being deleted:
-
-| open item | why it is open |
-|---|---|
-| ~~**A5** — multi-seed retrain~~ | **closed unrun.** It defended a tier-3 quantity (the tuning procedure's expected value) that the campaign never claims. The review it prompted corrected a real overclaim in #E7 instead — the L2 delta's ± is eval-only on a one-seed-per-arm design — and the tier-2 answer stands on L1 (seed-backed) plus the #E8 readback |
-| ~~**A3** — remaining Stage-6 packaging~~ | **closed 2026-08-17** by the contribution pass (PR #40) |
-| ~~**re-gate at v0.8.10**~~ | **closed.** Superseded and overtaken: gates now run at **v0.9.5** — conformance 18/21, laws 8/9, differential 11/11, `pytest` 33/33, zero FAILs anywhere. See §IR-CHANGELOG for the per-bump re-gates |
-| ~~**adopt `benchmarks` in the IR**~~ | **closed.** The IR declares four — `dp=exact`, `echelon`/`local`/`random`=`feasible` — and `benchmarks.declared` PASSes. The README keeps its `role` column as presentation, no longer as the interim home |
-| the other 17 `(n, l, p)` cells | separate leaderboards by construction; never in scope |
-
-**Parked.** Cross-cell generalization; the `n_echelons` and `leadtime` sweeps;
-a second demand family.
-
-**Naming.** `echelon_bs` in earlier entries is the benchmark the tree calls
-`method=echelon`, after its file. The ledger is append-only and keeps its
-original wording.
-
----
+Opened 2026-09-14. **Empty history by construction**: the code, the IR and the
+gates are inherited; no result is. An earlier campaign on this same domain ran
+downstream, and its board and log are not cited here — if a number from it is
+ever wanted, it is moved in deliberately and re-earned at this pin, not quoted
+across.
 
 <a id="MAP"></a>
+## MAP  (as of 2026-09-24)
 
-## §MAP — the design tree
+**One cell, one frame.** `n3_l2_p09` — three echelons, lead time 2,
+`p_short = 9.0`, β = 0.95, T = 50, Poisson demand on the integer lattice. The
+lattice rendering is chosen deliberately: the `dp` benchmark is role **`exact`**
+here (the decomposition checked against a brute-force joint DP to 0.000000), so
+"% of optimal" means it, and `ship_discrete`'s integer support is the action
+set's natural home rather than a quantization.
 
-**INSTRUMENT NOTE (read before comparing any two numbers here).** Rows marked
-`@8192` are the protocol (8192 deterministic CRN seeds, VecNormalize injected,
-selection artifact — not the terminal checkpoint). Rows marked `sel` are a
-run's own CRN selection-block score at 256 seeds, and rows marked `tune` are a
-tuning trial's 512-seed score. **They are not interchangeable.** A tuning
-winner is *chosen on* its 512 seeds, so its `@8192` re-score is expected to be
-worse; quoting a `tune` number against an `@8192` bar would manufacture a win.
-Only `@8192` rows are decision-relevant. **Resolution floor = 1.57** — #E3's
-measured L1 training-seed sd; a delta inside it is not a claim, whatever its
-eval-seed z-score says (eval SEs run ~0.2–0.4 and will call 0.5-unit
-differences "significant" that two training seeds cannot reproduce).
-
-### How to read this tree
-
-**Split kinds.** Two questions generate all of them: *does the crown fork or
-pass through one child?* × *do the siblings share one protocol, bar and
-leaderboard?*
-
-| kind | crown | frame | children are |
-|---|---|---|---|
-| **cases** | forks | own — scores incomparable | disjoint cases of the parent |
-| **means** | forks | shared — scores comparable | the same case solved by different means |
-| **designs** | passes one | shared | competing designs, one crown |
-
-`OR × own frame` is empty by construction, which gives the one rule governing
-the whole tree:
-
-> **A score may be subtracted only within a frame.** Across frames a number may
-> be reported — labeled as such — but it never selects: no crown, no prune, no
-> `✗`.
-
-**Per-edge attributes.** `coverage` `required`/`optional` · `order` by
-generality (what makes a `means` split a chain, and what licenses its
-cross-link delta as a *price of generality*) · `role` `exact`/`relaxed`/
-`feasible` · `question`/`tier`.
-
-**Role, and why min/max needs no second vocabulary.** With
-`objective.sense = minimize` from the IR, define `≽` = *at least as good as*.
-Then `relaxed ≽ opt` (unattainable), `exact = opt`, `feasible ≼ opt`. Never
-"upper"/"lower" bound — those flip with the sense. A `feasible` sibling
-scoring `≻` an `exact` one is impossible; if it happens the eval, the bound or
-the simulator is wrong.
-
-**Tiers.** `1-comparative` is **standing** — every campaign asks how RL
-compares with the existing solutions, exact and heuristic, so it is not this
-case's contribution. `2-structural` is this campaign's own question.
-`3-engineering` is everything that only decides which encoding trains best.
-Tier is independent of depth: §3.1 orders layers by conditioning, "not
-importance".
-
-**Labels.** Edge = `{kind}[({attribute})] · {locus}.{axis} · {mark} {status}`;
-node = `{axis}={option}` / `{score} (Δ) · {#E ids}` (root exempt). Axis names
-are read from the code (`observation_mode`, `action_mode`, `mask`), never
-coined — so a node whose axis does not match its incoming edge is attached to
-a split it does not belong to. Identity never carries a rank: priority is
-mutable and lives in the status, so no reprioritization can rename a path.
-
-**The tree is a structured bookmark.** Nodes carry identity, result and
-reference and nothing else, because every detail is one hop away in the
-ledger. Node labels must be *stable*, not *complete*. Links live in the
-readings table below the diagram — mermaid `click` reaches external URLs but a
-fragment href does not navigate (measured, 2026-08-16).
-
+### Design tree
 ```mermaid
 graph TD
-    IR["clark_scarf_schema.json — the frozen IR<br/>mdp da62301e56b4 · structural 7138a8f1ce4e (F3–F9)<br/>minimize E(Σ β^t cost) · β = 0.95 · T = 50"]
+    ROOT["clark_scarf_schema.json — the frozen IR<br/>mdp 9720fe8bbd74 · structural d2462f976e61 · model 8692bea53c9d<br/>minimize E(Σ β^t cost) · β = 0.95 · T = 50"]
+    ROOT ==>|"cases · scenario · S1 · required ★"| SC0["scenario=n3_l2_p09<br/>989.23 best in subtree · #E10<br/>sc0"]
 
-    IR ==>|"cases · scenario · ▶ one base opened"| CELL["scenario=n3_l2_p09 — specialist<br/>base: ClarkScarfScenario · protocol: 8192 det. CRN seeds"]
+    SC0 -->|"design-axes · solver · role=exact · tier=1"| DP["method=dp<br/>982.362986 ± 1.189 · verified optimal"]
+    SC0 -->|"design-axes · solver · role=feasible · tier=1"| EBS["method=echelon_bs<br/>1021.129244 ± 0.865"]
+    SC0 -->|"design-axes · solver · role=feasible · tier=1"| LOC["method=local<br/>1120.921580 ± 0.762"]
+    SC0 -->|"design-axes · solver · baseline"| RND["method=random<br/>37069.12 ± 48.95"]
+    SC0 ==>|"design-axes · solver · role=feasible · tier=1 ★"| PPO["method=ppo<br/>989.23 best in subtree · #E10<br/>unregistered cell"]
 
-    CELL -->|"means · solver.role · tier 1 · ★ the bar"| EXACT["role=exact<br/>982.36 · #E1"]
-    CELL -->|"means · solver.role · tier 1 · ✓ covered"| FEAS["role=feasible — benchmarks<br/>1021.13 best in subtree · #E2"]
-    CELL ==>|"means · solver.role · tier 1 · ▶ the campaign (role: feasible)"| RL["solver=ppo<br/>989.07 best in subtree · #E7"]
+    PPO -->|"design-axes · gym.observation_modes · S1 · required · tier=2 ✓ covered"| RAW["observation_mode=raw<br/>989.62 best in subtree · #E10<br/>unregistered cell"]
+    PPO ==>|"design-axes · gym.observation_modes · S2 · required · tier=2 ★"| ECH["observation_mode=echelon<br/>989.23 best in subtree · #E10<br/>unregistered cell"]
 
-    EXACT -->|"means · solver.method · ★"| DP["method=dp — Clark and Scarf decomposition<br/>982.36 · verified optimal, gap 0.000000 · #E1"]
+    RAW -->|"escalations · arch.policy_dist · P1 · tier=3 ▶ leads tuned; adoption blocked on the seed replication"| RA2["policy_dist=dgauss<br/>989.62 best in subtree · #E10<br/>unregistered cell"]
+    RAW -->|"escalations · arch.policy_dist · P2 · tier=3 ✓"| RA0["policy_dist=categorical<br/>991.87 best in subtree · #E10<br/>unregistered cell"]
+    RAW -->|"escalations · arch.policy_dist · P3 · tier=3 ✓"| RA1["policy_dist=ordinal<br/>998.49 best in subtree · #E10<br/>unregistered cell"]
+    RAW -->|"escalations · arch.policy_dist · P4 · tier=3 ⏸ atom-isolation control, never tuned; return: if the atom is revisited"| RA3["policy_dist=dgauss_sig<br/>L2(arch) · 1018.59 · #E7<br/>sc0/g2/a3/h0"]
 
-    FEAS -->|"means · solver.method · ★"| HECH["method=echelon<br/>1021.13 · #E2"]
-    FEAS -->|"means · solver.method · ✓"| HLOC["method=local<br/>1120.92 · #E2"]
-    FEAS -->|"means · solver.method · ✓"| HRND["method=random<br/>37069.12 · #E2"]
+    RA2 -->|"chain · level · L1 derivation ✓"| R1A2["hp=derived<br/>L2(arch) · 4M · 1040.84 · #E7<br/>sc0/g2/a2/h0"]
+    R1A2 ==>|"chain · level · L2(hp) · Δ −51.22 · 80 trials ✓"| R2A2["hp=tuned<br/>L3(hp+arch) · 5M · 989.62 ±1.20 · #E10<br/>unregistered cell"]
+    RA0 -->|"chain · level · L1 derivation ✓"| R1A0["hp=derived<br/>L1 · 4M · 1003.33 · #E5 #E7<br/>sc0/g2/a0/h0"]
+    R1A0 ==>|"chain · level · L2(hp) · Δ −11.46 · 84 trials ✓"| R2A0["hp=tuned<br/>L2(hp) · 4M · 991.87 ±1.13 · #E10<br/>unregistered cell"]
+    RA1 -->|"chain · level · L0 floor, §8.6 reporting-only ✓"| R0A1["level=L0<br/>1290.17 ±48.56 · #E3 · 2M<br/>sc0/L0"]
+    R0A1 -->|"chain · level · L1 derivation · Δ −264.34 (z −5.42), both ends at 2M · #E3 ✓"| R1A1["hp=derived<br/>L2(arch) · 4M · 1001.74 · #E5 · 2M reading 1025.83 SUPERSEDED<br/>sc0/g2/a1/h0"]
+    R1A1 ==>|"chain · level · L2(hp) · Δ −3.25 · 60 trials ✓"| R2A1["hp=tuned<br/>L3(hp+arch) · 4M · 998.49 ±1.13 · #E10<br/>unregistered cell"]
 
-    RL -->|"start · not a split"| L0["training=L0 — library defaults<br/>1193.36 at ship_discrete+raw · #E3"]
-    L0 ==>|"§8.6 ladder · Δ −183.58 · ✓ control, never eligible"| L1["training=L1 — derived config<br/>1009.77 at ship_discrete+raw · #E3"]
+    ECH ==>|"escalations · arch.policy_dist · P3 · tier=3 ★ the current bundle sits here"| EA1["policy_dist=ordinal<br/>993.73 best in subtree · #E10<br/>unregistered cell"]
+    ECH -->|"escalations · arch.policy_dist · P1 · tier=3 ▶ leads tuned; adoption blocked on the seed replication"| EA2["policy_dist=dgauss<br/>989.23 best in subtree · #E10<br/>unregistered cell"]
+    ECH -->|"escalations · arch.policy_dist · P2 · tier=3 ✓"| EA0["policy_dist=categorical<br/>992.95 best in subtree · #E10<br/>unregistered cell"]
+    ECH -->|"escalations · arch.policy_dist · P4 · tier=3 ⏸ atom-isolation control, never tuned; return: if the atom is revisited"| EA3["policy_dist=dgauss_sig<br/>L2(arch) · 1031.36 · #E7<br/>sc0/g3/a3/h0"]
 
-    L1 ==>|"means(general) · gym.observation_mode · tier 2 · ★ required"| RAW["observation_mode=raw<br/>989.07 @8192 (100.7%) · #E4 · #E7"]
-    L1 ==>|"means(restricted) · gym.observation_mode · tier 2 · ★ required"| ECH["observation_mode=echelon<br/>989.07 @8192 (100.7%) · #E4 · #E7"]
+    EA2 -->|"chain · level · L1 derivation ✓"| E1A2["hp=derived<br/>L2(arch) · 4M · 1071.56 · #E7<br/>sc0/g3/a2/h0"]
+    E1A2 ==>|"chain · level · L2(hp) · Δ −82.33 · 72 trials ✓ not converged"| E2A2["hp=tuned<br/>L3(hp+arch) · 5M · 989.23 ±1.30 · #E10<br/>unregistered cell"]
+    EA0 -->|"chain · level · L1 derivation ✓"| E1A0["hp=derived<br/>L1 · 4M · 1002.53 · #E5 #E7<br/>sc0/g3/a0/h0"]
+    E1A0 ==>|"chain · level · L2(hp) · Δ −9.58 · 96 trials ✓"| E2A0["hp=tuned<br/>L2(hp) · 4M · 992.95 ±1.19 · #E10<br/>unregistered cell"]
+    EA1 ==>|"chain · level · L0 floor, §8.6 reporting-only ✓"| E0A1["level=L0<br/>1168.52 ±31.27 · #E3 · 2M<br/>sc0/L0"]
+    E0A1 ==>|"chain · level · L1 derivation · Δ −143.62 (z −4.58), both ends at 2M · #E3 ★"| E1A1["hp=derived<br/>L2(arch) · 4M · 1001.37 ±2.44 · #E5 · 2M reading 1024.90 SUPERSEDED<br/>sc0/g3/a1/h0"]
+    E1A1 -->|"chain · level · L2(hp) · Δ −7.64 · 78 trials ✓ scores better, NOT adopted"| E2A1["hp=tuned<br/>L3(hp+arch) · 4M · 993.73 ±1.20 · #E10<br/>unregistered cell"]
 
-    RAW ==>|"designs · gym.action_mode · tier 3 · ★"| RTGT["action_mode=target_discrete<br/>992.54 (Δ −17.23) · #E6"]
-    RAW -->|"designs · gym.action_mode · ✗ dominated"| RSHIP["action_mode=ship_discrete<br/>1009.77 — the #E3 start, unmoved · #E3 · #E6"]
-    RAW -.->|"designs · gym.action_mode · ⏸ no entry"| CONT["action_mode=ship_rel (Box)<br/>not run · tripwire: a continuous-action variant"]
-
-    RTGT ==>|"designs · gym.mask · tier 3 · ★"| RNOMASK["mask=off<br/>992.54 · #E5"]
-    RTGT -.->|"designs · gym.mask · ✗ rejected"| RMASK["mask=on<br/>1000.58 (Δ +8.03) · #E5 · #E6"]
-
-    RNOMASK ==>|"designs · hp · tier 3 · ★"| RHP["training=L2(hp)<br/>989.07 (Δ −3.47) · #E7"]
-    RNOMASK -.->|"readback · not a split · tier 2"| RPROBE["interpretation — echelon-structured?<br/>yes: ȳ = 37/59/79, IQR 0.0 · #E8"]
-
-    ECH ==>|"designs · gym.action_mode · tier 3 · ★"| ETGT["action_mode=target_discrete<br/>993.09 (Δ −14.29) · #E6"]
-    ECH -->|"designs · gym.action_mode · ✗ dominated"| ESHIP["action_mode=ship_discrete<br/>1007.38 · #E3 · #E6"]
-
-    ETGT ==>|"designs · gym.mask · tier 3 · ★"| ENOMASK["mask=off<br/>993.09 · #E5"]
-    ETGT -.->|"designs · gym.mask · ✗ rejected"| EMASK["mask=on<br/>999.10 (Δ +6.01) · #E5 · #E6"]
-
-    ENOMASK ==>|"designs · hp · tier 3 · ★"| EHP["training=L2(hp)<br/>989.07 (Δ −4.02) · #E7"]
+    %% dp / echelon_bs / local / random carry no config address: an analytic
+    %% reference holds no g/a/h (guide §3.1)
 ```
 
 ### Layers and node readings
-
-One table, not two: the split's typing and what the node *says* are the same
-row. The tree carries kind, tier and mark on its edges; this is the greppable
-form, plus the reasoning the two-line nodes no longer hold.
-
-| node | split kind · attributes · tier | reading | entry |
+| node | kind · attributes · tier | reading | entry |
 |---|---|---|---|
-| root — the frozen IR | not a split | the frame is a frame over **one** problem: a moved `mdp` fingerprint re-roots it, a moved `structural` need not (cf. F2, which moved on a pin bump with a byte-identical schema) | — |
-| `scenario=n3_l2_p09` | **cases** · required | one study base opened. The other 17 cells of the frozen grid are separate leaderboards — **absent** from the tree, not postponed children, so they carry no coverage debt | — |
-| `role=exact` / `method=dp` | **means** · required · **1-comparative** | the bar, and the only reason 992.54 is legible as 101.0%. Verified optimal against a brute-force joint DP on `verify_tiny` (gap 0.000000), not assumed from Theorems 1–2 | [#E1](#E1) |
-| `role=feasible` / `method=echelon`·`local`·`random` | **means** · required · **1-comparative** | best non-exact solution 1021.13 — half the tier-1 claim, and the number a practitioner actually compares against. `echelon_bs` and `dp` are **references**, `local` and `random` **baselines**: theory-informed arms must never gate an agent that has to discover the structure | [#E2](#E2) |
-| `training=L0` → `training=L1` | not a split — the §8.6 ladder | L0 is library defaults at γ=β, reporting-only, never a gate, therefore never eligible for the crown — drawn as the rung L1 escalated *from*, not a sibling that lost. Both measured at the zero-knowledge start (`ship_discrete`+`raw`), which is why Δ −183.58 rides the edge: both endpoints are that configuration. L0 fails legibly — over-stocked, holding 1025–1071 against the DP's 868 | [#E3](#E3) |
-| `observation_mode=raw` / `=echelon` | **means** · required · `order: echelon ⊂ raw` · **2-structural** | `raw` is physical stock per installation plus in-flight, with **no** echelon machinery supplied; `echelon` hands over Clark & Scarf's coordinates as component-wise running sums, invertible against `raw`. Price of generality −0.55 ± 0.14 @8192, **inside the 1.57 floor** | [#E4](#E4) |
-| `action_mode=target_discrete` | **designs** · 3-engineering | the bin index *is* the order-up-to level `y_k`. The optimum is **constant** in target coordinates and state-dependent in quantity coordinates, so the pre-registered representational argument is **supported** — and it wins in all four cells, i.e. configuration-independent | [#E6](#E6) |
-| `mask=off` / `=on` | **designs** · 3-engineering | rejected **twice, independently, on two structurally different masks** — one-sided under `ship`, two-sided under `target`. The pre-registered mechanism is **not** supported and none is claimed; the mask cannot touch the top link, where an unlimited supplier makes it all-True | [#E5](#E5) · [#E6](#E6) |
-| `training=L2(hp)` | **designs** · 3-engineering | **crowned.** 258/260 trials; both studies found their best by trial ~80 and the remaining two thirds moved nothing. Four top artifacts re-scored @8192 land within **0.027** of each other at **989.07** — four configurations, two representations, one policy quality. Gain over L1 −3.47 / −4.02 (≈2σ: one training seed against a two-seed L1 mean). Winner's curse unquantified by design — a tier-3 quantity, not claimed | [#E7](#E7) |
-| `interpretation` | not a split — readback · **2-structural** | **the confirm half, answered yes.** Implied order-up-to takes exactly one value per echelon where the clip is slack — 37/59/79, IQR **0.0** over ~36k decisions — identical to the DP's critical numbers. Echelon-invariant at levels 2–3 (spread 0.00/0.43), approximate at level 1 (0.75), which is defensible: level 1 faces demand this period. Agreement 84–95%, over-ordering upstream | [#E8](#E8) |
+| `method=dp` | design-axes · solver · role=exact · tier=1 ★ | **982.362986 ± 1.189** @8192 CRN. The bar, and the reason a number here is legible as a percentage. Verified against a brute-force joint DP on `verify_tiny` (gap 0.000000), not taken on the theorems' word. One documented caveat: the Poisson pmf is truncated at a high quantile while the simulator's sampler is not (dropped mass < 1e-9) | — |
+| `method=echelon_bs` | design-axes · solver · role=feasible · tier=1 | **1021.129244 ± 0.865** — the best non-exact reference, and the number a practitioner actually compares against. A *reference*, not a baseline: it is theory-informed, so it may not gate an agent that has to discover the structure | — |
+| `method=local` | design-axes · solver · role=feasible · tier=1 | **1120.921580 ± 0.762** — the structure-blind baseline | — |
+| `method=random` | design-axes · solver · baseline | **37069.12 ± 48.95** — the floor that makes "a policy was learned" a checkable claim | — |
+| `method=ppo` | design-axes · solver · role=feasible · tier=1 ★ | **989.23 best in subtree** ([#E10](#E10)) — 100.70% of the exact bar, from the `echelon` + `dgauss` tuned cell. The board's whole RL subtree hangs here; four heads x two observation arms x the §8.6 ladder | [#E3](#E3), [#E7](#E7), [#E10](#E10) |
+| `observation_mode=raw` / `=echelon` | **design-axes** · `gym.observation_modes` · S1/S2 · required · tier=2 | **conditional on the head, not a property of the board** ([#E10](#E10), tuned): null on `dgauss` (+0.39, z 0.22) and `categorical` (−1.08, z 0.66), **+4.76 (z 2.89) on `ordinal`** — the echelon rendering pays only the head that cannot learn the transform itself. Supersedes the untuned reading, a tie at L1 on `ordinal` alone (−0.93 ± 3.28) and at L0 (−121.65 ± 62.86). **Never prunable**: the IR declares both modes and the research question names them the instrument. **[#E11](#E11) reaches the same conclusion from a second instrument**: the readback shows the `raw` policy is at least as invariant to redistributing a fixed echelon position as the arm handed the transform (0.76/0.00/1.76 vs 1.00/0.87/2.54) | [#E3](#E3), [#E10](#E10), [#E11](#E11) |
+| `policy_dist=` `dgauss` / `categorical` / `ordinal` / `dgauss_sig` | **escalations** · `arch.policy_dist` · P1–P4 · tier=3 | **four competing heads, campaign-invented — not an IR declaration**, so crown-one-prune-the-rest applies and no coverage debt is owed. **The ordering REVERSES between L1 and L2** ([#E7](#E7) → [#E10](#E10)): untuned `ordinal < categorical < dgauss_sig < dgauss`, tuned `dgauss < categorical < ordinal`. Tuning pays `dgauss` −51.22/−82.33, `categorical` −11.46/−9.58, `ordinal` −3.25/−7.64. **No crown is taken** — one artifact per cell against a ~6 seed floor, and `dgauss` alone ran at 5M | [#E7](#E7), [#E10](#E10) |
+| `level=L0` → `hp=derived` | chain · `level` · §8.6 ladder · tier=3 | **the dominant lever measured on this board**: −264.34 (z −5.42) on `raw`, −143.62 (z −4.58) on `echelon`, both endpoints at 2M on the `ordinal` head ([#E3](#E3)). L0 is reporting-only and never a gate. It moves eight knobs at once, so the delta is the whole derivation and attributes to no single knob | [#E3](#E3) |
+| `hp=derived` → `hp=tuned` | chain · `level` · `L2(hp)` · tier=3 | **the A6 rung, six studies of 60–96 trials** ([#E10](#E10)). Pays every head, but by wildly different amounts — see the `policy_dist` row; that spread, not the level, is the finding. Best cell **989.23 ± 1.30**. **No `h` id minted**: §13.2 mints on adoption and nothing here is adoptable yet. `dgauss`+`echelon` was still improving when its wall hit at 72 trials, so its number is a floor | [#E10](#E10) |
 
-`role` is set at the `solver` layer and **inherited** by everything beneath it,
-which is why the `ppo` subtree carries no role annotation of its own.
+### Frontier
+1. ~~**A1 — the ordinal head's ladder, L0 → L1, both arms @ 6 seeds**~~ — **done 2026-09-15** ([#E3](#E3)): L1 at 104.3/104.4% of exact, arms tied, floor measured at ~8
+2. ~~**A2 — L2 tuning of `a1`**~~ — ran as `ordL2` (57 trials @4M: 28 scored the ship-nothing constant, best = the untuned centre; the evidence base of [#E6](#E6)) and `ordL2b` (20 trials @5M, `norm_obs`/`norm_reward`/`gamma` pinned) — **stopped 2026-09-18 by decision**: it was tuning a head diagnosed as mismatched ([#E6](#E6))
+3. ~~**A3 — a categorical arm at L1**~~ — **done** ([#E4](#E4), verdict superseded by [#E5](#E5): the 2M contrast was truncation)
+4. ~~**A4 — the `a2` ladder**~~ + ~~**the `a3` twin**~~ — **done** ([#E6](#E6), [#E7](#E7)): the loss decomposes ~evenly into the atom (+17/+30) and the affine `mu` (+22/+40); the categorical is the head nothing beats here
+5. ~~**A5/A6 — the TUNED three-way**~~ — **harvested 2026-09-24**
+   ([#E10](#E10)): six `--minimize` studies (60–96 trials each), all eighteen
+   top-3 winners re-scored @8192. **The coordinate axis is answered** — a null
+   for `a0` (z 0.66) and `a2` (z 0.22), **+4.76 (z 2.89) for `a1`**, the head
+   [#E8](#E8) diagnosed as regime-coupled: the echelon rendering pays only the
+   head that cannot learn the transform itself. **The head axis is NOT
+   answered** — `dgm_*` ran at 5M against `catm_*`/`hurm_*` at 4M, confounding
+   the ordering with a 25% budget gap in the direction of the result; at equal
+   budget only "categorical beats hurdle on `raw`, ties on `echelon`" survives.
+   No id minted, no bundle crowned: one artifact per cell against a seed floor
+   of ~8. Owed — one budget, and 4–6 seeds per winner
 
-### The two research questions
+6. ~~**A7 — the §14 readback, forced by a conformance FAIL**~~ — **done
+   2026-09-24** ([#E11](#E11)): the `confirm` stance has a verdict — the policy
+   found the echelon **coordinates** (split-invariance under 2 units at every
+   level) and **not** the base-stock rule (fitted 32/20/98 against 37/59/79;
+   the one tight level is the one whose clip binds on 98% of decisions).
+   `INTERPRET.md` written, `research.deliverables` passes. Owed — widen the
+   17-comparison invariance sample, and re-implement `--offset-sweep` on
+   `ship_discrete`
 
-**Tier 1 — comparative (standing).** How does RL compare with the existing
-solutions, exact *and* heuristic? Three-part answer, all on one frame:
+- parked: the Gamma-density rendering (`g1_*` instances) — tripwire: the ordinal
+  board reaching a verdict, at which point the same question can be asked where
+  the bar is only `feasible`
+- parked: β = 1 twins — tripwire: none currently; the discount was answered on
+  the previous board
 
-> `ppo` **989.07** is **100.69%** of the exact optimum (982.36), **beats the
-> best heuristic** by 32.06 (1021.13), and sits 204.29 below the `L0` floor
-> (1193.36). Headroom to the bar: **6.71**.
+### Off-tree register   (budget-consuming, *not* solution-touching)
+- bar calibration — all four benchmarks re-solved at the v0.10.12 pin, 2026-09-14
+- ~~floor measurement~~ — **done**, as a by-product of A1 rather than its own batch:
+  within-cell seed sd at L1 is **7.12** (`raw`) / **9.09** (`echelon`), so the
+  floor is **~8** and a cell SE is ~3. At L0 it is 119 / 77 — a 13x spread,
+  which is a property of the rung, not of the instrument.
+  **REVISED by [#E5](#E5) and not carried back until 2026-09-24**: the ~8 was
+  budget-inflated. At 4M the within-cell sd is **0.97–5.97**, so the working
+  floor is **~6** and a 6-seed cell SE is ~1.6. Quote the 4M figure; the ~8
+  belongs to the 2M rung only
 
-**Tier 2 — structural (this campaign's question).** Two stances, deliberately
-ordered:
+### Current best bundle
+`sc0/g3/a1/h0` @ 4M — obs=echelon, `ship_discrete`, hurdle-dgauss head,
+hyperparameters at their derived origin, 4M steps. **The address resolves to
+`L2(arch)`, not L1** (`clark_scarf_configs.level()`): `h0` is the derivation
+but `a1` is not the arch origin, and a non-origin arch id is an architecture
+escalation. Only the `a0` cells on this board are L1. Corrected 2026-09-24;
+the log had called this "L1 hyperparameters", which is true of the hp layer
+and false of the address: **1001.37 ± 2.44 @8192 = 101.9% of the exact bar**
+([#E5](#E5)). All four 4M cells sit within 2 units (1001.4–1003.3): at an
+adequate budget neither the head ([#E5](#E5)) nor the representation moves
+this board, so the ★ is a tie-break, not a win. 2M numbers are superseded —
+every cell was undertrained by 13–24 units.
 
-| stance | claim | instrument | status |
-|---|---|---|---|
-| **bypass** *(primary)* | a policy from raw installation stock matches one handed the echelon coordinates — the transform is not *required* to solve the problem well | the ordered `means` split; its cross-link delta | **answered, twice, and they agree**: −0.55 ± 0.14 at L1 with two-seed arms (inside the 1.57 floor), point estimate −0.0014 at L2(hp) on one seed per arm. L1 carries the seed-backed evidence; L2 sharpens the estimate (#E4, #E7) |
-| **confirm** *(secondary)* | the learned policy is echelon-structured | policy readback on the crowned artifact | **owed** (A2) |
+**Not superseded by [#E10](#E10), deliberately.** A6's tuned cells score better
+(best **989.23 ± 1.30**, `a2` + `echelon` @5M) but none is adoptable: single
+artifact per cell, seed floor ~6 ([#E5](#E5)), head axis confounded with budget.
+The bundle stays on the 6-seed reading until the replication in [#E10](#E10)'s
+plan lands. Note what the bundle IS: a configuration with a six-seed cell mean,
+not a designated artifact — 1001.37 ± 2.44 is a mean over six runs and the
+±2.44 is the spread ACROSS those seeds, not an eval SE. No model file has been
+crowned on this board.
 
-Confirm is carried because echelon stock is *known* optimal, so a good enough
-policy has to arrive there and the readback says whether it did. The two are
-not redundant: `raw ≈ echelon` is a **success** under bypass and
-**inconclusive** under confirm — not needing the coordinates is consistent with
-having found them and does not show it.
+## FRAME-CHANGELOG
+- **2026-09-14 INTRODUCED** — the board opens on `n3_l2_p09` (lattice) with the
+  mixture-at-zero ordinal head as the subject. **No head-vs-head contrast is
+  planned**: the previous board's tuned centres are categorical-fitted, so they
+  cannot price a rival head, and a screen against them measures centre-fit
+  rather than the head (the defect the attempt was caught on). The ladder is
+  the instrument instead — where does this head land against an exact bar, on
+  its own terms.
+- **2026-09-19 WIDENED — the board IS a head-vs-head contrast now.** The
+  opening frame above refused one, for a reason that was sound and has since
+  been met: the previous board's centres are categorical-fitted, so they cannot
+  price a rival head. A5/A6 does not use them. It tunes **each head at its own
+  centre** — six studies, one per (head x arm), every one warm-started at the
+  same L1 derivation and searching the same 11 knobs — so the comparison is
+  between tuned equals rather than against someone else's optimum. What the
+  opening frame forbids is still forbidden: no number here is screened against
+  the old board's `hp2`/`hp4` centres, and no score crosses the boards.
+  Recorded because the log's own frame said this contrast was not planned, and
+  a reader arriving at [#E10](#E10) would otherwise find it unexplained.
+- **2026-09-24 RETYPED + REPARENTED — the head axis becomes an `arch`
+  escalations split.** The four heads had been drawn as one pooled node listing
+  four values, below the `hp` ladder. Both were wrong: they are four parallel
+  competitors on the **`arch`** layer, campaign-invented rather than IR-declared
+  (`escalations`, guide §3.1), and `arch` conditions `hp` rather than the
+  reverse. Redrawn as `arch.policy_dist` with P1–P4 siblings under each
+  observation arm, each carrying its own §8.6 chain (`L0 → hp=derived →
+  hp=tuned`). The mis-drawing hid [#E10](#E10)'s largest effect — the L1→L2
+  ordering reversal is only visible once the four are siblings with their own
+  ladders. No number moved; the diagram was the defect.
 
-### Deviations from the guide, each carried deliberately
+## IR-CHANGELOG
 
-1. **The benchmarks are on the tree, not in the off-tree register.** §3.5 files
-   bar calibration and baselines off-tree. A benchmark *is* a solution to the
-   problem, so it belongs on the tree as a `means` sibling of the RL branch;
-   the register keeps only work that consumes budget without being a solution.
-2. **The `solver` split is `means`, not a partition.** `S` never required
-   disjointness — the guide's own extension chain is nested, not disjoint. What
-   unifies coverage is that no child may be pruned, which holds here: crowning
-   `dp` would not retire the question whether a policy can *learn* the
-   structure, and a good RL result does not retire the bar.
-3. **`L0` is L1's parent, not its sibling**, contra §3.2's "controls are
-   siblings". That rule was derived from `game2048`'s MLP-on-onehot — a
-   *contrastive* control competing on one leaderboard. `L0` is a **floor**
-   control: reporting-only, never a gate, so never eligible for the crown.
-   Drawn as a sibling it would assert a selection that never happened.
-4. **Masking nests below the action interface for a structural reason, not a
-   conditioning one.** Masking was rejected in all four cells — which is
-   evidence the interface does *not* condition its verdict. It nests below
-   because the axis is **defined in terms of** the parent
-   (`clark_scarf_gym.py::action_masks`): one-sided `j ≤ ship_capacity[k]` under
-   `ship_discrete`, two-sided `u_k ≤ y_k ≤ x_{k+1}` under `target_discrete`,
-   with a lower bound that has no analogue in the quantity encoding. "Masking =
-   on" is two different axes sharing a name. That also explains the magnitude
-   gap (+3.61 under `ship` vs +8.03 under `target`) and *strengthens* the
-   four-cell agreement into two independent rejections.
+**Inherited, not re-derived.** The IR is unchanged and carries its frozen
+Phase-A identity: `model = 8692bea53c9d`, `mdp = 9720fe8bbd74`,
+`structural = d2462f976e61`, verified at this pin on 2026-09-14. The
+formalization history that produced it — twelve re-signings, F1–F12 — lives
+with the earlier downstream campaign and is deliberately not copied: this log records what
+*this* board does to the model, and so far that is nothing. `clark_scarf.
+restatement.md` and `clark_scarf.scenarios.md` travel with the IR because they
+describe the model rather than any result.
 
-All four are filed in §FRAME-CHANGELOG.
+## CONFIG-REGISTRY   (living — ids append-only; guide §13)
 
-**Crowned path (§3.4).** The crown **forks at every `means` split** — one ★ per
-covered child — and passes through exactly one child at each `designs` split:
+Reset with the board. The **design space** is inherited (it is the IR's, not a
+campaign's) but **no adopted base is**: the `h` axis holds only its origin, and
+every tuning winner must be re-earned here. Ids are minted on adoption
+(§13.2) — crowned, shipped, or parented — never for a probe.
 
-`n3_l2_p09 / dp` ★ and
-`n3_l2_p09 / ppo / L0 → L1 → L2(hp) / {raw | echelon} / target_discrete / mask=off` ★,
-both leaves now closed at `L2(hp)` (#E7).
+**Merge hazard, stated once.** Ids here are scoped to this board. The previous
+board used `sc0`–`sc3`, `g0`–`g5`, `a0`–`a1`, `h0`–`h8`; the meanings of `sc0`,
+`g0`–`g3`, `a0` and `h0` are kept ALIGNED with it deliberately, so those do not
+collide on a merge. `a1` and any new `h` id do collide — `a1` was the Gamma
+head there and is the ordinal head here. Renumber on merge, never reinterpret.
 
-So the crown is two-part by construction, and says so: **best overall for the
-cell is `dp` 982.36; best learned is `ppo` 992.54.** `L0` is on the path as the
-rung escalated *from*, not a pruned competitor. Edges are jointly validated —
-the interface win holds with masking off in both links — so adopt the *path*,
-not the components.
-
-**Slice view (§3.3) — interface × observation, the interaction under test.**
-
-| | obs raw | obs echelon | price of generality |
-|---|---|---|---|
-| `ship` + nomask | 1009.77 | 1007.38 | **+2.39** (z +9.1) |
-| `ship` + mask | 1013.38 | 1010.03 | **+3.35** (z +10.8) |
-| `target` + nomask | **992.54** | 993.09 | −0.55 *inside floor* |
-| `target` + mask | 1000.58 | 999.10 | +1.47 *inside floor* |
-
-Real under `ship`, vanishes under `target`: the target interface already
-expresses the action in echelon terms, so the echelon *observation* is
-redundant. The two are partly **substitutes** — which is why the axes could not
-be read independently, and why #E4's one-at-a-time verdict fell.
-
-Each `designs` layer is expanded **only under its crowned parent** — a masking
-or HP child of the dominated `ship_discrete` interface would be work under a
-pruned node. Those cells were nonetheless *measured* (the #E6 factorial) and
-live in the slice above, where they do the one job an off-crown cell can do:
-establish that the interface win is configuration-independent.
-
-**Bounds attached (§3.1).** interface −10.9…−17.2 · masking +2.6…+8.0
-(rejected) · price of generality +2.4 under `ship`, ∅ under `target` ·
-derivation −183.6 · **headroom to bar 10.2**.
-
-**What the tree says that the first Stage-4 round did not.**
-
-1. **The tier-3 axis dominates the arithmetic.** The action interface is worth
-   11–17 units; every other design choice is worth ≤ 3 or is negative. The
-   campaign's *research* axis is not where the performance is — which is
-   exactly what tier exists to say without reordering the layers.
-2. **Two nodes closed as honest negatives**, both with pre-registered
-   mechanisms that failed: masking (rejected in all four cells) and — under the
-   crowned interface — the observation axis itself.
-3. **Half the tier-2 question is still open.** The bypass half is answered; the
-   confirm half is A2 and unstarted. The tree now shows that as a node rather
-   than leaving it implicit.
-
-**Frontier (§3.5) — as of #E7.**
-
-| | agenda item | node | status |
-|---|---|---|---|
-| A1 | L2(hp), both links, 20h | RHP, EHP | ✓ closed (#E7) — both branches crowned at 989.07 |
-| A2 | Stage-5 readback on the crowned artifact — **the tier-2 confirm deliverable** | RPROBE | ✓ closed (#E8) — `INTERPRET.md` |
-| A3 | Stage-6 package | off-tree | `PLAYBOOK.md` ✓ written (LV1 action encoding, LV2 price representation at L2, FM1 verify the reference); README/CLAUDE.md current |
-| A4 | re-check the price of generality at tuned settings | slice | ✓ closed with A1 — point estimate −0.0014, eval-paired ± 0.0123 on one training seed per arm; agrees with L1's seed-backed −0.55 ± 0.14, both inside the floor |
-| A5 | ~~multi-seed retrain to quantify the winner's curse~~ | RHP, EHP | ✗ **closed unrun 2026-08-17.** It defended the tuning *procedure's* value — tier 3, unclaimed, and nothing depends on it. Reviewing it did surface a real error: the L2 delta's tight ± is eval-only on a thinner seed design, corrected in #E7. The useful residue, if the L2 number is ever quoted standalone, is 2 fresh seeds per crowned config (4 runs, no re-tuning) |
-
-Split kinds bind the queue: A1 crowns the bottom `designs` children and
-licenses pruning their siblings; neither `means` link's obligation is reduced
-by the other completing — `required` coverage is debt, and the case does not
-close while one is outstanding, nor while A2 is.
-
-**Off-tree register** (budget-consuming, *not* solution-touching) — narrowed
-now that benchmarks are on the tree: bar **calibration** ✓ (the verification of
-the DP against a brute-force joint DP, #E1 — the calibration work, not the DP
-itself) · the CRN protocol construction · the resolution-floor measurement
-(1.57, #E3).
-
-
-## §UPSTREAM — the proposal round
-
-Twenty-two proposals filed from this campaign. **Twenty-one accepted**,
-shipping solver v0.8.2 → v0.9.4 plus two guide-only revisions; **#39 awaiting
-disposition**. The last five
-(#34–#38) are all regressions in the releases that shipped this campaign's own
-proposals, and all five were found by *adopting* those releases within hours that shipped four of this
-campaign's own proposals. Two of them are defects in those very fixes —
-accepted, implemented, and stopping short of the case that motivated them.
-The pattern is worth naming: a proposal is dispositioned when the code lands,
-but it is only *verified* when a real case exercises it. The last four — #30–#33,
-the post-F7 round — were dispositioned about half an hour after filing. All
-four were found by *adopting* v0.9.0 rather than by reading it, and three were
-defects in a release then three days old; the fourth (#33) was a gap the code
-had already argued against itself in a comment. The drafts are deleted:
-each issue carries the same body with its disposition attached and cannot
-drift, while a local copy can — six of the eleven already carried a stale
-`proposed` status within hours of being accepted. **Read the issue, not a
-memory of the draft.**
-
-| # | what it argued | outcome |
+### scenario
+| id | key in SCENARIOS | note |
 |---|---|---|
-| [#18](https://github.com/tong-wang/auto-mdp-solver/issues/18) | §7 mandates the reset pattern's `else` branch and nothing checks it — a gym omitting it trains on `n_envs` fixed paths while evals stay healthy | `behavior.gym_reseed`, **v0.8.2**. Passes here |
-| [#19](https://github.com/tong-wang/auto-mdp-solver/issues/19) | §3 has a shape contract but no drawing contract: node content, score/Δ provenance, layer naming, rule 2's missing mechanism, one table not two | `93f288c`, merged with #20 |
-| [#20](https://github.com/tong-wang/auto-mdp-solver/issues/20) | `S`/`P` both read as their opposite; coverage conflated with disjointness; root and first two layers unspecified; benchmarks mis-filed off-tree | `93f288c` — `cases`/`means`/`designs`, the cross-frame rule, per-edge attributes, tiers, floor-control qualification |
-| [#21](https://github.com/tong-wang/auto-mdp-solver/issues/21) | §5.2 calls a clairvoyant baseline "an upper bound" — false for every minimize domain | `8140d49`, **v0.8.3** — §9.3 defines `≽`, §5.2 restated, §9.9 names the three roles |
-| [#22](https://github.com/tong-wang/auto-mdp-solver/issues/22) | §3.1's mis-attachment check needs an axis on the edge; no template edge carried one | `5660331` — `{locus}.{axis}` on every split edge, locus composing as `arch+hp` |
-| [#23](https://github.com/tong-wang/auto-mdp-solver/issues/23) | §9.9 mandates naming a benchmark's role and the IR has nowhere to hold it; its "impossible" case is unenforceable | `bd0c72e`, **v0.8.5** — root-level `benchmarks`, `benchmarks.declared`, two gate behaviours |
-| [#24](https://github.com/tong-wang/auto-mdp-solver/issues/24) | `2-structural` is three claims (`confirm`/`discover`/`bypass`) with different evidence and different deliverables | `7810ec1` — the stance is declared and ties the §14 deliverable to it |
-| [#25](https://github.com/tong-wang/auto-mdp-solver/issues/25) | §9.7 forbids quoting the screen layer and says nothing about the trial layer — the one a human reads | `1ff99ce` — "never quoted" reaches the trial row; `mdp_tuning` prints the layer |
-| [#26](https://github.com/tong-wang/auto-mdp-solver/issues/26) | the IR declares axes as sets in `gym` and a scalar in `rl`; a bound computed as an eval column cannot be declared at all | `aa31fc1`, **v0.8.8** — `algos` beside `algo`, per-family levels, `column` arms |
-| [#27](https://github.com/tong-wang/auto-mdp-solver/issues/27) | the ordering gate compares raw means where the same function compares z-scores; `exact` defined so no implementation can hold it | `aa31fc1` — role is about logic not numerics; the check gets a band |
-| [#28](https://github.com/tong-wang/auto-mdp-solver/issues/28) | §8.6 asks args.txt for the SB3 version and nothing checks it — so #26 item 4 had no contract to read | `59540b1`, **v0.8.9** — §8.4's provenance set + `run.provenance`, carrying #26 item 4 |
-| [#29](https://github.com/tong-wang/auto-mdp-solver/issues/29) | the IR has no place to say what the *model* admits, so a sweep and an implementation cap freeze into the frozen block as if they were theory — this campaign's first freeze did exactly that | **v0.9.0** — `mdp.model`, `narrowed: {to, by}`, `model_fingerprint()`, the `model.boundary` check. Part 2 (`mdp.caps`) **declined** in favour of a stronger rule: a width **names** a constant, and a literal at a width site FAILs. This case is the first adopter (F6) |
-| [#30](https://github.com/tong-wang/auto-mdp-solver/issues/30) | `model.boundary` gate 3 draws `cap` and `vals` from the **same** constant, so it forbids the pattern v0.9.0 recommends and permits the cap overrun it was written to catch | **ACCEPTED — fixed, v0.9.2.** Split on the `axis` tag exactly as proposed: a tagged width is the design value and is skipped; an untagged cap is compared against the quantity it caps. Upstream corrected one step of the argument — `_axis_tiers`' role string names the *state variable*, not the model quantity, so the pairing is by name-stripping and an **unpaired cap makes no claim**. Verified here: PASS, and `n_levels_max` is reported unpaired. Upstream also deleted a test that had encoded the bug. See [#E9](#E9) |
-| [#31](https://github.com/tong-wang/auto-mdp-solver/issues/31) | `StateVariable.length` is scalar, so a 2-D state can declare no width at all — `game2048` carries `n_cells = grid_size^2` as a redundant constant, an invariant across two instance fields that nothing checks | **ACCEPTED — implemented, v0.9.2**, as `length: int \| str \| list[int \| str]` rather than a new `shape` field; `_axis_tiers` reports *which* axis a constant sets, and gate 2 reads the list so a half-symbolic `["grid_size", 3]` is caught on the literal part. Metadata only — `zeros()` is not shape-aware, so a 2-D declaration does not yet build a 2-D runtime array |
-| [#32](https://github.com/tong-wang/auto-mdp-solver/issues/32) | `_BUILTINS` whitelists `for`/`in`/`range` for "comprehension index ranges", the evaluator runs them, but `_check_expr` never binds the index — so every comprehension is rejected at validation | **ACCEPTED — fixed, v0.9.2.** Bindings subtracted in `_check_expr`, parsed with `ast` rather than by regex, so tuple targets and nested comprehensions bind too; an undeclared name inside a comprehension still fails. **Residual: the `_exec` single-dict scoping caveat was not addressed** — genexps still depend on it silently |
-| [#33](https://github.com/tong-wang/auto-mdp-solver/issues/33) | `Decision.dim` is a literal `int` while `StateVariable.length` takes a symbol — so an action width cannot name a constant and must be capped and padded | **ACCEPTED — implemented as filed, v0.9.2.** `dim: int \| str` with `MdpBlock.decision_dim()` beside `decision_bounds`; a constant named there classifies as **tier-1**, so `grids.axes` will now warn about sweeping it — correct, since it changes the action space. Spec §5.0's width-site list gained `decisions[].dim` |
-
-| [#34](https://github.com/tong-wang/auto-mdp-solver/issues/34) | v0.9.2 adds `ModelQuantity.stochastic` but not to `_OPTIONAL_SINCE_29`, so `_prune_absent` leaves a `null` per quantity and **every IR declaring `mdp.model` gets a new freeze token on upgrade** — the property v0.9.0 was built to guarantee | **ACCEPTED — fixed, v0.9.3, but NOT the proposed way.** `_OPTIONAL_SINCE_29` prunes on `not v`, which catches `False` as well as `None`, so adding `stochastic` to it would have collapsed "deterministic by assumption" and "never asked" into one hash — fixing the token by discarding a claim. Shipped as a model-scoped `_model_payload` pruning only `None`. Upstream also found `model_fingerprint()` moved too, which this report missed. Payload diff isolates it to nine `stochastic: null` entries; pruning reproduces `20f732827637` exactly. Invisible to the shipped suite: no shipped example declares a model layer, so only the first adopter is hit |
-
-| [#35](https://github.com/tong-wang/auto-mdp-solver/issues/35) | #32's binding parses `mode="eval"` and returns `{}` on `SyntaxError`, so it misses **statements** — and every `dynamics.updates` entry is one. A second site: the invariant check strips `prev.<name>` *before* validating, handing the target parser an unparseable string | **ACCEPTED — both parts fixed, v0.9.3.** Change (2) differently: `prev.x` substitutes to the **bare name**, not the `prev_x`-plus-`known` route proposed here, which would have widened the resolvable namespace and could mask a genuinely undeclared `prev_x`. Same file FAILs on v0.9.2 and validates with an `exec`-mode fallback: the collapsed IR is `['period', 'stock', 'pipe']`, four state variables to one. See [#E10](#E10) |
-| [#36](https://github.com/tong-wang/auto-mdp-solver/issues/36) | `_random_policy` emits one scalar per decision regardless of `dim`, so a vector decision cannot be generated and the differential cannot exercise one; `_seed_prev_row` shares the assumption at t=0 | **ACCEPTED — implemented as filed, v0.9.3**, including the `n == 1` asymmetry. The seed-stream concern raised here was checked by pinning an existing example's action sequence from a v0.9.2 worktree: identical before and after. Keeps `ship_1..ship_4` and `n_levels_max` alive through the first half of the collapse |
-
-| [#37](https://github.com/tong-wang/auto-mdp-solver/issues/37) | `--all-instances` re-reads the JSON for its instance list (`raw["mdp"]["scenario"]`) instead of using the loaded IR, so a **grouped** file yields no instances and the covering-set sweep runs the base alone | **ACCEPTED — `ungroup_mdp` as proposed, v0.9.3.** The *stronger variant* proposed here was **rejected with a measurement**: `resolve_catalog` drops instances inconsistent with the active selection, so sourcing the list from a loaded IR yields 7 of 9 on `inv_single` — trading a visible 11→1 for an invisible 11→9. Upstream also lifted the branch out of the argparse handler, which is why it had no test. Measured here: 11 declared, **1 swept, exit 0**, no warning. The only one of the four that fails silently. Fix is `ungroup_mdp`, already in the package |
-
-| [#38](https://github.com/tong-wang/auto-mdp-solver/issues/38) | `laws.py::_fixed_decisions` builds one scalar per decision — a **fifth** site of the `dim` defect, in a module #36 did not touch, so every policy law raises on a vector decision | **ACCEPTED — fixed, v0.9.4.** The instance warning was load-bearing: upstream says it would have shipped the three-line version. Two findings past the report — `decision_bounds` was equally unresolved (live in `mab`, whose `arm` narrows to `(0, 4)` on 5-arm instances), and a **mixture name is not an instance**, so threading it through without a guard would have crashed every domain declaring one. `laws.py` had no unit tests; 21 added |
-
-| [#39](https://github.com/tong-wang/auto-mdp-solver/issues/39) | both CLIs parse `--decision NAME=VALUE` as `float(val)`, so neither can drive a vector decision — and spec Phase-A **step 7b** names the interpreter CLI as how the restatement's trajectory is rendered | filed 2026-08-17 — awaiting disposition. A **sixth** `dim` site: #38's sweep covered the libraries, not the two arg parsers. Asks for width resolution plus a comma form, with a single value broadcasting so existing invocations are byte-identical |
-
-**Sequencing, for whoever picks these up.** #30 is independent and the most
-urgent — it is the one currently red on this domain and latent on
-`examples/inv_single`. #31 and #32 **compose**: together they let a
-per-installation pipeline collapse from `pipe_1 … pipe_4` to one `pipe` with
-`shape: ["n_echelons", "leadtime"]` and quantified dynamics. Landing #32
-alone would remove the enumeration at the cost of the width naming F7 just
-won, so #31 should lead. #33 is independent and least urgent: `N_LEVELS_MAX`
-is inert padding, not a correctness risk.
-
-**Three that were sharpened by being pushed back on**, recorded because the
-correction is the useful part:
-
-- **#20's evidence.** The filing claimed two campaigns showed co-ranked `P1 ★`
-  children without naming either. The maintainer checked four maps, found
-  none, and corrected it; the claim reproduced in `cases/fnv` — which was not
-  among them, and which is a *shipped* case. The retraction is on the issue.
-  Naming the campaign in the filing would have avoided the round trip.
-- **#26 Part A.** The filing asked for `algo` to *become* `algos`. Rejected in
-  favour of adding `algos` beside it: `extra="forbid"` turns a rename into a
-  breaking change for every existing IR at the version bump meant to be safe
-  to take. "Mechanical and scriptable" described the edit, not the coordination.
-- **An `algo` rung for §8.6 was drafted and withdrawn before filing.** Masking
-  is not an algorithm-class change: the PPO objective, GAE and clipping are
-  untouched, `action_masks()` is a gym capability, and this domain's own train
-  script already labels the flag "L2(gym) escalation #2". The distinction would
-  not have survived contact with the code.
-
-## §FRAME-CHANGELOG
-
-- **2026-08-16 (redefinition)** — split taxonomy RETYPED, campaign-wide. `S`/`P`
-  are withdrawn: `S` read as "selection" but marked coverage, and `P` reads as
-  "partition", which was an *S-split shape*. Kinds are now generated by two
-  questions — *does the crown fork?* × *do siblings share one protocol, bar and
-  leaderboard?* — giving **cases · means · designs**, with the fourth cell
-  (`OR × own frame`) empty by construction. That emptiness is now stated as the
-  governing rule: **a score may be subtracted only within a frame; across
-  frames a number may be reported but never selects.** The extension chain
-  merges into `means` (its siblings share a bar) rather than into `cases` (whose
-  never do) — so `raw − echelon = −0.55` is a legal subtraction and an
-  `n3 − n5` would not be. Attributes moved per-edge: `coverage`
-  (`required`/`optional`, the old `must`/`stretch`), `order` by generality,
-  `role`, `question`/`tier`. **No score, node, verdict or mark changed.**
-- **2026-08-16 (redefinition)** — root RE-ROOTED and two layers SPLIT in. The
-  root is now the **frozen IR** with both fingerprints, so the tree is
-  self-evidently a tree over one problem and the §MAP ↔ §IR-CHANGELOG link is
-  mechanical (a moved `mdp` re-roots the frame; a moved `structural` need not —
-  cf. F2). Below it the **`scenario`** split, whose siblings are *study bases* —
-  one named registry object each, so a specialist and a generalist are siblings
-  rather than an invented axis; only opened children are drawn, so no phantom
-  coverage debt is created. Below that the **`solver.role`** split. Layers are
-  named and ordered, never numbered — a numbered layer collides with §8.6's
-  `L0/L1/L2` (#19 item 3, and the merge condition recorded on that issue).
-- **2026-08-16 (redefinition)** — benchmarks REPARENTED out of the off-tree
-  register onto the tree, superseding the earlier same-day entry that drew them
-  as "reference · not a split" edges. A benchmark **is** a solution to the
-  problem, so it is a `means` sibling of the RL branch; §3.5's register keeps
-  only work that consumes budget without being a solution (bar *calibration*,
-  protocol construction, the floor measurement). Children are grouped by
-  **role** — `exact` · `feasible` (+ `relaxed` where a domain has one) — which
-  makes the optimality **bracket** legible when both bounding roles are open.
-  Naming follows the artifacts (`benchmark/{method}/`): the node is `method=dp`,
-  never "bar", since §9 makes `--baseline`/`--reference` a per-comparison role,
-  "not part of the artifact's identity". The tree node is `method=echelon`, the
-  artifact name (`clark_scarf_benchmark_echelon.py`); earlier ledger entries say
-  `echelon_bs` for the same benchmark and are **not** rewritten — the ledger is
-  append-only.
-- **2026-08-16 (redefinition)** — `ship_rel` REPARENTED from a child of
-  `action_mode=target_discrete` to a **third sibling** on the `action_mode`
-  split. It is an alternative interface, not a refinement of `target_discrete`;
-  the mis-parenting survived five revisions and was exposed only when the label
-  scheme made its path unwritable. Still `⏸`, same tripwire.
-- **2026-08-16 (redefinition)** — tree RELABELLED again (presentation only, and
-  superseding the earlier same-day RELABELLED line's three-line node format).
-  Identity is a **name**, never a rank: §3.1's `S{n}`/`P{n}` are simultaneously
-  identity and a *mutable* priority, so one REPRIORITIZED line would rename
-  every descendant path and stale every citation of it. Priority now lives in
-  the status. Split ids are `{kind} · {locus}.{axis}` with locus from spec
-  §8.6's `gym`/`arch`/`hp`; nodes are **two** lines, `{axis}={option}` /
-  `{score} (Δ) · {#E}`, with axis names read from the code — so a node whose
-  axis disagrees with its incoming edge is visibly mis-attached. Marks moved
-  from the node to the **edge**, where the selection they judge happened.
-  Ledger entries gained explicit `<a id="E{n}"></a>` anchors so the readings
-  table can link to them without depending on heading text. **No number moved.**
-- **2026-08-16 (redefinition)** — research questions declared, and A2
-  RECLASSIFIED. Tier `1-comparative` is **standing** — every campaign asks it,
-  so it is not this case's contribution — and the campaign's own question is
-  tier `2-structural`, carried in two stances: **bypass** (primary, *answered*:
-  the echelon transform is not required, −0.55 inside the floor) and **confirm**
-  (secondary, *owed*: is the policy echelon-structured?). The distinction is
-  load-bearing rather than cosmetic — `raw ≈ echelon` is a **success** under
-  bypass and **inconclusive** under confirm. A2 therefore stops being a
-  Stage-5 epilogue and becomes half the campaign's declared claim; it is drawn
-  as an interpretation node (`RPROBE`) on the crowned leaf.
-
-- **2026-08-16** — reference frame REPARENTED to the top layer, on operator
-  direction. (a) The bar and the reference ladder are now tree nodes as well as
-  off-tree register items, so every score in the diagram can be placed against
-  the bar on sight. (b) The `L0 → L1` ladder is promoted **above** the S-split,
-  contrary to §3.1's default order: it was settled campaign-wide at the
-  zero-knowledge start, before any design split existed, and everything below
-  inherits it. This also fixes an instrument error — Δ −183.58 was measured at
-  `ship`+`raw` (#E3) but the old tree hung it off the crowned `target` leaf;
-  it now rides the `L0 → L1` edge, both endpoints of which are that
-  configuration. (c) `L0` is drawn as L1's **parent**, not its sibling,
-  contrary to §3.2's "controls are siblings": a P-split's siblings compete for
-  the crown and `L0` is reporting-only, so it can never be crowned — §8.6's
-  levels are a ladder, and a ladder is a chain. The per-link "L0 not re-run on
-  S2" placeholder is dropped as moot: L0 was run once, campaign-wide.
-  `L2(hp)` stays at the bottom — it is per-branch. No score changed.
-- **2026-08-16** — tree RELABELLED (presentation, no frame change). The layer
-  labels `T0…T3` are withdrawn: they were a second numbering the reader had to
-  join back to the ledger, and they existed only to dodge a collision with spec
-  §8.6's training levels. Layers are now named by their **axis** and cited by
-  **ledger id**; nodes carry three lines — identity, score (Δ where bounded),
-  status with its `#E` reference — and the mechanisms they used to carry moved
-  to the node readings and the entries themselves. No node, edge, mark, rank or
-  number changed.
-- **2026-08-16** — masking/interface REPARENTED: masking was explored first
-  (#E5, under `ship`) but the tree places the interface above it, because the
-  masking axis is *defined in terms of* the interface — one-sided on quantity
-  under `ship_discrete`, two-sided on the order-up-to level under
-  `target_discrete`. (An earlier draft of this line justified the move by
-  conditioning strength; that was wrong — masking was rejected in all four
-  cells, which is evidence the interface does **not** condition its verdict.
-  The nesting stands on the structural dependence instead.) Masking's rejection
-  is unchanged, and reads more strongly: two different mask constructions,
-  independently refuted.
-- **2026-08-16** — root RETYPED S (coverage), shape *extension chain*
-  `echelon ⊂ raw`: crowning either leaves the other non-redundant (§3.1
-  litmus), so the cross-link delta is the *price of generality*, not a
-  selection.
-- **2026-08-16** — interface/observation order REPARENTED in analysis but not
-  in the tree: #E6 shows the interface conditions the observation verdict
-  (+2.39 under `ship`, ∅ under `target`); tree kept rooted on observation by
-  operator direction, interaction carried as a slice view.
-- **2026-08-13** — Frame opened. Chain length reframed from fixed-at-2 to a
-  swept axis on operator direction; lead time then split out as a *second,
-  independent* axis (an installation is a discretionary buffer, a lead period is
-  committed flow — same delay, different control).
-
----
-
-## §IR-CHANGELOG
-
-**Re-gates on pin bumps — no fingerprint move, so no F-entry.** F-numbers are
-reserved for actual fingerprint moves (guide §5); a bump that leaves both
-hashes alone is recorded here in prose so the *absence* of a move is on the
-record rather than inferred from silence.
-
-- **2026-08-17, v0.9.4 → v0.9.5.** Re-gated after the bump. `mdp =
-  da62301e56b4` and `structural = 7138a8f1ce4e` both **unchanged** — v0.9.5 is
-  CLI argument parsing and touches no hashed structure. Conformance 18/21,
-  laws 8/9, differential 11/11, `pytest` 33/33, zero FAILs anywhere. These are
-  the numbers the contribution PR (#40) states, and they were re-verified on
-  the staged folder.
-
-  *What it unblocked here.* #39 — both CLIs parsed `--decision NAME=VALUE` as a
-  scalar, so neither could drive this domain's vector `ship`. Spec Phase-A step
-  7b names the interpreter CLI as the route to the annotated sample trajectory,
-  so the restatement's own artifact could not be regenerated by the documented
-  command, and that section carried an API snippet instead. `--decision ship=10`
-  now broadcasts to the resolved width and `ship=10,0,5` sets components, both
-  per instance; the restatement is back on the documented command, verified at
-  this pin (`ship [10,10,10]`, `holding 69.00`).
-
-  *And what regenerating it found* — the reason this entry matters beyond a
-  version number. The trajectory had been showing **pre-F1 numbers for the whole
-  campaign**: holding `109.00` against `69.00`, in-transit stock charged one
-  echelon too low, corrected at F1 and never re-rendered. Recorded in full at
-  the restatement's §Annotated sample trajectory, decomposition included. The
-  artifact whose purpose is to let a human check the model was showing a model
-  corrected nine re-signings earlier, and **nothing gates it against the IR** —
-  it was found only because someone tried to regenerate it. Upstream's
-  disposition put "re-render whenever the model changes" into step 7b and left
-  an automatic re-render-and-diff check as an open idea rather than a release.
-
-- **2026-08-17, v0.9.3 → v0.9.4.** Re-gated after the bump per the repo brief.
-  `mdp = da62301e56b4` and `structural = 7138a8f1ce4e` both **unchanged** —
-  v0.9.4 is a fix to `mdp_ir.laws`'s decision builder and touches no hashed
-  structure. The red gate F9 shipped with is now **green**: laws 4/9 with four
-  FAILs → **8/9, zero FAILs**, exactly what the in-process patch predicted, and
-  `pytest` 32/33 → **33/33**. Conformance 16/21 zero FAILs, differential 11/11.
-  Repo-wide re-gate: all six domains zero FAILs.
-
-  *Two things upstream found past the report, both worth carrying.* (i)
-  `decision_bounds` resolves per instance and was equally unresolved at that
-  site — live in `mab`, whose `arm` narrows from `(0, 9)` to `(0, 4)` on its
-  5-arm instances, so the laws were fed an index those instances do not have.
-  Same line, same parameter, and invisible because a wrong-but-plausible bound
-  produces no error. (ii) A **mixture name is not an instance**:
-  `decision_bounds` raises `KeyError` on one, and the laws are called with
-  mixture names, so threading the instance through without
-  `inst if inst in scenario.instances else None` would have crashed every
-  domain declaring a mixture. This domain declares none; `inv_single` does.
-
-- **2026-08-17, v0.9.0 → v0.9.2 — `mdp` MOVED, and the host did it.**
-  `mdp = 20f732827637` → **`1cdcaed91870`**; `structural` unchanged at
-  `2ff6e8344181`. The schema was not touched. Deliberately **not** given an
-  F-number: F-numbers record the campaign re-signing its own model, and this
-  is an upstream defect expected to revert.
-
-  *Cause, isolated.* v0.9.2 adds `ModelQuantity.stochastic: bool | None =
-  None` — a real feature (does the *theory* make this quantity random). It is
-  absent from `_OPTIONAL_SINCE_29`, so `_prune_absent` leaves it in and every
-  quantity serializes a `null` that was not there before. Verified by
-  extracting v0.9.0's `mdp_ir` and diffing the two hashed payloads: the *only*
-  difference is nine `stochastic: null` entries, one per declared quantity.
-  Pruning them reproduces `20f732827637` exactly. The other two new fields
-  (`length`'s list form, `dim: int | str`) are widenings and cannot move an
-  existing hash.
-
-  *Why it matters more than one token.* This is the property v0.9.0 was built
-  to guarantee, and `_prune_absent`'s own docstring states it — "the freeze
-  token must be byte-identical for an IR that predates them — otherwise every
-  downstream fingerprint moves on upgrade and the Phase-A confirmations all
-  read as voided". Any IR declaring `mdp.model` has its Phase-A sign-off
-  silently voided by upgrading. That is currently **only this domain** (#29
-  nominated it first adopter), which is why the bump found it here on the
-  first re-gate and nowhere else — and why the rule that a pin bump is
-  re-gated before its results are trusted earned its keep again.
-
-  *Everything else at the new pin.* `model.boundary` now **PASSES** (#30's
-  fix), taking conformance 15/21 → **16/21**; it reports `n_levels_max` as an
-  **unpaired cap** whose coverage is therefore unchecked — the honest reading,
-  and the residual upstream flagged as worth its own issue. Laws 8/9 (1 skip,
-  0 fail), differential MATCH 11/11 @40 episodes, 34 domain tests.
-
-- **2026-08-16, v0.8.2 → v0.8.3.** Re-gated after the pin bump per the repo
-  brief. `mdp = 2171a651d328` and `structural = b4fb9602a580` both **unchanged**;
-  conformance 15/17 no-fail (the denominator grew by one — v0.8.2 added
-  `behavior.gym_reseed`, which this campaign proposed as #18 and which passes),
-  laws 8/9 no-fail, differential MATCH 10/10, 29 domain tests. Nothing in
-  v0.8.2 or v0.8.3 touches the hashing path: v0.8.2 is a conformance check plus
-  spec prose, v0.8.3 is spec prose plus `plugin.json`. Contrast F2, where a
-  byte-identical schema *did* move `structural` — that is why this is checked
-  rather than assumed.
-
-**F1 — in-transit stock was assigned one echelon too low.**
-
-The first frozen model charged stock in transit *to* level `j` at level `j`'s
-cumulative rate. Assumption 3 says a level's costs cover stock at that level
-plus stock "at a lower level **or in transit to a lower level**" — *lower* being
-operative — so in transit **to** `j` belongs to echelon `j+1` and is charged its
-**source's** rate until it lands. Stock in transit to the *top* level is in no
-echelon at all (on order, not yet in the system); `h_install` being 0 above the
-chain gives that for free.
-
-Uncorrected it double-charged pipeline stock (2.0 vs 1.0 per period at
-`n3_l2_p09`) and biased the shipping incentive against moving stock downstream —
-the exact trade-off the campaign measures.
-
-Fingerprint `53d5d1f9cd5e` → **`2171a651d328`**. Re-signed by the operator.
-
-**Caught by reading Assumption 3 against the implementation. The differential
-passed bit-exact both before and after** — it proves the interpreter and the
-domain agree, not that they agree on the *right* model. This is the case for the
-restatement existing at all.
-
-**F2 — structural fingerprint moved on the v0.8.1 pin bump.** Docs-only release,
-byte-identical schema, `mdp` fingerprint unchanged; `structural`
-`2cbb56a6f3dd` → **`b4fb9602a580`**. Attributed by re-computing on a copy reduced
-to one action mode (same result), proving gym action modes do not feed it.
-Recorded so a future reader does not read it as a model change.
-
----
-
-**F3 — the pipeline was a sweep frozen as model structure; re-signed after
-generalizing it to a shift register.** (2026-08-17)
-
-`mdp` fingerprint `2171a651d328` -> `83588654745e`, `structural`
-`b4fb9602a580` -> `26ab0de96d58`.
-
-*What was wrong.* The frozen model carried the in-flight pipeline as two named
-slots (`arriving`, `pending`) — capacity leadtime <= 2, exactly the sweep max,
-with the runtime assert phrasing the slot count as a property of the problem
-("leadtime must be 1 or 2"). The paper's model states no such bound. Operator
-review named the defect precisely: *L >= 1 is model structure; L swept over
-{1, 2} is experiment design; a slot cap is implementation* — three layers, and
-the formalization had collapsed them into one. The restatement's sign-off
-never surfaced it, because Phase A records sweeps and has no field for a
-theoretical domain (proposed upstream:
-`UPSTREAM_PROPOSAL_model_domain.md`, draft).
-
-*The change.* `pipe1..pipe4` — a general shift register, unrolled to
-`LEADTIME_CAP = 4` slots (a named implementation cap with headroom, mirroring
-`n_levels_max`): each A event shifts every slot one step toward the
-destination; a dispatch enters at slot `leadtime`; costs and echelon
-coordinates read the per-level total over slots. The simulator, gym
-(per-slot echelon running sums, so the coordinate change stays invertible at
-any L), adapter and probes are general in the slot count; raising the cap is
-appending slots, not restructuring.
-
-*Verification, both directions.* Generality: new instance `verify_l3`
-(N=2, L=3) added to the covering set — differential **MATCH 11/11** including
-it, and a new domain test tracks a single impulse at every L in 1..4,
-asserting it lands after exactly L arrival events with all higher slots empty.
-Behavior preservation at the swept values: the DP record eval replays
-**982.362986 identical in every column**, and the crowned PPO artifact
-(trial 211) replays **989.065774 identical in every column** — 8192
-deterministic CRN seeds, so these are bit-level reproductions, not
-statistical agreement. No campaign number moves; every result and verdict
-stands. Conformance 15/20 no-fail, laws 8/9 no-fail at the v0.8.11 pin.
-
-*Why this is an F-entry and not silent.* The mdp block changed, so both
-fingerprints moved — but the *model semantics at every point the campaign
-evaluated* did not. The infidelity was in what the frozen record claimed the
-model to be, which is exactly what a fingerprint is for.
-
-**F4 — shipping/ordering costs and per-link lead times restored to the model.**
-(2026-08-17, same review round as F3)
-
-`mdp` fingerprint `83588654745e` -> `3fb17ad1eae9`, `structural`
-`26ab0de96d58` -> `31635a1de6fd`.
-
-*What was wrong.* Two more design points frozen as model structure, found by
-the operator walking the schema after F3. (i) The paper's model carries
-**linear shipping/ordering costs** `c_k` at every link and the decomposition
-survives them; the scenarios set them to 0 for convenience — and the rendering
-then omitted the term entirely, freezing the design value as *absent
-structure* (a c capped at exactly {0}, the same class as the two-slot
-pipeline). (ii) Lead times are **per-link `L_k`** in the model; the record
-stated a single L as if identical lags were model structure.
-
-*The change, deliberately asymmetric — the boundary mechanism choosing per
-case.* `c_k` is **fully rendered**: a `c_ship` constant vector (design sets
-0), a `shipping` cost component, an info component and an eval column — a
-nonzero cost is now a value change, not a structural change. `L_k` enters the
-model with the **rendering narrowed and cited**
-(`clark_scarf.model.json` renderings.leadtime: identical lags, by design +
-implementation, tripwire = any heterogeneous-lag instance) — lifting it is a
-scenario-field + dispatch + DP extension and no designed instance needs it.
-Render what is cheap, cite what is expensive; both are visible either way.
-
-*Verification.* Differential MATCH 11/11; 35 domain tests including the
-boundary gates; DP record eval replays **982.362986** and the crowned PPO
-artifact **989.065774**, every pre-existing column identical to the digit,
-the new `cost_shipping` column identically 0. Conformance 15/20 no-fail.
-
-*Model-layer statement (clark_scarf.model.json).* `c_k: real >= 0` with the
-design-not-model provenance in `source`; dynamics and objective quantified
-over `L_k`; `out_of_scope` now carries the *precise* section-5 boundary — a
-setup cost is admissible at the highest echelon only, and is not modeled at
-any level — replacing the looser exclusion.
-
-**F5 — the record misquoted the paper on demand stationarity; notation aligned
-with the reprint.** (2026-08-17, same review round)
-
-`mdp` fingerprint `3fb17ad1eae9` -> `8fa8c9c84f2e`; `structural`
-**unchanged** at `31635a1de6fd` — the correction is a candidate `desc`, and
-candidate pools are excluded from the structural hash. Desc-only: no behavior
-surface touched; the full test suite (differential included) passes unchanged.
-
-*The misquote.* The poisson candidate's desc claimed "the paper holds the
-demand distribution fixed across the horizon." The reprint's section 2 says
-the opposite, in a parenthetical: *"(The demand distributions may actually
-differ from period to period.)"* (p. 1783). So stationarity is a THIRD thing
-frozen as model that is actually design — after the leadtime cap (F3) and the
-zero costs (F4) — and this one had been laundered through a false citation.
-The desc now quotes the paper correctly and classifies both the family and
-the stationarity as selection/design.
-
-*Notation.* The model layer now carries the paper's own symbols, verified
-against the reprint in-repo (`Clark-OptimalPoliciesMultiEchelon-2004.pdf`,
-read 2026-08-17): in-transit slots are `w_{k,s}` (the paper's `w_j`), lead
-time is `lambda_k` (the paper's λ — NOT L, which the paper uses for the
-one-period cost function `L(x)`, Eq. 1), discount is `alpha` (`α^n`, rendered
-as the IR's `discount_factor`), costs `h`, `p`, `c_k` all verbatim (Eq. 1,
-p. 1784), and a `notation` map records the two deliberate divergences: `D_t`
-for the demand draw (the paper's variable is `t`, which is our period index)
-and forward `t` vs the paper's periods-remaining `n = T - t`. `u`, `y`, `x̄_n`
-in the DP and readback were already the paper's (Eq. 4).
-
-*(Addendum, same day.)* The symbol **adoption** half of this entry was
-reverted on operator review: renaming the model layer to w/λ/α created a
-third vocabulary, disconnected from `_scenarios`/`_mdp`, and none of it was
-ever consumed downstream. The rule that survives: **one vocabulary — the
-schema/code names — everywhere; the paper's symbols are recorded, not
-adopted**, in `clark_scarf.model.json` `notation` (and a pointer in the
-schema's root `assumptions_log`, which moved neither fingerprint). Every
-*content* correction of F5 stands: the stationarity misquote fix, the
-per-link lags, the L(x)-collision warning (recorded as "never shorten
-leadtime to L"), and the t-vs-n index map.
-
-**F6 — the model layer ported from the sidecar into `mdp.model`; first adopter
-of v0.9.0.** (2026-08-17)
-
-`mdp` fingerprint `8fa8c9c84f2e` -> `771742e40b02`; `structural`
-**unchanged** at `31635a1de6fd`.
-
-*Why now.* Upstream #29 accepted the model/rendering diagnosis and shipped it
-as **v0.9.0** — `mdp.model` (quantities with a theoretical `domain` + source,
-`out_of_scope`, quantified `dynamics`, `notation`), `narrowed: {to, by}` on
-state variables and decisions, a `model_fingerprint()`, and a
-`model.boundary` conformance check. The sidecar
-`clark_scarf.model.json` existed only because the pinned IR forbade unknown
-keys; that block is lifted, so the sidecar is **retired** and its content is
-now schema-native. The maintainer nominated this case as first adopter, no
-shipped example having declared a model layer yet.
-
-*What moved and what did not.* Declaring the theory changes the `mdp` block,
-so the freeze token moved; the **rendering did not change at all**, so
-`structural` held — the split #29 asked for, doing exactly its job on its
-first use. Annotations are free by design (`narrowed` is excluded from every
-hash unconditionally), which is why adding citations to nine elements cost
-nothing. DP replays **982.362986** and the crowned PPO **989.065774**,
-identical in every column; differential 11/11; conformance 16/21 no-fail with
-`model.boundary` **PASS**.
-
-*`caps` is gone, and that is the upstream correction worth recording.* Part 2
-of the proposal asked for an `mdp.caps` object. It was **declined**: every
-width site (`length`, `bounds`, `horizon.T`) already accepts a symbol, and
-`_axis_tiers` already derives what a constant caps and what it renders from
-the reference. So a width **names a scenario constant**, and the check is
-stronger than the proposal's — *a literal at a width site, for a quantity the
-model declares, FAILs*. Documenting a cap would have recorded the mistake;
-requiring the name prevents it. Verified here: bumping `n_levels_max` 4 -> 5
-moves `mdp_fingerprint` and leaves `structural` untouched, which is the
-cap-behaviour this campaign asked for, obtained by naming rather than by
-re-scoping a hash.
-
-*A residual the shipped check cannot see — the campaign's own F3 defect.*
-`model.boundary` derives its widths from references, and its inventory here
-reads `horizon_T, n_levels_max, ship_max`. **`leadtime` is absent**, because
-this domain's lead-time cap is rendered as a *count of `pipeN` variables*
-rather than at a width site. Gate 2 (literal at a width site) and gate 3
-(width covers every designed value) both operate over that derived set, so
-neither can reach it: the pre-F3 two-slot pipeline would pass. Covered locally
-instead by `test_pipe_slot_count_equals_the_declared_leadtime_cap`, which
-asserts the rendered slot count equals `LEADTIME_CAP` and fails when they
-drift. Worth reporting upstream as a follow-up to #29.
-
-**F7 — the lead-time cap removed: the pipeline is indexed by installation, and
-its width NAMES the lead time.** (2026-08-17)
-
-`mdp` fingerprint `771742e40b02` -> `20f732827637`; `structural`
-`31635a1de6fd` -> `2ff6e8344181`.
-
-*Why.* F6 closed with a residual it could not fix: `leadtime` was the one
-model quantity with **no width site**, so `model.boundary` could not see it,
-and the rendering carried a hand-rolled `LEADTIME_CAP = 4`. That cap is not
-a scale headroom like `n_levels_max` — it is a hard expressiveness ceiling.
-`L = 5` was **unrepresentable**, and the model layer declares `L_k` to be any
-integer >= 1. A model whose declared domain the rendering cannot reach is the
-F3 defect again, one layer down.
-
-*The change — a transposition, not a redesign.* The register was indexed by
-**slot**: four variables `pipe1..pipe4`, each `n_levels_max` long, `pipeS[k]`
-= units landing at installation `k` in `S` more arrivals. It is now indexed by
-**installation**: `pipe_1..pipe_4`, each `length: "leadtime"`, `pipe_k[s]` =
-units landing at installation `k` after `s+1` more arrivals. The two carry the
-same units in transposed storage — hence the digit-exact replay below.
-
-What that buys is the whole point: the width is now a **named scenario
-constant**, so each instance renders exactly the slots it selects (L=1 -> 1
-slot, L=3 -> 3) and **any** lead time is representable. The cap is not raised,
-it is *gone* — `LEADTIME_CAP` is deleted from `clark_scarf_scenarios.py`, and
-so is the invariant `pipe_slots_beyond_leadtime_empty`, which existed only to
-police the unused tail. This is the pattern the shipped `inv_single` example
-already used (`length: "pipeline_len"`, `pipeline = pipeline[1:] + [0]`); the
-campaign had wrongly concluded that slice-and-concat did not validate and
-enumerated instead. It does. A new instance `verify_l3` (N=2, **L=3**, T=12)
-sits in the covering set as the regression that the ceiling is gone, and
-`clark_scarf_test.py`'s impulse test now sweeps `L = 1..6` — past every
-designed value — asserting each row's length equals its instance's lead time.
-
-*Behaviour preserved, verified twice.* Differential MATCH **11/11**; the DP
-replays **982.362986** and the crowned PPO **989.065774**, identical in every
-column at 8192 CRN seeds. `pytest` 34/34.
-
-*One expression genuinely changed, and it is the interesting one.* The
-`conservation` invariant summed the pipes over live links only
-(`sum(pipe1[0:n_echelons])` — the slice ran over the **k** index). Transposed,
-that slice no longer exists: `sum(pipe_4)` is a whole inert vector. The first
-rewrite summed all four and **failed at every seed**, because inert pipes are
-initialized with cover that *drains* into inert stock, which the
-`stock[0:n_echelons]` term already excludes — so units left the accounted set
-for the first `leadtime` periods. The liveness filter is now explicit
-(`(sum(pipe_3) if n_echelons > 2 else 0)`, …). Worth recording because the
-invariant caught a real accounting error in a change that was otherwise
-behaviour-preserving, which is exactly the job §Phase-A step 7c claims for it.
-
-*And it turned the F6 residual into a live gate — which then misfired.* With
-`leadtime` finally named at a width site, `model.boundary`'s derived
-inventory reaches it, closing the hole F6 recorded. Gate 3 immediately
-**FAILs**: `leadtime=2 … is outrun by a designed 3`. That is a bug in the
-gate, not in the rendering — see [#E9](#E9). Conformance therefore sits at
-15/21 with one **known-wrong** FAIL, filed upstream rather than worked around.
-
-**F8 — the theory declares its own randomness, and the file is grouped along
-the boundary.** (2026-08-17)
-
-`mdp` fingerprint `20f732827637` -> **`bd77963d9078`**; `structural`
-**unchanged** at `2ff6e8344181`.
-
-*What changed.* Two v0.9.2 features, adopted together:
-
-- **`mdp.model.quantities[].stochastic`** — "does the THEORY make this
-  quantity random?" Declared on all nine: `demand` **true** (Clark & Scarf's
-  random demand is the problem), the other eight **false**. `leadtime_k` is
-  the interesting one and upstream cites this domain for it: a deterministic
-  lead time here is an *assumption of the source*, not a scenario that happens
-  to have picked a point mass. Those two look identical from outside and mean
-  opposite things, which is exactly what the field exists to separate.
-- **the grouped file layout** — the `mdp` block now reads
-  `model` / `design` / `rendering`, so opening the JSON shows which section
-  moves which fingerprint. For a campaign whose entire subject is that
-  boundary, having it visible in the artifact rather than only in prose is the
-  point.
-
-*Attribution, checked rather than assumed.* Regrouping moved **nothing** —
-stripping `stochastic` from the grouped file reproduces `20f732827637`
-exactly, so the whole move is the declaration. `structural` held, as it must:
-the rendering is untouched. DP replays **982.362986** and the crowned PPO
-**989.065774**, identical in every column.
-
-*A side effect worth naming.* Every quantity now SETS `stochastic`, so the
-stray `null` behind [#34](https://github.com/tong-wang/auto-mdp-solver/issues/34)
-cannot arise here — the local symptom is gone while the bug is not. F8's token
-is therefore stable across the #34 fix, and `bd77963d9078` is the one to
-verify against from here.
-
-*What this rewrite could NOT do, and why.* The obvious prize — collapsing
-`pipe_1..pipe_4` into one matrix and `ship_1..ship_4` into one vector
-decision, deleting `n_levels_max` — needs #31/#32/#33, all shipped in v0.9.2,
-and **two of the three do not reach the case as shipped**. Both blockers are
-one line, both are filed, and the collapse waits for them rather than being
-half-done twice. See [#E10](#E10).
-
-**F9 — the last hardcoding removed: one `pipe` matrix, one `ship` vector, no
-cap.** (2026-08-17)
-
-`mdp` `bd77963d9078` -> **`da62301e56b4`**; `structural` `2ff6e8344181` ->
-**`7138a8f1ce4e`**.
-
-*What changed.* The rendering the campaign has been arguing toward since F3,
-landed in one move at the v0.9.3 pin:
-
-| | before | after |
+| <a id="sc0"></a>`sc0` | `n3_l2_p09` | the only cell. Every `_L1_DERIVED` row was measured here, and `dp` is role `exact` on it |
+
+### gym · `g`
+| id | parent | delta | why it exists | cell tuned in |
+|---|---|---|---|---|
+| <a id="g0"></a>`g0` | — (L1 origin) | the §8.6 derivation's gym output | the derivation; reserved | — |
+| <a id="g1"></a>`g1` | `g0` | `observation_mode=echelon` | the tier-2 comparison arm — required coverage, never prunable | — |
+| <a id="g2"></a>`g2` | `g0` | `action_mode=ship_discrete` | the echelon-free interface: integer quantities, no reference construct in the decode | — |
+| <a id="g3"></a>`g3` | `g1` | `action_mode=ship_discrete` | its echelon twin | — |
+
+### arch · `a`
+| id | parent | delta | why it exists | cell tuned in |
+|---|---|---|---|---|
+| <a id="a0"></a>`a0` | — (L1 origin) | PPO + `MlpPolicy`; a MultiDiscrete space gets SB3's flat categorical | the derivation; reserved | — |
+| <a id="a1"></a>`a1` | `a0` | `policy_dist=ordinal` | the HURDLE-discretized-Gaussian (`clark_scarf_ordinal_head.py`): three parameters per link, an exclusive atom at `ship = 0`. **Clarified 2026-09-18 (#E6):** "ordinal" is a misnomer binding two mechanisms — adjacency pooling (general) and the zero atom (a fixed-cost mechanism this domain lacks). The atom's `sigmoid(0) = 0.5` init gates the deterministic-eval argmax behind ~3.7 logit-units of one scalar; 28 of 57 tuning trials scored the constant ship-nothing policy. Kept as the record and the decomposition arm; identifiers frozen | — |
+| <a id="a2"></a>`a2` | `a0` | `policy_dist=dgauss` | the plain body (`clark_scarf_dgauss_head.py`): adjacency pooling alone, **no atom** — two numbers per link, affine `mu` over bins 0..40 so every bin including the boundaries is the mode at \|m\| <= 1, init measured flat (ratio 1.29, argmax mid-range). Minted 2026-09-18 (#E6) per adi_flex LV1's own scope clause: no fixed cost here, so "the plain ordinal body" — which existed nowhere as an artifact until now | — |
+| <a id="a3"></a>`a3` | `a0` | `policy_dist=dgauss_sig` | the atomless twin of `a1`'s body (minted 2026-09-19, [#E6](#E6) follow-up): same discretized-Gaussian machinery as `a2` but with the SIBLING's sigmoid-bounded `mu` — so `a1` vs `a3` differs in exactly one thing, the atom, removing the parameterization confound that [#E6](#E6)'s A4 read carries. The sigmoid's edge cliff (boundary bins need a saturating \|m\| ~ 4) is the twinned property, kept deliberately | — |
+
+### hp · `h`
+| id | parent | delta | why it exists | cell tuned in |
+|---|---|---|---|---|
+| <a id="h0"></a>`h0` | — (L1 origin) | the §8.6 derivation, **read** from `_L1_DERIVED` rather than restated | the derivation; reserved | — |
+
+### Constraints   (declared on the constraining id, refused at launch)
+| id | requires |
+|---|---|
+| `a1` | `g.action_mode = ship_discrete` — the head is a MultiDiscrete parameterization. It asserts the space in its own `_build`; declaring the force here refuses the citation at launch instead of at model construction |
+| `a2` | `g.action_mode = ship_discrete` — same force, same reason |
+
+### Current bases
+| axis | current | since |
 |---|---|---|
-| pipeline | `pipe_1 … pipe_4`, four state variables | one `pipe`, `length: ["n_echelons", "leadtime"]` |
-| action | `ship_1 … ship_4`, four scalar decisions | one `ship`, `dim: "n_echelons"` |
-| stock | `length: "n_levels_max"`, four slots, padded | `length: "n_echelons"` |
-| dynamics | one line per link per event | one quantified rule per event |
-| cap | `N_LEVELS_MAX = 4` in code and IR | **gone** |
+| scenario | `sc0` | 2026-09-14 |
+| gym | `g2` / `g3` (the two arms) | 2026-09-14 |
+| arch | `a0`, `a1`, `a2`, `a3` — **all four are live arms**, none adopted | 2026-09-19 |
+| hp | `h0` | 2026-09-14 |
 
-Every width now NAMES a scenario constant, so an instance renders exactly the
-shape it selects — in chain length, lead time and action width alike. The
-`no_flow_through_padding` invariant is retired with the padding it policed.
+## UPSTREAM — the proposal round
 
-*Behaviour preserved.* Differential MATCH **11/11** @40 episodes across the
-covering set; the gym coordinate-change check holds at all three chain
-lengths; `verify_tiny` still totals 40.00; DP replays **982.362986** and the
-crowned PPO **989.065774**, identical in every column at 8192 CRN seeds. The
-inert levels this deleted were provably invisible — `h_install` is 0 there and
-the gym already sliced them out — which is why a change this large moves no
-number.
+The drafts are deleted by design: once the issue exists the issue IS the
+proposal, and a tracked local copy is a second source of truth that cannot
+follow the issue's edits or its disposition.
 
-*What it took, and it was not the schema.* Four upstream defects, filed over
-the day and fixed in v0.9.3 (#34–#37), plus one still open (below). The IR
-edit itself is small; it was unreachable for eight hours because the features
-it needs — `length` as a list, `dim` as a symbol, comprehensions in
-statements — each shipped with a gap that only a real adopter could find.
+| issue | gap | disposition |
+|---|---|---|
+| [#89](https://github.com/tong-wang/auto-mdp-solver/issues/89) | `scripts.selection_protocol` detects a §9.7 violation by class NAME (`endswith("EvalCallback")`) and, finding nothing, PASSes with "no live selection callback" — a negative it never tested. Demonstrable on upstream's own shipped `cases/clark_scarf` | **ACCEPTED, both parts — v0.10.14**, same day. `_local_selection_callbacks` detects a script-defined `*Callback` subclass that calls `self.model.save`/`.predict`, naming the behaviour it saw; the name detector stays beside it, because SB3's own `EvalCallback` is not defined in the script and behaviour cannot see it. The PASS now states what was examined, and the docstring adopts §5 `bound_rationale`'s "evidence, not proof" stance explicitly. Regression moved from "assert WARN on `cases/clark_scarf`" to three synthetic tests in `test_launch_check.py` — engine tests may not depend on shipped folders — the first of which fails at v0.10.13. Spec §9.7's text is untouched: the rule was never the defect, the detector was |
 
-*`model.boundary` now sees everything.* Its width inventory reads
-`horizon_T (tier-2 horizon), leadtime (tier-2 obs-dim), n_echelons (tier-1),
-ship_max (tier-1)` — no unpaired cap, because there is no cap. [#E9](#E9)'s
-residual ("`n_levels_max` named for no declared quantity, so coverage is
-unchecked") is closed by deletion rather than by pairing, which is the better
-of the two fixes: nothing to check.
-
-*One gate is red, and it is upstream again.* `mdp_ir.laws` fails all four
-policy laws with `TypeError: 'float' object is not subscriptable`.
-`laws.py::_fixed_decisions` is a **fourth site** with the defect #36 fixed in
-`_random_policy` and `_seed_prev_row` — it builds one scalar per decision and
-never consults `dim`. Patching it in-process gives 8/9 with zero FAILs, so it
-is the only blocker. A grep for `decision_bounds`/`decision_dim` across the
-harness shows it is now the last such site. See [#E10](#E10).
-
-**Leaderboard correction, 2026-08-17 (pre-contribution audit).** The `random`
-row read **37628.09 ± 51.04**; re-running its eval at the header protocol gives
-**37069.12 ± 48.95**, deterministically. `dp`, `echelon`, `local` and the
-crowned PPO all reproduce to the digit. Row updated.
-
-*No cause is claimed.* A random policy's draws are bounded by capacities that
-depend on stock that depends on the draws, so any perturbation anywhere
-cascades; the difference identifies nothing on its own. The recorded figure
-also predates F9, under which `advance2` required a `n_levels_max`-wide ship
-vector that this benchmark does not produce — so it came from a code state not
-identified here, and running that down would buy nothing.
-
-*Why it does not matter beyond the digits.* `random` is the floor: 37x the
-optimum, present so the ladder has a bottom and a broken eval is visible. It
-supports a gate margin of z ≈ 718 and decides nothing. Quoting it to two
-decimals is more precision than the arm carries.
-
-## §LEDGER
+## LEDGER
 
 <a id="E1"></a>
+### #E1  2026-09-14 — DIAGNOSIS: the board trained under the selection protocol §9.7 replaced, and six months of green gates never said so
 
-### #E1 — the exact DP was 30% suboptimal, and looked convincing
+**address** — not a tree node: a protocol defect under every node, found in the
+pre-launch audit rather than by a run.
 
-↑ [design tree](#MAP) — explains `role=exact` / `method=dp`.
+**reads** — no prior verdicts; this board has none. The evidence is the code and
+the gate output at v0.10.12.
 
-*Hypothesis.* The Clark–Scarf decomposition, implemented from Theorems 1–2, is
-the optimal reference for this domain.
+**observed.**
 
-*Run.* `clark_scarf_dp_exactness.py` — brute-force DP over the full joint state
-on `verify_tiny` (N=2, L=1, T=4), tractable because at lead time 1 the pipeline
-is empty at the decision point.
+`clark_scarf_ppo_train.py` registered `CRNSelectionCallback` unconditionally:
+every 100k steps it rolled 256 episodes on a live env and saved the best as
+`{scenario}_ppo.zip`, the shipped artifact. §9.7 has mandated post-hoc
+checkpoint selection since v0.7.0 — "no `EvalCallback`, no live selection env"
+— so the deliverable was chosen by the protocol the spec replaced, at a cost of
+~13% of each run's step budget in evaluation.
 
-*Observed.* Clark–Scarf 24.340 vs joint optimum 18.698 — **+30.2%**. The brute
-force independently reproduced the simulator to Monte-Carlo error on two separate
-policies, so the brute force was sound and the decomposition implementation was
-not.
+`scripts.selection_protocol` reported **PASS** throughout, across eight pin
+bumps. It detects violations lexically (`n.endswith("EvalCallback")`); this
+class is called something else, so the check's PASS was carried entirely by its
+unrelated second half and its message — "no live selection callback" — asserted
+a negative it had not tested. Filed as upstream
+[#89](https://github.com/tong-wang/auto-mdp-solver/issues/89); the same blind
+spot is live in upstream's own shipped `cases/clark_scarf`.
 
-*Diagnosis.* **Wrong risk period.** Cost is assessed on the **end-of-period**
-state, one demand draw further on than the decision point — the periodic-review
-"lead time **plus one**". The two terms need *different* risk periods: cost is
-realized at end of period `s+L` (`D_{L+1}`), availability binds at the *decision*
-point of `s+L` (`D_L`).
+Fixing it exposed **two silent-corruption paths that the fix itself opened**,
+both found by auditing rather than by running. `vecnormalize.pkl` was written
+*only* by the live callback, so with it off the default path resolved to
+nothing — and both consumers degraded quietly instead of failing:
+`clark_scarf_ppo_eval.py` printed "scoring raw observations" and would have
+emitted a well-formed, wrong TSV for a `norm_obs=True` policy, and
+`clark_scarf_policy.py` — the §12 deliverable — did the same and would have
+shipped it. Both now fall back to `vecnormalize_final.pkl` and **refuse** when
+the run's args record that the policy trained normalized.
 
-*Verdict.* **CONFIRMED and fixed.** Gap → **0.000000**, exact to machine
-precision. Targets moved `[26,48,69] → [37,59,79]`.
+Separately, the gym implemented two action modes (`ship_fraction_bins`,
+`ship_scaled`) that the IR declared nowhere — §7 in the gym→IR direction,
+reported by the previous board for a whole campaign and never closed. Removed
+here rather than declared: this board runs `ship_discrete` only.
 
-*Why it mattered.* The wrong table was entirely plausible — monotone critical
-numbers, a sensible time-varying profile, `ȳ₁` matching an independently computed
-newsvendor fractile — and every other gate stayed green. Only the brute-force
-comparison caught it; now
-`clark_scarf_test.py::test_clark_scarf_decomposition_is_exactly_optimal`.
+**missing.** Whether the protocol change moves a number is **unmeasured and
+deliberately so** — it cannot be measured on this board, which has no arm under
+the old protocol and will produce none. The previous board's figures are
+internally comparable (they shared the protocol) and are not comparable to
+anything produced here. That discontinuity is the reason this entry exists
+rather than a footnote.
+
+**plan.** Nothing to arbitrate. The ladder (A1) launches under the corrected
+protocol; its verdict branches are unaffected, because no arm on either side of
+the change exists to be compared.
+
+**verdict** — ✗ for the old protocol, and a correction rather than a result.
+Three defects closed (§9.7 live selection, §9.5/§12 silent unnormalized
+scoring, §7 undeclared modes), one filed upstream, five gates added that the
+harness cannot provide: live selection off by default and the screen present,
+the deployable policy refusing a missing normalizer, and `gym_only_modes()`
+asserted empty rather than asserted to equal a known residue.
+
+**status** ✓ closed
 
 <a id="E2"></a>
+### #E2  2026-09-14 — an opt-in flag did not clear the rule, and the retention rationale was board-specific
 
-### #E2 — the naive benchmark rung was not naive
+**address** — the same protocol defect as [#E1](#E1); this entry records what
+its fix got wrong.
 
-↑ [design tree](#MAP) — explains `role=feasible` — `method=echelon` · `local` · `random`.
+**reads** — [#E1](#E1), and upstream's disposition on
+[#89](https://github.com/tong-wang/auto-mdp-solver/issues/89).
 
-*Challenge (operator).* The heuristic first labelled `myopic` ran base-stock on
-**echelon inventory position** with cumulative lead-time coverage. That
-aggregation *is* Clark & Scarf's contribution — nobody reaches it without the
-analysis — so gating an RL agent that must *discover* the structure against a
-benchmark that was *handed* it is the wrong experiment.
+**observed.** #E1 made `CRNSelectionCallback` opt-in and off by default, and
+kept the class "to reproduce runs that used it". v0.10.14's behavioural
+detector — the one this campaign asked for — then WARNed on this board:
 
-*Action.* Renamed `echelon_bs`, with a docstring opening on the warning that it
-is not a naive baseline. Added `clark_scarf_benchmark_local.py`: independent
-single-installation base-stock, each level covering only its **own** lead time —
-the pre-1960 practice §1 of the paper describes. Reclassified `echelon_bs` and
-`dp` from `--baseline` to `--reference`.
+> `CRNSelectionCallback evaluates (self.model.predict) and ships
+> (self.model.save) in-training — a live selection callback by behaviour,
+> whatever its name`
 
-*Observed.* `local` scores **1120.92**, worse than the theory-informed rung by
-99.8 and giving the ladder a clean decomposition: `local → echelon_bs` prices the
-echelon idea, `echelon_bs → DP` prices Theorem 2.
+Correctly. **The check reads the source, not the default**, and §9.7 forbids
+the machinery, not merely its use. A flag defaulting to off is a promise about
+how a script will be invoked, and nothing enforces it — the same class of
+reasoning that let the original callback run for six months.
 
-*Lesson.* A benchmark's *name* is not its difficulty. Classify every benchmark by
-**what knowledge it is given**, not by how simple its code looks — and put
-theory-informed arms in `--reference`, never `--baseline`.
+The retention rationale was also wrong *here* and right elsewhere: "reproduce
+runs that used it" is an argument that belongs to the board holding ~1100 such
+runs (the earlier downstream campaign), not to this one, which has **none**. Carried
+across the reset without re-deriving it — the failure mode the empty-history
+split exists to prevent, reappearing in the first week.
+
+Removed outright: the class, `--live-select`, `--select-every`,
+`--select-n-seeds`, the now-unused eval imports, their `_SKIP` and `PROTOCOL`
+entries, and the module docstring's claim that `{scenario}_ppo.zip` is the
+selection artifact — which had survived #E1 and was by then describing a file
+the script no longer writes.
+
+**verdict** — ✓ `scripts.selection_protocol` PASSes with the honest message
+upstream's Part B introduced; 123 tests, laws 8/9, conformance 25/30 with only
+the deliberate `research.deliverables` FAIL. The test that pinned the flag's
+default is retargeted to pin the machinery's **absence**, which is the property
+that actually holds the rule.
+
+**status** ✓ closed
 
 <a id="E3"></a>
+### #E3  2026-09-15 — the ordinal head's ladder: L1 lands at 104.3% of exact, and the two observation arms tie
 
-### #E3 — Stage 4 L0/L1 at the starting configuration (pre-registered)
+**address** — `sc0/g{2,3}/a1/h0`, the board's first learned cells, plus the two
+L0 controls (outside the registry by guide §13.4).
 
-↑ [design tree](#MAP) — explains the §8.6 ladder `training=L0` → `training=L1`.
+**hypothesis, stated before launch** — the head is measured against the exact
+bar on its own ladder, NOT against the categorical head. The previous board's
+tuned centres are categorical-fitted and cannot price a rival head; a screen
+against them measures centre-fit, which is the defect the attempt was caught
+on. What the ladder decides: does this head reach a sane rung at all, and does
+the raw/echelon question survive the rung change.
 
-*Design.* `ship_discrete` + `raw` + no masking. **L0** = SB3 library defaults
-with `gamma = beta` (the control, reporting-only, never a gate); **L1** = the
-spec §8.6 derivation, every derived knob logged with its rationale. 2M steps,
-seeds {1, 2} per level. Reporting: 8192-seed CRN protocol, deterministic,
-VecNormalize injected; selection on a disjoint CRN block.
+**runs** — 24 × 2M steps, `ship_discrete`, `n3_l2_p09`, 6 seeds per cell.
+the round's working notes for the commands, since deleted. Every run saved 20 checkpoints
+with per-checkpoint normalizers, was screened by `clark_scarf_select.py` on the
+block at offset 1,000,000, and had its top-1 confirmed @8192 on the protocol
+block — the first numbers this domain has ever produced under §9.7 ([#E1](#E1),
+[#E2](#E2)).
 
-*Pre-registered reads.*
-- **Gate** (spec §8.6, `--sense minimize`): L1 must beat `random` and `local` by
-  ≥ 2 SE. Losing to `local` would mean the agent has not reached pre-1960
-  practice.
-- **Diagnosis branches.** L1 ≤ random → build bug. L1 < L0 → the §8.6
-  derivation misfired. L1 competitive with the references → stop at L1.
-- **Seed noise.** The sd across the two seeds at each level is the resolution
-  floor for every later round; margins landing inside it get widened, not
-  believed.
-- **Budget.** Whether the selection trace is still improving at 2M decides
-  whether a longer budget is worth testing.
+**verdict.**
 
-*Observed (8192-seed protocol).*
-
-| level | seed | cost | vs DP | holding | shortage |
+| rung | arm | @8192 | sd | SE | % of exact |
 |---|---|---|---|---|---|
-| L0 | 1 | 1198.49 | 122.0% | 1071.3 | 127.2 |
-| L0 | 2 | 1188.23 | 121.0% | 1025.5 | 162.8 |
-| **L1** | 1 | **1008.66** | **102.7%** | 896.1 | 112.6 |
-| **L1** | 2 | **1010.89** | **102.9%** | 884.5 | 126.4 |
+| L0 | raw | 1290.17 | 118.96 | 48.56 | 131.3% |
+| L0 | echelon | 1168.52 | 76.60 | 31.27 | 119.0% |
+| L1hp | raw | 1025.83 | 7.12 | 2.91 | **104.4%** |
+| L1hp | echelon | 1024.90 | 9.09 | 3.71 | **104.3%** |
 
-L0 mean 1193.36 (seed-sd 7.26) · L1 mean **1009.77** (seed-sd **1.57**).
+| contrast | paired, n=6 | z |
+|---|---|---|
+| L1 − L0, raw | **−264.34** ± 48.80 | −5.42 |
+| L1 − L0, echelon | **−143.62** ± 31.36 | −4.58 |
+| echelon − raw, at L0 | −121.65 ± 62.86 | −1.94 |
+| echelon − raw, at **L1** | **−0.93** ± 3.28 | −0.28 |
 
-*Gate (`--sense minimize`).* **PASS** — beats `random` (z = 717) and `local`
-(z = 81.4). References: **98.8% of `echelon_bs`**, **102.7% of the verified
-optimum**.
+*The derivation dominates.* −264/−144 is the largest effect on this board by an
+order of magnitude. It attributes to **no single knob**: L0 moves eight at once
+(no VecNormalize, `n_envs` 1, constant schedules, `ent_coef` 0, different arch
+and batch), so this is the whole §8.6 derivation and nothing finer. A claim
+made before launch — that L0 vs L1 would bracket the `ent_coef` interaction the
+sibling campaigns warn about — is **withdrawn**: it would need a one-knob
+contrast at L1, which this ladder does not contain.
 
-*Verdicts against the pre-registered reads.*
-- **Gate:** passes on both baselines. L1 is 11.4 units BELOW `echelon_bs` —
-  the agent, seeing only raw installation stock and given no inventory theory,
-  beats the heuristic that was handed the echelon insight. 27.4 units from the
-  proven optimum.
-- **Diagnosis branches:** none fire. L1 >> random (no build bug); L1 - L0 =
-  **-183.58 +/- 1.15 (z = -160)**, so the §8.6 derivation is worth ~15% and did
-  not misfire. Spec §8.6's "competitive -> stop at L1" branch applies.
-- **Seed noise:** **1.57** at L1 (7.26 at L0) — the resolution floor for later
-  rounds; ~3-unit effects are resolvable with two seeds.
-- **Budget:** the selection trace is still creeping down at 2M
-  (`1013 1013 1012 1012 1010`), so a longer budget is worth a few units at
-  most — clear diminishing returns.
+*The arms tie at L1.* −0.93 ± 3.28 against a measured floor of ~8 is not a
+small effect, it is no effect. That reproduces the previous board's #E7/#E17
+mechanism on a fresh board, a new head and a corrected protocol: the raw/
+echelon gap is a property of the CONFIGURATION, and at a sane rung it is gone.
+At L0 the arms are also not separable (z −1.94) despite a 122-unit gap, because
+L0's spread is enormous.
 
-*Cost composition.* L1's holding/shortage split (884-896 / 113-126) sits close
-to the DP's balance (868.3 / 114.1); L0 is badly over-stocked (holding
-1025-1071). The derived configuration is not merely cheaper — it lands in
-roughly the right region of the trade-off.
+*The floor is measured, not inherited.* Within-cell sd 7.12 / 9.09 at L1 → a
+floor of **~8**, cell SE ~3. The previous board's 1.57 belonged to a different
+head and protocol; the density frame's 5.0 was explicitly a holding value.
+Everything on this board is now judged against ~8.
 
-*Disposition.* L1 at the starting configuration is the campaign's first honest
-leaderboard row and passes the Stage-4 gate with no escalation. Escalation is
-therefore **optional**, not required: any further round is about the remaining
-27.4 units to the optimum, and must earn its compute against a 1.57 noise floor.
+*§9.7 earned its keep on the first batch.* At `L0/raw` the screen chose winners
+at 35%, 40%, 40%, 70%, 75% and 95% of budget — half the runs peaked before the
+45% mark, and one run's terminal checkpoint was 58% worse than its best
+(1855 vs 1174 on the screen block). Under the replaced protocol none of that
+curve would exist, and the shipped artifact would have been whichever
+checkpoint won a 256-episode draw at a 100k boundary.
 
+**missing.** *Whether this head is good* is not answered and cannot be from
+this entry. There is no categorical arm on this board, and the previous board's
+figures sit across [#E1](#E1)'s protocol discontinuity, so quoting them here
+would be the precise error that entry exists to prevent. A3 on the frontier is
+that arm. What IS established is that the head reaches 104.3% of an exact bar
+untuned, which is a rung worth escalating from.
+
+**status** ✓ closed — A2 (L2 tuning) and A3 (the categorical L1 arm) spawned.
 
 <a id="E4"></a>
+### #E4  2026-09-16 — the categorical arm at L1, 2M: a +9.31 head effect on `echelon` — ENTERED LATE, and WITHDRAWN where it stands
 
-### #E4 — the headline: does handing over the echelon coordinates help? (pre-registered)
+**a hole in the ledger, recorded as one.** This entry was never written when
+the work was done. A3 ran, its result was carried forward in conversation, and
+[#E5](#E5) was then written against it — citing "#E4's +9.31 head effect" in
+its own title and withdrawing it in its body — while the entry those citations
+point at did not exist. Four references in this log dangled for eight days.
+The numbers below are **not reconstructed from artifacts**: they are the 2M
+column of [#E5](#E5)'s own verdict table, which preserved them. Nothing here is
+new evidence, and the entry is written so the citations resolve and the gap is
+visible rather than silent.
 
-↑ [design tree](#MAP) — explains `observation_mode=raw` / `=echelon`, and the owed `interpretation` node.
+**what A3 measured** — the categorical head (`a0`) against the hurdle head
+(`a1`) at L1, both observation arms, `ship_discrete`, 2M steps, seeds 1–6,
+screened and confirmed @8192 (`sc0/g{2,3}/a{0,1}/h0`).
 
-*The campaign's reason for existing.* Echelon stock is an artifact of the
-paper's analysis. `raw` shows physical stock per installation plus what is in
-flight toward it; `echelon` shows the same numbers under Clark & Scarf's
-coordinates — running sums applied **component-wise** to on-hand and in-flight
-separately (a single sum over their total would be genuinely lossy at
-leadtime 2; §3's own state `C_n(x1, w1, x2)` carries in-transit separately for
-exactly this reason).
-
-The map between them is invertible, and
-`test_raw_and_echelon_are_a_pure_change_of_coordinates` asserts the round-trip
-at every step of a full episode on all six structural cells. So the two modes
-carry **identical information** and this is a test of representation only: an
-MLP can express a cumulative sum, so an `echelon` win would say the coordinates
-are worth handing over, and a tie would say the network builds them itself.
-
-*Design.* `echelon` obs, L1, `ship_discrete`, no masking, 2M steps, seeds
-{1, 2} — identical to #E3's L1 arms in every respect but the observation. The
-`raw` arms are #E3's and are reused, so this round costs 2 runs. Paired at 8192
-CRN seeds.
-
-*Pre-registered reads.* The resolution floor is #E3's measured L1 seed-sd of
-**1.57**.
-- |delta| < 1.57 -> **the coordinates do not matter**: the network constructs
-  whatever aggregation it uses from raw stock unaided. This is the campaign's
-  affirmative answer.
-- `echelon` better by > 1.57 -> the paper's coordinates are worth handing over;
-  report the size, and Stage 5 asks whether the `raw` policy is nonetheless
-  echelon-structured.
-- `raw` better by > 1.57 -> the extra structure actively hurts; would want a
-  mechanism before being believed, since nothing predicts it.
-
-*Deliberately run AFTER the configuration is settled.* An observation
-comparison made while the action encoding is still moving measures the pair,
-not the axis. #E3 fixed the encoding, masking, level and budget first; this
-round changes exactly one thing.
-
-*Observed (8192-seed protocol).*
-
-| obs | seed | cost | vs DP | holding | shortage |
-|---|---|---|---|---|---|
-| raw | 1 | 1008.66 | 102.7% | 896.1 | 112.6 |
-| raw | 2 | 1010.89 | 102.9% | 884.5 | 126.4 |
-| **echelon** | 1 | 1007.65 | 102.6% | 886.5 | 121.1 |
-| **echelon** | 2 | **1007.12** | **102.5%** | 888.7 | 118.4 |
-
-raw mean **1009.77** (seed-sd 1.57) · echelon mean **1007.38** (seed-sd 0.38).
-
-**Paired: raw - echelon = +2.39 +/- 0.26 (z = +9.1)**, 95% CI [+1.88, +2.90] —
-just OUTSIDE the 1.57 floor.
-
-*Verdict.* `echelon` wins, by **0.24%**. Statistically clear, practically
-negligible. Against the ladder this is the honest framing:
-
-| gap | size |
+| cell | 2M |
 |---|---|
-| `local -> echelon_bs` (the echelon **idea**) | 99.8 |
-| `echelon_bs -> DP` (Theorem 2) | 38.8 |
-| **`raw -> echelon` (the echelon **coordinates**)** | **2.4** |
+| hurdle-dgauss raw | 1025.83 |
+| hurdle-dgauss echelon | 1024.90 |
+| categorical raw | 1023.09 |
+| categorical echelon | **1015.59** |
 
-Handing the agent Clark & Scarf's coordinate system is worth ~2% of what the
-echelon *idea* is worth. **The network essentially builds the aggregation
-itself**; the coordinates are a real but marginal convenience.
+The read at the time: categorical beats hurdle by **+9.31** on `echelon` and
++2.74 on `raw`, i.e. a head effect that appears only under the echelon
+coordinates.
 
-*Caveats on the record.* The margin sits barely outside the floor and the two
-seeds disagree on size (seed 1: +1.01, inside the floor; seed 2: +3.77). Sign is
-consistent, magnitude is not well pinned by two seeds — "2.4" should not be
-quoted as precise. Separately, `echelon` is markedly more stable across seeds
-(sd 0.38 vs 1.57): a weak estimate at n=2, but a plausible second benefit
-(easier optimization, not just a better optimum) for Stage 5 to probe.
+**WITHDRAWN by [#E5](#E5).** At 4M the same contrast is −1.59 ± 1.70 (`raw`)
+and −1.16 ± 3.21 (`echelon`) — ties. The +9.31 was the faster-descending head
+being cut off earlier: truncation, not a head effect. Every 2M number above is
+superseded and is retained here only as the object [#E5](#E5) withdraws.
+
+**status** ✓ closed — withdrawn at entry; retained because four live citations
+need a referent, and because a ledger that silently skips a number is the
+failure mode [#E1](#E1) exists to prevent.
 
 <a id="E5"></a>
+### #E5  2026-09-17 — 2M undertrains every cell by 13–24 units, and #E4's head verdict was truncation
 
-### #E5 — masking, on both observation modes (pre-registered)
+**address** — the four L1 cells re-run at 4M, same seeds (`sc0/g{2,3}/a{0,1}/h0`;
+budget is protocol, not configuration — `total_timesteps` is EXCLUDED, so a 4M
+run cites the same address as its 2M twin).
 
-↑ [design tree](#MAP) — explains `mask=off` / `=on`.
+**hypothesis, stated before launch** — the 2M screens showed 21/24 runs peaking
+in the final 5% of budget with the last fifth still buying −5.7/−6.7, the same
+size as [#E4](#E4)'s +9.31 head effect; the ordinal head was descending faster.
+Prediction: doubling the budget moves every cell and may close the head gap.
 
-*Lever.* `--mask` (MaskablePPO): the categorical head is restricted to feasible
-shipment quantities, `q_k <= ship_capacity[k]`, instead of emitting freely and
-letting the env clip. Without it, every quantity above the source installation's
-stock maps to the same clipped action, so a block of the head's options are
-behaviourally identical and carry no gradient distinguishing them.
+**runs** — 24 × 4M, `ship_discrete`, seeds 1–6, screened and confirmed @8192
+(the per-cell matrix in the round's working notes, since deleted).
 
-*Note what it cannot touch.* The **top** link draws from an unlimited outside
-supplier, so `ship_capacity` never binds there and its mask is all-True.
-Masking constrains the lower links only.
+**verdict.**
 
-*Design.* L1, `ship_discrete`, 2M steps, obs {raw, echelon} x seeds {1, 2} =
-4 runs, `--mask` the single change from #E3/#E4's arms, which serve as the
-unmasked comparison. Paired at 8192 CRN seeds.
+| cell | 2M | 4M | Δ paired | z |
+|---|---|---|---|---|
+| hurdle-dgauss raw | 1025.83 | **1001.74** | −24.09 | −9.06 |
+| hurdle-dgauss echelon | 1024.90 | **1001.37** | −23.53 | −11.52 |
+| categorical raw | 1023.09 | **1003.33** | −19.75 | −6.82 |
+| categorical echelon | 1015.59 | **1002.53** | −13.05 | −6.03 |
 
-*Pre-registered reads.* Floor = 1.57 (#E3's L1 seed-sd).
-- Masked better by > floor on both obs modes -> masking is a real, encoding-
-  independent improvement; it becomes part of the standard configuration.
-- Within the floor -> the clipped-action degeneracy costs nothing measurable
-  here; record and move on.
-- **Interaction watch:** if masking helps one obs mode and not the other, the
-  `raw`-vs-`echelon` conclusion of #E4 is conditional on masking and must be
-  restated as such — the axes are not independent, and #E4's margin (2.4) is
-  small enough that an interaction could reverse it.
+- **[#E4](#E4) is WITHDRAWN as a head verdict.** At 4M the contrast is
+  −1.59 ± 1.70 (raw) / −1.16 ± 3.21 (echelon) — ties. The 2M +9.31 was the
+  faster-descending head being cut off earlier, exactly the truncation
+  mechanism flagged when the 2M curves landed.
+- The representation contrast is a tie under both heads at 4M (−0.37 / −0.80).
+- **The floor was budget-inflated**: within-cell sd 3.76–9.09 at 2M →
+  0.97–5.97 at 4M. Working floor on this board is now **~6**, and 2M-era
+  verdicts judged against ~8 are re-read against it.
+- 4M is close but not flat (last fifth −2.1/−2.8, argmin at 96–98%); the
+  tuning budget moved to 5M on this reading.
 
-*Observed (8192-seed protocol).*
-
-| obs | mask | seed 1 | seed 2 | mean | seed-sd | vs DP |
-|---|---|---|---|---|---|---|
-| raw | off | 1008.66 | 1010.89 | 1009.77 | 1.57 | 102.8% |
-| raw | **on** | 1009.06 | 1017.70 | 1013.38 | **6.11** | 103.2% |
-| **echelon** | **off** | 1007.65 | 1007.12 | **1007.38** | 0.38 | **102.5%** |
-| echelon | on | 1009.72 | 1010.34 | 1010.03 | 0.43 | 102.8% |
-
-*Masking effect* (masked - unmasked): raw **+3.61 +/- 0.38** (z = +9.5),
-echelon **+2.64 +/- 0.30** (z = +8.8).
-
-*Verdict.* **Masking HURTS**, on both observation modes, outside the floor in
-both cases — the opposite of the pre-registered expectation. It also
-destabilizes `raw` (seed-sd 1.57 -> 6.11).
-
-The mechanism I argued when pre-registering — that clipped-equivalent actions
-carry no distinguishing gradient, so removing them should help — is **not
-supported**. Two candidate explanations, NEITHER TESTED: (i) masking removes a
-region of the action space from exploration, including "ask for more than is
-available" actions that reliably return everything available, which is a useful
-behaviour to sample; (ii) it swaps `PPO` for `MaskablePPO`, a different
-implementation. The pre-registered read only licenses "outside the floor, wrong
-direction"; the why is not established and is not claimed.
-
-*Interaction check — CLEAN.*
-
-| | raw - echelon |
-|---|---|
-| unmasked | +2.39 +/- 0.26 |
-| masked | +3.35 +/- 0.31 |
-
-Same sign, same order, shift +0.96. **#E4's conclusion survives**: `echelon` is
-better by ~2-3 units regardless of masking, so the observation finding is a
-property of that axis and not of the configuration it was measured in. The
-interaction branch flagged in #E5's pre-registration did not fire.
-
-*Disposition.* Masking is **rejected**; the standard configuration stays
-unmasked, i.e. still exactly the spec's §8.6 derivation with nothing added.
-Best cell: **`echelon` + no mask = 1007.38 (102.5% of DP)**, 13.8 units below
-`echelon_bs`.
-
-
+**status** ✓ closed — supersedes every 2M number on the board.
 
 <a id="E6"></a>
+### #E6  2026-09-18 — DIAGNOSIS: the "collapse" was the head's own init, the name hid the mechanism, and the atom was never warranted here
 
-### #E6 — the action encoding: `target_discrete` across the full 2x2 (pre-registered)
+**reads** — [#E3](#E3), [#E5](#E5), the `ordL2`/`ordL2b` studies, adi_flex
+PLAYBOOK LV1 + MR9, this board's PLAYBOOK-LV7 inheritance, and the measured
+probes below.
 
-↑ [design tree](#MAP) — explains `action_mode=target_discrete` / `=ship_discrete`, and `mask=off` / `=on`.
+**observed.**
 
-*Lever.* `ship_discrete` emits a **shipment quantity** per link;
-`target_discrete` emits an echelon **order-up-to level** `y_k`, with the
-shipment computed as `clip(y_k - u_k, 0, capacity)`. Per-link grids
-(`MultiDiscrete([41, 81, 121])` at `n3_l2_p09`) because echelon k covers k+1
-levels and its target scales accordingly.
+*The symptom.* 28 of `ordL2`'s 57 completed trials (49%) scored a constant
+**22501.15** — `units_shipped_mean = 0.00`, the ship-nothing policy — and the
+study's best trial was the untuned L1 centre. Two diagnoses were recorded and
+are both RETRACTED: entropy starvation (healthy trials exist at `ent_coef`
+4 orders below the collapsed maximum) and the `norm_obs`/`norm_reward`
+mismatch (a seemingly clean 2×2 — 77% vs 0/12% — that TPE's adaptive sampling
+had confounded: all 12 `normalize_advantage=False` trials also had
+`norm_reward=True`, and 4 of 8 cells were never sampled). A trial under the
+pinned rerun (`ordL2b` #5, `norm_reward=True`, `ent_coef` 0.023) collapsed
+anyway, falsifying the pin's rationale.
 
-*Why it might matter.* Clark & Scarf's optimum is an order-up-to rule. In
-quantity coordinates the optimal action is `q = ybar_k(t) - u_k`, a function
-that varies with state; in target coordinates it is `ybar_k(t)`, which through
-the stationary middle of the horizon is a **constant**. Same policy class, a far
-simpler function to represent — if that reasoning holds, the encoding helps.
+*The mechanism, measured.* The head is a **hurdle** construction: its positive
+branch is zero-truncated, so `w = sigmoid(t)` EXCLUSIVELY owns `P(ship=0)` —
+and `sigmoid(0) = 0.5` at init, 20× a flat categorical's bin mass, against the
+shipped docstring's "near-uniform" claim. The deterministic record eval takes
+the argmax, which stays "ship nothing" until `w` falls below the best positive
+bin (~0.014 at init): **~3.7 logit-units of travel in one scalar**. Probes:
+trial 5 (lr 1.2e-05) trained normally the whole way — train cost 31006 → 8020,
+sampled behaviour ships — while `w` moved only 0.5 → ~0.42, so its argmax was
+[0,0,0] in 100/100 probed states; a healthy trial sits at `w` ≈ 0.02–0.05.
+There is no absorbing state and no collapse: **every slow-learning
+configuration evaluates as the ship-nothing constant**, which put a cliff in
+the tuner's objective and presented as "half the space collapsed".
 
-*Why it might not.* The target grid is ~2x larger (243 bins vs 123), so the
-categorical head has more mass to allocate; and the availability clip makes
-every target below `u_k` behaviourally identical (all ship nothing) — the same
-degeneracy whose removal *hurt* in #E5.
+*The root cause is an import error with a naming defect underneath.* The atom
+is the (s,S) trigger — a **fixed-cost** mechanism. adi_flex LV1's own scope
+clause says so ("zero-inflate only when the problem has a genuine 'do nothing'
+mass (a fixed cost ⇒ an (s,S) trigger); otherwise the plain ordinal body") and
+this board's inherited LV7 rule agrees (smooth cost surface → no atom). This
+domain has no fixed cost; the DP ships ≈ demand nearly every period and
+zero-ship is ~16%, endgame-concentrated — the import's justification ("ship
+nothing is modal") was wrong arithmetic and is retracted in `a1`'s docstring.
+The name "ordinal" binds the two mechanisms so the composite travels as a
+unit, and the scope clause's else-branch — "the plain ordinal body" — **existed
+nowhere as an artifact**, so the prescription funnels every importer into the
+if-branch. An upstream proposal covering the naming, the false init line
+(shipped verbatim in `cases/adi_flex` and the `examples/inv_single` exemplar)
+and the missing else-branch is drafted and HELD at the user's direction
+(held as a working draft, untracked by the mdp-propose convention — the issue
+becomes the proposal when filed); inv_single may be fixed
+by direct PR instead.
 
-*Design.* `target_discrete`, L1, 2M steps, the full 2x2: obs {raw, echelon} x
-mask {off, on} x seeds {1, 2} = **8 runs**. The `ship_discrete` 2x2 from
-#E3/#E4/#E5 is the comparison, completing a 2 (encoding) x 2 (obs) x 2 (mask)
-factorial at 2 seeds. Paired at 8192 CRN seeds.
+**plan** *(amended 2026-09-18, before any L1 run completed: the ladder is
+L0@2M → L1@4M → L2@5M — the L1@2M rung was dropped, since [#E5](#E5) already
+supersedes every 2M number and a 2M cell could pair only against superseded
+figures; L0 stays at 2M to pair with `a1`'s control).* `a2` minted: `clark_scarf_dgauss_head.py`, the plain body — two
+numbers per link, affine `mu` (every bin the mode at |m| ≤ 1; a sigmoid `mu`
+would rebuild the travel cliff at the support boundaries), init measured flat
+(ratio 1.29, argmax mid-range, a live action). Six gates, including the two
+this episode taught: mode reachability on the boundary bins, and the init
+pinned — distribution against flat AND the deterministic argmax. A4 runs
+`a1`'s protocol rung for rung (L0 → L1(2M) → L1@4M → L2@5M), seeds 1–6, both
+arms, giving the decomposition the sibling boards cannot: dgauss-vs-categorical
+prices adjacency pooling alone; dgauss-vs-hurdle prices the atom. Pre-declared
+reads at the ~6 floor ([#E5](#E5)): dgauss ≈ categorical AND hurdle ≈ dgauss →
+neither mechanism matters here and the sibling gains were the atom's fit to
+fixed-cost structure; dgauss < categorical → adjacency pooling transfers on its
+own. The `a1` tuning was stopped by decision with the cores redirected here;
+`ordL2` (57 trials) and `ordL2b` (20 trials, pinned, one falsifying collapse)
+are preserved as this entry's evidence.
 
-*Pre-registered reads.* Floor = 1.57.
-- `target` better than `ship` by > floor in **all four** obs x mask cells ->
-  a real, configuration-independent improvement; it becomes the standard action
-  mode and the representational argument is supported.
-- Within the floor everywhere -> the encoding does not matter here; the
-  representational argument is unsupported by outcome and the standard config
-  stays `ship_discrete` (simpler, smaller action space).
-- **Mixed across cells** -> the encoding interacts with obs and/or mask; report
-  the interaction, and make no encoding claim without naming the configuration.
-- Watch the observation effect *within* `target`: if `raw - echelon` reverses
-  sign there, #E4's conclusion is conditional on the encoding and must be
-  restated.
-
-*Observed (8192-seed protocol, full 2x2x2).*
-
-| encoding | obs | mask | mean | sd | vs DP |
-|---|---|---|---|---|---|
-| **target** | **raw** | **off** | **992.54** | 0.57 | **101.0%** |
-| target | echelon | off | 993.09 | 1.47 | 101.1% |
-| target | echelon | on | 999.10 | 2.76 | 101.7% |
-| target | raw | on | 1000.58 | 1.21 | 101.9% |
-| ship | echelon | off | 1007.38 | 0.38 | 102.5% |
-| ship | raw | off | 1009.77 | 1.57 | 102.8% |
-| ship | echelon | on | 1010.03 | 0.43 | 102.8% |
-| ship | raw | on | 1013.38 | 6.11 | 103.2% |
-
-*Encoding — `target` wins in ALL FOUR cells*, by 10.9-17.2 units (z = 36-72).
-Consistent in sign, an order of magnitude larger than any other effect. The
-"configuration-independent improvement" branch fires: **`target_discrete`
-becomes the standard action mode**, and the representational argument is
-supported — the optimum is a CONSTANT in target coordinates and state-dependent
-in quantity coordinates.
-
-*Masking — hurts in all four cells*, and more under `target` (+6.0 to +8.0)
-than `ship` (+2.6 to +3.6). #E5's rejection confirmed across the cube.
-
-*Observation — #E4 IS OVERTURNED.* Under `target` the effect collapses inside
-the floor: **-0.55** unmasked (raw marginally better), **+1.47** masked (echelon
-marginally better). Sign reverses, magnitude negligible.
-
-| encoding | mask | raw - echelon | verdict |
-|---|---|---|---|
-| ship | off | +2.39 +/- 0.26 | echelon |
-| ship | on | +3.35 +/- 0.31 | echelon |
-| **target** | **off** | **-0.55 +/- 0.14** | **within floor** |
-| **target** | **on** | **+1.47 +/- 0.14** | **within floor** |
-
-**Correction to #E4.** Its conclusion ("echelon better by 2.39") held only under
-`ship_discrete`. The encoding axis was still open when #E4 ran, and under the
-better encoding the effect vanishes — precisely the branch #E6 pre-registered as
-the watch. #E4's *number* stands for its cell; its *claim about the axis* does
-not.
-
-The corrected claim is stronger for the campaign's question: **under the best
-configuration, handing the agent Clark & Scarf's coordinates is worth nothing
-measurable.** The interaction has a coherent reading — the target encoding
-already expresses the action in echelon terms, so the echelon *observation*
-becomes redundant; the two are partly substitutes.
-
-*Method note.* Two axes tested one-at-a-time gave a clean-looking result that
-the third axis reversed. One-at-a-time rounds establish an effect AT a
-configuration; only the factorial establishes it as a property of the axis.
-Where the cube is affordable (here: 8 runs, half already existing), run it.
-
-*Disposition.* Standard configuration: **`target_discrete` + no masking**;
-observation mode is a free choice (`raw` reported, being the harder question).
-Best cell **992.54 = 101.0% of the verified optimum**, 28.6 units below
-`echelon_bs`.
-
+**status** ✓ diagnosis closed — A4 ▶
 
 <a id="E7"></a>
+### #E7  2026-09-19 — the decomposition: A4's loss splits ~evenly between the missing atom and the affine `mu`, and the atom helps WITHOUT a fixed cost
 
-### #E7 — L2(hp): tuning the two top cells (pre-registered)
+**address** — `sc0/g{2,3}/a3/h0` (the atomless twin, sigmoid `mu`), completing
+the four-head set at L1@4M, seeds 1–6, screened + confirmed @8192.
 
-↑ [design tree](#MAP) — explains `training=L2(hp)`.
+**hypothesis, stated before launch** — `a3` differs from `a1` in exactly one
+thing (the atom) and from `a2` in exactly one thing (the `mu`
+parameterization). Pre-declared branches: `a3 ≈ a1` → the affine `mu` caused
+A4's loss, atom innocent; `a3 ≈ a2` → the atom is worth ~40; in between →
+both contribute.
 
-*Why now.* L1 already passes the gate at 101.0% of the verified optimum, so
-this is not a rescue — it measures **how much a hyperparameter search adds on
-top of a derivation that is already competitive**, which is the more useful
-number for the pipeline. Per spec §8.6 a tuned result is by definition L2.
+**verdict** — in between, and strikingly balanced:
 
-*Targets.* The two best cells from the #E6 factorial, both
-`target_discrete` + **no masking**: obs `raw` (992.54) and obs `echelon`
-(993.09). Separated by 0.55 — inside the 1.57 floor — so tuning also asks
-whether they stay tied once each is given its own best hyperparameters.
-
-*Knobs — `--knobs all` (11).* learning_rate, gamma, gae_lambda, ent_coef,
-net_arch, n_steps, batch_size, n_epochs, vf_coef, clip_init, max_grad_norm.
-
-**gamma is included deliberately.** It is a PPO *training* knob, distinct from
-beta: beta fixes how the eval and every benchmark score `sum beta^t cost_t`,
-while gamma only shapes how far ahead the algorithm assigns credit during
-learning. Spec §8.2 permits `gamma < beta` as a logged escalation and forbids
-`gamma > beta`; `mdp_tuning --beta 0.95` enforces exactly that by sampling
-gamma in `(0.90, 0.95]`. The L1 default gamma = beta = 0.95 remains reachable.
-
-*Budget.* 20h wall clock. 2 studies x 4 workers, staggered 5 min; 2M steps per
-trial (the established budget); 512-seed trial scoring; `--n-trials 120` per
-study with `--timeout 72000` as the hard stop, whichever comes first. Warm start
-on: trial 0 is the L1 center, so the study can only improve on the L1 result.
-
-*Parallel-collapse mitigation.* TPE has no constant_liar, so workers joining a
-warm study can draw duplicate configs. Separate sqlite per study, staggered
-starts, and an explicit in-flight duplicate check after launch.
-
-*Pre-registered reads.* Floor = 1.57; **selection bias is expected** — each
-winner is chosen on its 512 tuning seeds, so the 8192-seed re-score will come in
-worse, and only the re-scored number is quotable.
-- Tuned beats L1 by > floor after re-scoring -> report the L2 gain and ship the
-  tuned artifact (spec: prefer the tuned artifact over retraining its config).
-- Within the floor -> **the derivation had already captured what was available
-  here**; that is a finding about the spec's §8.6 derivation, not a failure.
-
-*Run.* Both studies ran to the 20h stop: **258** complete trials (`raw`) and
-**260** (`echelon`), 8 workers, no failures. The parallel-collapse check found
-no duplicate configs — concurrent trials differed on the continuous knobs
-throughout — but the *structural* knobs collapsed to one value per study early
-(clip, n_steps, n_epochs, net_arch, batch_size), so the late search was a
-continuous-knob walk in one neighbourhood.
-
-*Converged early, and the tail bought nothing.* Best-ever appeared at trial
-**#85 of 258** (`raw`) and **#76 of 260** (`echelon`). The final nominal bests
-— #211 and #244 — improve the trial value by **0.005** and **0.022**, which at
-512 seeds is noise. Two thirds of the compute moved nothing.
-
-*Re-scored at the protocol layer (8192 CRN seeds, deterministic).* All four
-top artifacts were re-scored, not just the nominal winners:
-
-| arm | trial | trial value (512) | **@8192** | SE |
-|---|---|---|---|---|
-| `raw` | #85 | 996.109 | 989.0932 | ±1.19 |
-| `raw` | #211 | 996.104 | **989.0658** | ±1.19 |
-| `echelon` | #76 | 996.144 | 989.0916 | ±1.19 |
-| `echelon` | #244 | 996.122 | **989.0672** | ±1.19 |
-
-**All four land within 0.027 of each other**, against a per-arm SE of 1.19.
-Four independently-tuned configurations — different learning rates, rollout
-lengths, architectures, and two different observation modes — arrive at the
-same policy quality. The tune-layer ranking predicted the protocol-layer
-ranking *directionally* in both studies, but by margins that are themselves
-noise (paired z = +1.56 and +1.55).
-
-*The price of generality collapses.* Paired per-seed, at tuned settings:
-
-| pair | delta | paired SE | z |
+| head @ L1(4M) | raw | echelon | seed sd |
 |---|---|---|---|
-| `raw` #85 − `echelon` #76 | +0.0016 | 0.0206 | +0.08 |
-| `raw` #211 − `echelon` #244 | −0.0014 | 0.0123 | −0.11 |
+| hurdle-dgauss `a1` (atom + sigmoid) | **1001.74** | **1001.37** | 4.4 / 6.0 |
+| categorical `a0` | 1003.33 | 1002.53 | 1.0 / 2.2 |
+| `a3` (sigmoid, no atom) | 1018.59 | 1031.36 | 8.6 / 22.4 |
+| `a2` (affine, no atom) | 1040.84 | 1071.56 | 29.5 / 51.5 |
 
-Against **−0.55 ± 0.14** at L1. Given each branch its own best
-hyperparameters the point estimate falls ~400× toward zero.
+| paired contrast | raw | echelon |
+|---|---|---|
+| the atom (`a3` − `a1`) | **+16.84 ± 4.21** (z +4.0) | **+29.99 ± 10.34** (z +2.9) |
+| the parameterization (`a2` − `a3`) | **+22.25 ± 14.11** (z +1.6) | **+40.20 ± 25.99** (z +1.5) |
+| total (`a2` − `a1`, = the sum by construction) | +39.09 | +70.19 |
 
-**What that ± does and does not cover — corrected 2026-08-17 (operator review
-of A5).** These are **eval-paired** intervals only. Each tuned arm is a
-**single** training seed (42), where each L1 arm is a **two-seed mean**, so the
-training-seed uncertainty on the L2 delta is ≈ 1.57·√2 ≈ **2.2** — larger than
-L1's ≈ 1.57, not smaller. The tuned comparison therefore has a **100× tighter
-eval interval on a thinner seed design**. An earlier draft of this entry called
-it "the tier-2 bypass claim in its strongest form"; that conflated the two
-uncertainties and is withdrawn. The point estimate moving to zero is real and
-worth reporting; the *evidence* did not become 100× stronger.
+The split is the finding (the sum is an identity — same seeds, telescoping).
+Removing the atom costs 17–30 at matched parameterization; the affine `mu`
+costs another ~22–40 on top, though its z sits under 2 because `a2`'s own
+variance is the phenomenon being measured.
 
-The tier-2 bypass answer does not rest on this interval. It stands on three
-legs, and the seed-backed one is L1's:
+*Three readings, each with its scope stated.*
 
-1. **L1** — −0.55 ± 0.14 with two-seed arms, inside the measured 1.57 floor;
-2. **L2** — point estimate indistinguishable from zero, with four
-   independently-tuned artifacts (two per arm, different lr / rollout /
-   architecture) landing within 0.027 of one another;
-3. **the readback (#E8)** — the raw-trained policy reconstructs the reference
-   critical numbers exactly (IQR 0.0), mechanism evidence independent of both.
+1. **The atom helps in a domain with NO fixed cost** — against adi_flex LV1's
+   scope clause, which predicts it is only warranted by a genuine do-nothing
+   mass. z +4.0/+2.9, paired. Mechanism NOT established; the candidate story —
+   the gate is a second mode that absorbs the zero-ish states (endgame,
+   above-target, ~16% of decisions) so the Gaussian body's `mu` can serve the
+   ship-≈-demand regime without swinging — is a hypothesis for a probe, not a
+   claim. What IS claimed: the clause's prediction fails here in direction.
+2. **Seed variance orders by parameters-per-link**: 41 logits (sd 1–2) → 3
+   (4–6) → 2 sigmoid (9–22) → 2 affine (30–51). The pooling heads are the
+   HIGH-variance heads on this domain — the exact inverse of inv_single's
+   "the value is VARIANCE" — so that sibling claim does not transfer either.
+3. **The practical answer for this domain is the flat categorical.** The best
+   composite only ties it (#E5), every reduced head loses to it, and it has
+   the lowest variance. adi_flex MR9 ("a per-quantity categorical is the
+   choice that needs justifying") is measured here as backwards: the
+   categorical is the choice nothing beats.
 
-Making leg 2 seed-backed would take **two fresh training seeds per crowned
-config** (4 runs × 2M steps, no re-tuning) — worth doing only if the L2 number
-is ever quoted standalone. It is not required for the campaign's answer.
+*Caveats.* All 12 `a3` screens picked their best checkpoint at 100% of budget
+— the sigmoid variant is still climbing at 4M, so its cells may be modestly
+pessimistic and the atom contrast with them. `dgL2` (running) tunes `a2`; its
+early trials already refute the entropy-starvation story for `a2`'s wide-`tau`
+behaviour (starved-entropy trials score WORSE, 1103/1091) and confirm the
+cliff is gone (worst config 7646, a bad policy rather than the ship-nothing
+constant). The upstream naming proposal (held) gains this entry as evidence:
+the scope clause is not merely under-specified, it mis-predicts.
 
-*The gain over L1, stated with the instrument it actually has.* The crowned L1
-figures are **two-seed means** (`raw` 992.135 + 992.948 → 992.54; `echelon`
-992.054 + 994.131 → 993.09). Every tuned artifact is a **single** training seed
-(42). So the comparison is one seed against a two-seed mean, and its sd is not
-the 1.57 floor but ≈ √(1.57² + 1.57²/2) ≈ **1.92**:
-
-| branch | L1 (2-seed mean) | L2(hp) (1 seed) | gain | ≈ sigma |
-|---|---|---|---|---|
-| `raw` | 992.54 | 989.07 | **−3.47** | 1.8 |
-| `echelon` | 993.09 | 989.07 | **−4.02** | 2.1 |
-
-*Verdict — the pre-registered rule, honoured.* "Tuned beats L1 by > floor after
-re-scoring → report the L2 gain and ship the tuned artifact." 3.47 and 4.02
-both exceed 1.57, so **L2(hp) is crowned on both branches** and the tuned
-artifacts ship. Recorded caveats, neither of which reverses that:
-
-1. **The gain is ~2 sigma, not the ~2.2 the bare floor suggests**, because the
-   floor is a training-seed sd and this comparison mixes n=1 against n=2. The
-   pre-registration named the floor as the bar and the floor is cleared; the
-   sharper instrument is recorded here rather than applied retroactively.
-2. **Winner's curse is unquantified, and deliberately left so.** Each artifact
-   is a maximum over ~260 trials, so 989.07 is an honest measurement of *that
-   artifact* and an optimistic estimate of what re-running the search would
-   yield. Quantifying it would establish the tuning **procedure's** expected
-   value — a tier-3 quantity this campaign does not claim, and which no tier-1
-   or tier-2 answer depends on (a leaderboard score is a property of the
-   shipped artifact; selection bias does not touch it). A5 was queued for this
-   and is **closed unrun** — see the frontier.
-3. **The four-way tie is the more durable result.** Whichever artifact ships,
-   the finding that four independently-tuned configurations across two
-   representations converge to 989.07 ± 0.03 is not sensitive to which
-   trial won, and it is what makes (2) a bounded worry rather than an open one.
-
-*Instrument note, paid for once.* Reading the study bests (996.11 / 996.14)
-against the L1 protocol figures (992.54 / 993.09) says tuning made things
-worse, and that conclusion was drawn in this campaign before the re-score
-overturned it — with the INSTRUMENT NOTE at the top of this file already
-warning in bold that the two layers are not interchangeable. Proposed upstream
-as issue #25, accepted: §9.7's "never quoted" now reaches the trial layer and
-`mdp_tuning` prints the layer alongside its best value.
-- obs `raw` vs `echelon` re-checked at tuned settings: if they remain within the
-  floor, #E6's conclusion (the coordinates are worth nothing measurable) holds
-  under tuning too, which is the stronger version of the claim.
-
-*Status.* Launched 2026-08-16.
+**status** ✓ closed, **head ranking SUPERSEDED by [#E10](#E10)** (the
+categorical is beaten by `a2` once both are tuned; the decomposition stands).
+The board's question is answered at L1. The forward
+pointer it carried (`dgL2` decides whether tuning changes any of it) is
+**dead**: `dgL2` was one of the ten MAXIMIZE studies [#E9](#E9) stopped. The
+question it deferred is answered by [#E10](#E10), on the relaunched studies.
 
 <a id="E8"></a>
+### #E8  2026-09-19 — DIAGNOSIS: the swings are regime coupling in the location head; the atom is a pressure-relief valve, not a representation
 
-### #E8 — the readback: does a policy trained on raw stock recover echelon base-stock? (pre-registered)
+**reads** — [#E5](#E5), [#E7](#E7), the user's TensorBoard observation (cost
+goes down–up–down in every head except categorical and hurdle), and four
+probes on the trained artifacts and checkpoints.
 
-↑ [design tree](#MAP) — explains the `interpretation` node on the crowned raw leaf.
+**observed.**
 
-*Why.* The tier-2 **confirm** half. #E4/#E7 answered the *bypass* half — the
-echelon transform is not required — but not needing the coordinates is
-consistent with having found them and does not show it. This is the direct
-evidence. Full write-up in `INTERPRET.md`.
+1. *The swings are real, localized, and predictive.* Regressions >25% above
+   the running minimum occur in **5 of 12 atomless-head runs and 0 of 24**
+   categorical/hurdle runs, all between 0.7–1.7M of 4M, all dying out before
+   the end. A per-run swing burden (integrated excess cost) correlates
+   **r = +0.65** with the final @8192 across the 24 atomless runs; the
+   zero-burden `a2` run confirms at 1005.1 — hurdle territory. The user's
+   reading stands: **the swings are undertraining** — [#E7](#E7)'s contrasts
+   are substantially mediated by swing incidence, not converged capability.
+2. *No optimizer anomaly.* Through the deepest dip (dg-sigmoid raw s3, 49%),
+   `approx_kl` sits flat at ~0.005, clip fraction flat, entropy flat. The
+   policy walks smoothly uphill in true cost for ~400k steps — the advantage
+   signal itself pointed uphill.
+3. *Checkpoint anatomy.* Into the dip, `mu_TOP` — the one UNCLIPPED action —
+   is dragged 5.1 → 3.1 (a starved top link starves the chain), then crawls
+   back 3.1 → 7.4 over **3.2M steps, still short of ~10 at budget end**:
+   recovery is rate-limited by the sigmoid's saturated tail, the edge-cliff
+   property `a3` twinned deliberately, biting in training dynamics rather
+   than at a boundary bin. The hurdle control's `mu_TOP` sits at 9.4–11 from
+   the first checkpoint and never moves. The swinging run's obs-variance
+   drift is 4–5× the control's — instability makes wilder states, the
+   normalizer chases them, the shifted inputs move a saturating head:
+   a feedback loop, not the root cause.
+4. *The valve probe (the discriminator).* Sweeping one mid-episode state's
+   stock ×0.25…×8 and reading the final artifacts: `a1`'s gate is **monotone
+   in stock** (Spearman +0.77/+0.94/+1.00 per link), snapping to w ≈ 1 under
+   overstock **while its `mu` stays parked** (top link spans only 3.6–6.2
+   across a 32× stock range). `a3`'s `mu` must answer alone: forced monotone
+   (−1.00 on every link), down to 0.3–2.6 at ×8 — `m ≈ −5`, deep in the
+   saturated tail. On its own converged trajectory `a1` runs w ≈ 0.03; on
+   overstocked states it runs 0.3–1.0 — **the gate serves states the final
+   policy rarely visits.**
 
-*Subject.* The `L2(hp)` raw winner (trial 211, 989.0658 @8192, 100.69% of the
-bar). 400 policy-own episodes, 20,000 decisions; off-policy grids were declined
-deliberately — they probe states no policy visits.
+**root cause.** A two-parameter location head **couples state regimes**
+through one shared `mu(obs)`. Early training is transiently overstocked
+(wild init shipping); those states demand near-zero shipping, and serving
+that demand drags `mu` into a zone from which recovery is slow — saturated
+tail for the sigmoid (one long dip), unbounded oscillation for the affine
+(recurring dips). The hurdle head's atom is a **pressure-relief valve**: a
+bounded, dedicated parameter absorbs the transient do-nothing demand, so
+`mu` never leaves its working range. The categorical is immune for the
+expressiveness reason — 41 per-state logits can suppress shipping in
+overstocked states without dragging any shared location. **Not an
+implementation bug**: `a2`/`a3` are faithful; the pathology is structural.
 
-*Pre-registered read (spec §14).* Small spread in the implied order-up-to level
-where the availability clip is slack ⇒ base-stock; invariance to how a fixed
-echelon position is split across installations ⇒ the *echelon* aggregate is
-what the policy keys on, not raw components.
+**consequences.**
 
-*Observed.* Three measurements, all positive, and the first is unusually clean:
+- [#E7](#E7) is REINTERPRETED, not withdrawn: the atom's +17/+30 is
+  *training robustness through a transient* — an optimization device — not
+  converged capability. The converged ordering is unresolved, and extending
+  to 8M was considered and REJECTED by decision: it would cover up the root
+  cause rather than expose it (this entry is what exposing it looks like).
+- The sibling scope clause ("zero-inflate only when the problem has a genuine
+  do-nothing mass") needs its condition widened: mass demanded **by the
+  training path counts** — inventory domains manufacture an overstock
+  transient generically, even when the optimum this frame's policies play
+  contains no meaningful zeros (none play the endgame; β⁴⁴ ≈ 0.10). The held
+  upstream proposal gains this as its sharpest item.
+- `dgL2` (running) now carries a prediction: tuning cannot remove a
+  structural coupling, but it can damp the transient (smaller lr, larger
+  n_steps, milder early updates), so the tuned `a2` should close much of the
+  gap without ever matching the categorical's stability.
 
-| echelon | fitted ȳ | IQR | DP ȳ | exact agreement | invariance spread |
-|---|---|---|---|---|---|
-| 1 | 37.0 | **0.0** | 37 | 95.4% | 0.75 |
-| 2 | 59.0 | **0.0** | 59 | 90.4% | 0.43 |
-| 3 | 79.0 | **0.0** | 79 | 84.0% | **0.00** |
-
-Where the clip is slack the implied target takes **exactly one value per
-echelon**, and it is the paper's critical number to the unit — not a
-distribution around it. The offset sweep confirms the constants sit at an
-optimum: +2 costs +2.08…+3.93 (z 12.8–17.6), rising to +41.14 at echelon 3,
-offset +8.
-
-*Reading.* **Confirmed.** The policy is a base-stock rule on echelon
-aggregates with Clark & Scarf's own numbers, learned from raw installation
-stock. Agreement degrades up the chain (95.4% → 84.0%) with a **positive**
-bias (+0.41 → +1.38) — it over-orders upstream, the cheap direction of error
-here, and that residual is where the remaining 6.71 gap to the bar lives.
-
-Echelon 1's invariance residual (0.75) is **not** counted against the claim:
-level 1 faces demand this period, so its on-hand-versus-in-transit split
-genuinely matters in a way echelon position does not capture. A policy
-perfectly invariant there would be discarding information it should use. The
-claim is bounded accordingly — invariance established at echelons 2–3,
-approximate at echelon 1.
-
-*What the two tier-2 halves compose into.* They could have come apart: a
-bypass success with a structurally unrecognisable policy would read "the
-transform is unnecessary and we cannot say what replaced it". Instead — **the
-transform is not needed as an input because the network reconstructs it, and
-having reconstructed it, it applies the paper's own critical numbers.**
-
-*Limits, carried into `INTERPRET.md`.* One artifact, one training seed (42),
-one cell; the figure is a single period while the IQR-0 result spans all; the
-offset sweep tested only positive offsets, so it shows the targets are not too
-low rather than not too high (moot, since they equal a verified-optimal DP's);
-and the 6.71 gap is described, not explained — whether the disagreement
-concentrates in clip-bound states or near horizon ends is unmeasured.
-
-*Artifacts.* `readback.json` beside the model; `figures/policy_n3_l2_p09_raw_t25.svg`
-(committed) and an interactive copy under `results/n3_l2_p09/figures/`.
-Probes: `clark_scarf_policy_probe.py`, `clark_scarf_plot_policy.py`.
+**status** ✓ diagnosis closed — no new arms; the record is the deliverable.
 
 <a id="E9"></a>
+### #E9  2026-09-20 — every optuna study this board launched was MAXIMIZING the cost
 
-### #E9 — the `model.boundary` gate rejects a width that IS the design value
+**reads** — [#E6](#E6), [#E7](#E7), [#E8](#E8), the frontier's A5/A6, and the
+optuna storage itself.
 
-*(Design tree: [MAP](#MAP) — infrastructure, no node; this is a host finding,
-not a design point on this domain's tree.)*
+**observed.** `mdp_tuning` defaults to `direction=maximize` (the reward
+convention) with an opt-in `--minimize` flag, and every launch on this board
+omitted it while tuning `cost_total_mean` — **all ten studies** (`ordL2`,
+`ordL2b`, `dgL2`, `hurL2`, `catL2`, both arms each) ran `MAXIMIZE`, confirmed
+in `study_directions`. After the ~10 random startup trials, TPE actively
+sought the worst configurations: `catL2_raw`'s late trials cluster at the
+catastrophic corner and its exit summary names trial 17 (**16170**) as the
+winner. A second silent default compounded it: `--n-trials` defaults to **25
+per worker**, so the 72–80 h wall budgets never governed — studies "completed"
+at ~25 trials/worker. The old board's `hp2`/`hp4` are clean (`MINIMIZE`
+confirmed in their DBs); the inversion is entirely this board's launches — the
+operator's error, not the tool's, though a tool that auto-selects a metric
+named `cost_*` and silently maximizes it invites exactly this and the held
+upstream proposal pile gains a note.
 
-*Trigger.* [F7](#IR-CHANGELOG) named `leadtime` at a width site
-(`length: "leadtime"` on every `pipe_k`), which is what F6 said was missing.
-`mdp_conformance clark_scarf` then went from 16/21 no-fail to **15/21**:
+**blast radius, itemized.**
 
-```
-[FAIL] model.boundary   leadtime=2 (tier-2 obs-dim (sets length of state 'pipe_4'))
-                        is outrun by a designed 3
-```
+- **[#E6](#E6)'s "49% of the space collapses" framing is WITHDRAWN.** The
+  sampler was *climbing toward* the ship-nothing constant — 22501.15 is the
+  maximum it could find — so the 28/57 fraction measures the sampler's
+  success, not the space. What SURVIVES of #E6 is everything probe-based and
+  sampler-independent: the collapse exists, the init geometry
+  (`w₀ = 0.5`, the ~3.7 logit-unit argmax gate), the trained-`w` trajectories,
+  and the deterministic-eval cliff. The mechanism stands; the fraction goes.
+- **"Nothing beats trial 0" in every study is explained**: the warm-started
+  centre was the only good configuration the sampler ever visited on purpose.
+- **[#E8](#E8)'s `dgL2` prediction never got a test** — re-armed on the new
+  studies below.
+- [#E7](#E7) is untouched (ladder runs, no tuner involved). The three-way
+  directive (A6) is unmet, not answered.
 
-*Verdict: the gate is wrong, the rendering is right — and the gate is wrong in
-BOTH directions.* Gate 3 reads:
+**plan.** All maximize studies stopped; kept in the storage as this entry's
+evidence. Relaunched under new names with `--minimize --n-trials 999`
+(wall-clock governs), directions verified `MINIMIZE` in the DB before
+trusting anything: `dgm_{raw,echelon}` (a2, 5M/80 h, 2 workers, seeds 42/43),
+`hurm_{raw,echelon}` (a1, 4M/72 h), `catm_{raw,echelon}` (a0, 4M/72 h).
+Winners get the §9.7 screen + @8192 confirm. A trap for the record: **check
+`study_directions` before trusting any study on a minimize domain** — the
+inverted studies looked healthy on every dashboard (trials completing, no
+failures, plausible centre values) and were revealed only by reading the exit
+summary's "winner" against the DB.
 
-```python
-for cname, role in widths.items():
-    vals = designed(cname)                       # <- the SAME constant
-    cap  = constants[cname].value if cname in constants else None
-    if isinstance(cap, (int, float)) and vals and max(vals) > cap:
-        problems.append(f"{cname}={cap} ({role}) is outrun by a designed {max(vals)}")
-```
-
-`cap` and `vals` are drawn from **the same constant** — `cap` is its base
-value, `vals` its base plus every instance override of it. So the comparison
-is not "does the cap cover the quantity it caps?" but "does this constant's
-base value equal its own maximum override?" Two consequences, both verified:
-
-**False positive — the pattern v0.9.0 recommends fails.** When the width
-constant *is* the per-instance design value (the width names the quantity;
-each instance renders exactly what it selects), the check compares the base
-against its own overrides and FAILs whenever the base is not the largest.
-`leadtime` is 2 at base, overridden to 1, 2, 3 → `3 > 2`, FAIL. Nothing is out
-of bounds: the `L = 3` instance's pipeline is three slots long, as intended.
-
-**False negative — a real cap overrun is invisible.** `n_levels_max = 4` is a
-genuine cap, and the quantity it caps is a *different* constant,
-`n_echelons`. Gate 3 never relates them. Adding an instance
-`{"n_echelons": 9}` against `N_LEVELS_MAX = 4` — the study flagrantly
-outrunning its own rendering, precisely the defect the docstring names — is
-**not reported at all**. The only complaint remains the false positive above.
-`designed("n_levels_max")` is `[4]`, `cap` is `4`, `4 > 4` is false, pass.
-
-So gate 3 currently forbids the one thing v0.9.0 asks for and permits the one
-thing it was written to forbid. It has its comparison wired to the wrong pair.
-
-*Not a quirk of this domain — reproduced on the shipped reference example.*
-The check skips any domain without a model layer, and **no shipped example
-declares one**, so the path is unexercised upstream. Adding a two-line
-`mdp.model` to a scratch copy of `examples/inv_single` is enough:
-
-```
-[FAIL] model.boundary   pipeline_len=1 (tier-2 obs-dim (sets length of state
-                        'pipeline')) is outrun by a designed 6
-```
-
-`inv_single` is the example whose `pipeline_len` pattern F7 was rewritten to
-copy. It would fail its own gate on the day it declares a model. (The probe
-ran on a scratch copy; the shipped example is untouched.)
-
-*Why `horizon_T` does not fail.* It is a width via `horizon.T` and is
-overridden per instance exactly the same way — 50 at base, 4 and 12 in the
-verify instances. It passes only because the base happens to be the largest
-value designed. Add an instance with `horizon_T = 60` and it fails too. The
-gate's current pass on this domain's other widths is luck, not evidence.
-
-*The fix has two halves, because the two failures are.* For the false
-positive: a width that names its own design value cannot be "outrun" by
-construction, since the width is resolved per instance — that case should
-pass, and the IR already carries the signal to tell it apart (a swept design
-value is `axis`-tagged, as `leadtime` and `pipeline_len` are; a cap is not, as
-`n_levels_max` is not). For the false negative: a cap needs to be compared
-against **the constant it caps**, which `_axis_tiers` knows — it derived the
-role string `"sets length of state 'pipe_4'"`, so the pairing is available at
-the point of the check and is simply not used.
-
-*Disposition.* Left FAILing. Working around it would mean reintroducing a cap
-constant and padding every short instance — undoing F7 to satisfy a check that
-F7 revealed to be wrong. Recorded here, filed upstream, and re-checked on the
-next pin bump.
-
-*Cost of the status quo.* One red gate on this campaign, and a latent one on
-`inv_single` the moment it adopts v0.9.0's headline feature.
+**status** ✓ recorded — the corrected three-way is A6's live instrument.
 
 <a id="E10"></a>
+### #E10  2026-09-24 — A6's tuned three-way: the coordinate axis is a null for the two stronger heads and worth ~4.8 to the weakest, and the head ordering is confounded with budget
 
-### #E10 — three v0.9.2 features shipped; two do not reach the case
+**reads** — [#E7](#E7), [#E8](#E8), [#E9](#E9), the frontier's A5/A6, and the
+six `--minimize` studies' winners re-scored on the protocol block.
 
-*(Design tree: [MAP](#MAP) — infrastructure, no node.)*
+**the instrument.** Six studies, one per (head × observation arm), warm-started
+at the L1 centre, `gamma`/`norm_obs`/`norm_reward` pinned, 11 knobs searched,
+`--n-trials 999` with wall clock and an 80-trial cap as the bounds. Completed
+trials: `dgm_raw` **80**, `dgm_echelon` **72**, `catm_raw` **84**,
+`catm_echelon` **96**, `hurm_raw` **60**, `hurm_echelon` **78**.
 
-The post-F7 round ([#30–#33](#UPSTREAM)) was filed to remove the last
-hardcoding from this IR: one `pipe` matrix instead of four vectors, one `ship`
-vector instead of four scalars, `n_levels_max` deleted. All four were accepted
-and shipped as v0.9.2 within the hour. Attempting the rewrite found that two
-of the three enabling features stop short of the case that motivated them.
+**Tuning has no screen layer — that is the training-run protocol.** §9.7's
+three layers (≈20 checkpoints → selection block → protocol block) rank the
+*checkpoints of one run*. A tuning trial is already ranked on its terminal
+model by the trial layer (500 seeds, the tuner's own block), so the harvest is
+a straight re-score of the trial winner on the protocol block, which is what
+`mdp_tuning`'s own exit line instructs: *"best trial value … is a TRIAL-LAYER
+score, 500 seeds — not comparable to a protocol number (§9.7)."* Each study's
+**top-3** trials were confirmed rather than its top-1, because the trial
+layer's SE (~5) cannot separate leaders sitting under 1.5 units apart.
 
-**#32 — comprehensions bind in expressions, not in statements.** The fix
-subtracts `_comprehension_targets(expr)`, which parses `mode="eval"` and, on
-`SyntaxError`, returns the empty set under the comment *"statement-shaped
-exprs (`x += 1`) and other non-eval forms never carry comprehension bindings
-this check would miss"*. They do:
+**observed.** Rank-1 confirms, 8192 CRN seeds at offset 0, deterministic:
 
-| expression | binds | validates |
-|---|---|---|
-| `[pipe[k] for k in range(n)]` | `['k']` | PASS |
-| `[x + y for x, y in pairs]` | `['x','y']` | PASS |
-| `a = [pipe[k] for k in range(n)]` | `[]` | **FAIL `['k']`** |
-| `total += sum([pipe[k][0] for k in range(n)])` | `[]` | **FAIL `['k']`** |
+| head | budget | `raw` | `echelon` |
+|---|---|---|---|
+| `a2` dgauss | **5M** | **989.62 ± 1.20** (100.74%) | **989.23 ± 1.30** (100.70%) |
+| `a0` categorical | 4M | 991.87 ± 1.13 (100.97%) | 992.95 ± 1.19 (101.08%) |
+| `a1` hurdle | 4M | 998.49 ± 1.13 (101.64%) | 993.73 ± 1.20 (101.16%) |
 
-Every entry in `mdp.dynamics.transitions[].updates` is a statement, so the fix
-lands everywhere except the one place the enumeration it targeted lives.
-Adding an `exec`-mode fallback to the same `try` binds all four.
+**the coordinate axis (raw − echelon), the campaign's own question.**
 
-**#33 — `dim` takes a symbol, but nothing generates a vector action.**
-`Decision.dim` accepts `"n_echelons"` and `MdpBlock.decision_dim()` resolves
-it, but `IrInterpreter._random_policy` still emits one scalar per decision:
+| head | Δ | SE | z | reading |
+|---|---|---|---|---|
+| `a2` dgauss | +0.39 | 1.77 | 0.22 | null |
+| `a0` categorical | −1.08 | 1.64 | 0.66 | null |
+| `a1` hurdle | **+4.76** | 1.65 | **2.89** | echelon better |
 
-```python
-out[d.name] = float(rng.uniform(lo, hi))      # dim not consulted
-```
+Both arms share a budget within each head, so **this axis is unconfounded**.
+Two heads are indifferent to the coordinates and point in opposite directions
+from each other, which is what a genuine null looks like rather than a small
+real effect; the third — the weakest head, and the one [#E8](#E8) diagnosed as
+coupling state regimes through a shared location — gains from being handed the
+transform. The interaction is the finding: **the value of the echelon
+rendering is not a property of the domain alone, it is conditional on whether
+the head can learn the transform internally.** That refines, and does not
+overturn, [#E3](#E3)'s L1 tie (−0.93 ± 3.28): the tie was measured on `a1`,
+where this board now reads a 4.76 gap, so the two disagree — and the L1 reading
+is the one taken at an untuned centre, on 6 seeds per arm.
 
-Verified by setting `dim = "n_echelons"` in memory and calling it — a scalar
-comes back, so `ship[k]` in any dynamics rule raises on a float, and the
-differential (which drives the random policy) cannot exercise a vector
-decision at all.
+**the head axis is CONFOUNDED with budget and cannot be read as it stands.**
+`dgm_*` ran at 5M steps, `catm_*` and `hurm_*` at 4M — a 25% difference in the
+direction of the result, on a board where [#E5](#E5) measured 2M→4M as worth
+13–24 units per cell. The comparison that survives is the equal-budget one:
 
-**#31 works** — `length: ["n_echelons", "leadtime"]` is accepted and both axes
-become width references. It is also useless on its own here: the collapse it
-enables needs #32's statements to write the quantified dynamics.
+- at 4M, **categorical beats hurdle** on `raw` (+6.62, SE 1.60, z 4.14) and
+  ties it on `echelon` (+0.78, SE 1.68, z 0.46);
+- dgauss leads both at 5M. The extra million steps are **bounded, not
+  unbounded**: [#E5](#E5) measured the last fifth of a 4M run buying −2.1
+  (`raw`) / −2.8 (`echelon`), so a further 1M plausibly buys single digits at
+  the low end of that decay, not nine units. On that bound the `raw` lead
+  (8.87) likely survives the confound and the `echelon` lead (4.50) may not —
+  but a bound taken from another head's decay curve is an argument, not a
+  measurement, and the equal-budget rerun in the plan is what settles it.
 
-**RESOLVED at v0.9.3.** All four were fixed (#34–#37) and the collapse landed
-as [F9](#IR-CHANGELOG) — but the adoption found a **fifth** site of the same
-`dim` defect, in a different module: `mdp_ir.laws::_fixed_decisions` builds
-one scalar per decision, so all four policy laws fail with `TypeError: 'float'
-object is not subscriptable`. #36 fixed the interpreter's two sites;
-`laws.py` was missed. Patched in-process it gives 8/9, zero FAILs. A sweep for
-`decision_bounds`/`decision_dim` across `mdp_ir`, `mdp_conformance`,
-`mdp_gates` and `mdp_tuning` shows this is the **last** one — the interpreter's
-two are fixed and no other module builds decision values.
+**THE HEAD ORDERING REVERSES BETWEEN L1 AND L2 — the largest effect on this
+board.** Set against [#E7](#E7)'s L1(4M) table, tuning does not shift the heads
+by a common amount; it reorders them outright:
 
-*The collapsed IR exists and validates — the blocker is one line.* Built in
-full and checked against two harnesses. Same file:
+| head | L1(4M) raw / echelon | tuned raw / echelon | Δ raw | Δ echelon |
+|---|---|---|---|---|
+| `a2` dgauss | 1040.84 / 1071.56 — **worst untuned** | 989.62 / 989.23 — **best tuned** | **−51.22** | **−82.33** |
+| `a0` categorical | 1003.33 / 1002.53 | 991.87 / 992.95 | −11.46 | −9.58 |
+| `a1` hurdle | 1001.74 / 1001.37 — **best untuned** | 998.49 / 993.73 — **worst tuned** | −3.25 | −7.64 |
 
-| harness | result |
-|---|---|
-| v0.9.2 as shipped | `FAIL … unresolved identifier(s) ['k']`, first dynamics statement |
-| v0.9.2 + an `exec`-mode fallback in `_comprehension_targets` | **validates**; states `['period', 'stock', 'pipe']`, `pipe` length `['n_echelons', 'leadtime']` |
+The untuned ordering `a1 < a0 < a3 < a2` inverts to `a2 < a0 < a1`. This is
+**not** the budget confound: 51–82 units is an order of magnitude beyond the
+few units the 4M→5M step can carry on [#E5](#E5)'s own decay measurement.
 
-The rendering it produces, recorded here so the work survives the scratch dir:
+Two consequences, both larger than anything in the tables above:
 
-```
-state:    pipe   length ["n_echelons", "leadtime"]      (pipe_1..pipe_4 gone)
-initial:  pipe = [[demand_mean] * leadtime for k in range(n_echelons)]
+- **[#E7](#E7)'s "the categorical is the head nothing beats here" was an
+  UNTUNED verdict and does not survive.** At a tuned centre `a0` is beaten by
+  `a2` on both arms. [#E7](#E7)'s *decomposition* is untouched — the atom is
+  still worth +16.84/+29.99 and the parameterization +22.25/+40.20 **at L1** —
+  but its head ranking was a statement about one centre, read as a statement
+  about heads.
+- **Tunability is a property of the head, and it is not the same property as
+  untuned quality.** `a1`'s atom is what [#E8](#E8) called a pressure-relief
+  valve: it buys a good policy from a bad centre, which is exactly why it wins
+  untuned and gains least from tuning. `a2` has no such device and pays for it
+  untuned — then converts a tuned centre into the board's best number. A head
+  screened at its default centre is screened on the wrong axis, which is the
+  same error [#E4](#E4) made with budget, and the same one the previous
+  board's #E13 made with a one-knob flip off a tuned winner.
 
-[A] arrived = [pipe[k][0] for k in range(n_echelons)] + [0] * (4 - n_echelons)
-    stock   = [stock[k] + pipe[k][0] for k in range(n_echelons)] + stock[n_echelons:]
-    pipe    = [pipe[k][1:] + [0] for k in range(n_echelons)]
+**what this does NOT establish.** Every SE above is the eval SE across 8192
+scoring seeds of **one artifact**; it contains no training-seed variance. The
+right floor is [#E5](#E5)'s, not the off-tree register's: at 4M the within-cell
+seed sd is **0.97–5.97** (the register's ~8 is the budget-inflated 2M figure,
+corrected there on 2026-09-24). A difference between two single runs therefore
+carries an implied SE of **1.4–8.4** depending on the cell, before the eval SE
+is added — a band wide enough that it does not settle even the 8.87 gap
+(z between ~1.1 and ~6 across that range) and narrow enough that it might. The
+comparison is indeterminate against seed noise, which is a different and more
+honest statement than either "separated" or "not separated". A tuned winner is
+a selected point rather than a random seed draw, which narrows the spread by an
+unmeasured amount; "unmeasured" is the operative word. **The defensible claim
+is the ORDERING, which replicates across two independent arms** (dgauss <
+categorical ≤ hurdle on both) — not any single margin, and the replication is
+what the seed retrain in the plan below is for.
 
-[S] ship  = [ship_1, ship_2, ship_3, ship_4]
-    a     = [ship[k] if k == n_echelons - 1 else min(ship[k], stock[k + 1])
-             for k in range(n_echelons)]                 # top link: outside supplier, unclipped
-    stock = [stock[k] - (a[k - 1] if k >= 1 else 0) for k in range(n_echelons)] + stock[n_echelons:]
-    shipped = a + [0] * (4 - n_echelons)
-    pipe  = [pipe[k][:leadtime - 1] + [pipe[k][leadtime - 1] + a[k]] for k in range(n_echelons)]
+**traps, for the record.**
 
-holding  = h_install[0] * max(0, stock[0])
-         + sum([h_install[k] * stock[k] for k in range(1, n_echelons)])
-         + sum([(h_install[k + 1] if k + 1 < n_echelons else 0.0) * sum(pipe[k])
-                for k in range(n_echelons)])
-shipping = sum([c_ship[k] * shipped[k] for k in range(n_echelons)])
-conservation = close(sum(stock[0:n_echelons]) + sum(sum(pipe, [])), …)
-```
+- **A tuning artifact self-labels `L1`.** `--level` is a declared flag with
+  `choices=["L0","L1"]` and `mdp_tuning` never passes it, so every trial
+  defaults to L1: the run name reads `lvlL1` and the confirm TSV's `arm`
+  column reads `ppo_raw_ship_discrete_L1` for what is an L2(hp) artifact. The
+  flag cannot express L2 at all. The knobs are still in the run name, so the
+  directory is unambiguous — but `arm` is the leaderboard join key.
+- **Trial counts are unequal (60–96) and a tuner's best is a maximum over
+  trials**, so the count flatters. It does not explain the ordering here (the
+  highest-count cell, `catm_echelon` at 96, is not the winner), but it
+  handicaps `hurm_raw` specifically, which has the fewest and the worst score.
+- **Rank-1 preservation was 6/6, full monotonicity 4/6.** Every study's
+  trial-layer rank-1 also won its confirm layer, so no quoted number is a
+  max-over-3 — each was pre-registered by the cheap selector. Ranks 2–3 swapped
+  in `dgm_echelon` and `catm_raw`. Confirms sit uniformly 5–7 units below trial
+  values: a block-and-size shift, not noise.
+- **`dgm_echelon` was not converged.** Its winner (trial #70) landed in the
+  final hours, after the study's best had sat at 998.41 — a 3.3-unit trial-layer
+  jump at the very end, with the wall arriving at 72 trials. 989.23 is a floor
+  on that cell, not its ceiling.
 
-Two details worth keeping. The holding rule's `if k + 1 < n_echelons else 0.0`
-is not a fudge — in-transit stock is charged at the level **above** its
-destination (Assumption 3), and above the top installation there is no level,
-because those units are on order from the outside supplier and in no echelon's
-stock. It reproduces the enumerated form's numbers on every chain length.
-And `conservation` uses `sum(sum(pipe, []))` rather than a comprehension
-because the invariant path strips `prev.<name>` *before* handing the string to
-the target parser, leaving `sum( [0:n_echelons])` — unparseable, so the parse
-returns no bindings. A **third** variant of the same defect, and the reason a
-fix should be tested on invariants and not only on dynamics.
+**the winning configurations.** Written out rather than pointed at: the run
+directories and the optuna storage both live under `results/`, which does not
+travel with the project, so a path is not a citation. All six are `sc0` +
+`ship_discrete` + seed 42, with `gamma` (= `beta`), `norm_obs` and `norm_reward`
+pinned and the remaining 11 knobs searched. `net_arch` is `net_depth` layers of
+`2^log2_net_width`; `lr_final = lr/10` and `clip_final = clip_init/4` by the
+§8.6 derivation; `gae_lambda = 1 − one_minus_gae_lambda`.
 
-*Still genuinely blocked: the decision side.* `ship = [ship_1, ship_2, ship_3,
-ship_4]` above is the surviving enumeration, and it cannot go until
-`_random_policy` emits vectors (#33's gap). So the collapse lands in two
-moves, not one — and `n_levels_max` survives the first.
+| knob | `dgauss` raw | `dgauss` ech | `categ` raw | `categ` ech | `ordinal` raw | `ordinal` ech |
+|---|---|---|---|---|---|---|
+| steps | 5M | 5M | 4M | 4M | 4M | 4M |
+| learning_rate | 1.11e-4 | 8.80e-4 | 3.77e-4 | 1.237e-3 | 1.14e-4 | 5.7e-5 |
+| n_steps | 256 | 2048 | 2048 | 2048 | 2048 | 2048 |
+| batch_size | 256 | 64 | 128 | 256 | 64 | 32 |
+| n_epochs | 4 | 4 | 10 | 10 | 10 | 20 |
+| gae_lambda | 0.8013 | 0.8290 | 0.8179 | 0.8580 | 0.9835 | 0.9054 |
+| clip_init | 0.1 | 0.2 | 0.2 | 0.2 | 0.4 | 0.4 |
+| ent_coef | ~0 | 7e-6 | 7.24e-3 | 8.96e-2 | ~0 | 3e-6 |
+| vf_coef | 0.782 | 0.629 | 0.635 | 0.395 | 0.555 | 0.895 |
+| max_grad_norm | 0.3 | 5.0 | 5.0 | 5.0 | 1.0 | 5.0 |
+| net_arch | 256x4 | 64x2 | 32x4 | 32x3 | 32x4 | 32x3 |
+| normalize_advantage | True | True | **False** | True | True | True |
 
-*Disposition.* The three-way collapse is **deferred, not abandoned**. Doing it
-half-way — one matrix with enumerated per-row updates — would keep both the
-enumeration and `n_levels_max` while moving `structural` twice, so the whole
-move waits on two one-line fixes. What F8 adopted instead is the part that is
-complete and will not be redone: `stochastic` and the grouped layout.
+Two things are visible here that no single score shows. **The two `dgauss`
+winners disagree on nearly every knob** — 1.11e-4 vs 8.8e-4 learning rate,
+256 vs 2048 `n_steps`, 256x4 vs 64x2 `net_arch` — yet land 0.39 apart. That is
+a flat optimum, and it is the same message as the coordinate null: the cell
+does not care. **The `ordinal` winners are the only pair that keeps
+`clip_init` at 0.4 and drives `ent_coef` to zero**, i.e. the tuner's answer to
+that head was to stop it exploring — consistent with [#E8](#E8)'s reading that
+its atom already supplies the exploration this domain needs.
 
-*A third defect, found by adopting the layout.* `mdp_ir.differential`'s
-`--all-instances` reads `raw["mdp"]["scenario"]` from the JSON, which the
-grouped layout does not have, so it silently sweeps **only the base
-instance** — prints one `MATCH`, exits 0. The covering-set run collapses from
-11 instances to 1 with no signal. `ungroup_mdp` is in the same package. Driven
-per-instance the differential still MATCHes 10/10 + base, and this domain's
-`pytest` is unaffected because it parametrizes over instances itself.
+**no id is minted and no bundle is crowned.** §13.2 mints on adoption, and
+adoption needs a decision-grade number: this one is a single artifact per cell
+against a seed floor of ~6 ([#E5](#E5)), with the head axis confounded. The `h` axis stays
+at its origin.
+
+**plan.** Two runs settle what is left, and they are cheap next to the six
+studies that produced the table:
+
+1. **Re-tune, or re-train, at ONE budget.** Either re-score the two dgauss
+   winners at 4M or extend the four 4M winners to 5M. Until then the head axis
+   has no reading.
+2. **Multi-seed retrain of the rank-1 winners, 4–6 seeds each.** This is the
+   only thing that converts any margin above into a real one; it is also the
+   instrument [#E3](#E3) already used, so the two boards would become
+   comparable.
+
+**status** ▶ open — the coordinate axis is answered (null for `a0`/`a2`,
++4.76 for `a1`); the head axis is measured but confounded, and A6's directive
+is met in procedure, not yet in verdict.
+
+<a id="E11"></a>
+### #E11  2026-09-24 — the readback: two echelons implement Clark & Scarf's rule, the retailer never stops ordering — and the first version of this entry was scored on unnormalized observations
+
+**reads** — [#E10](#E10)'s two tuned winners, the IR's `confirm` stance,
+`clark_scarf_policy_probe.py` and `clark_scarf_plot_policy.py --sweep`.
+
+**why now.** `mdp_conformance research.deliverables` FAILed the domain: a
+declared `confirm` stance owes the spec §14 readback and `INTERPRET.md` did not
+exist. The gate was right — the stance had been open since the board opened.
+
+**RETRACTED AND REPLACED, same day, twice.** Both retractions are the entry's
+most useful content, so they lead it.
+
+- **The numbers were wrong.** `_load_policy` looked only for
+  `vecnormalize.pkl`; every run since §9.7's machinery was removed writes
+  `vecnormalize_final.pkl`. It found neither, set `vn = None`, and read both
+  nets back on **unnormalized observations they never saw in training**. The
+  first version of this entry reported "found the coordinates, not the rule" —
+  a well-formed description of a policy that was never trained. This is the
+  [#E1](#E1) silent-corruption class, in the one consumer that had not been
+  given the fallback-and-refuse contract. The probe now falls back and
+  **refuses** when the args record `norm_obs=True` and no normalizer is found.
+- **The instrument was wrong.** The first figures read the policy off its own
+  trajectories, where the availability clip binds on **~2/3** of the lower
+  echelons' decisions — so they showed execution, not the rule. The clip is a
+  property of the upstream installation, not of the ordering policy. Replaced by
+  an **enumerated sweep**: one synthetic state per input, queried
+  deterministically, source raised past the largest shippable quantity, each
+  echelon swept over its own window with the critical number at the right third.
+
+**the instrument.** Enumerate the input, read the output — nothing to do with
+training or eval draws. Each curve holds the rest of the chain at the DP's own
+optimum and varies only the echelon of interest; `u_k` is a cumulative sum, so
+that convention is a choice and is stated. An earlier convention that put the
+whole echelon position on level k and emptied everything below produced
+non-monotone curves (for the top echelon it emptied the entire downstream) and
+is recorded in the probe's docstring so it is not re-invented.
+
+**Echelon STOCK is invariant to the decision — measured, not argued.** Over 1500
+decisions the shipment's effect on echelon stock is exactly **0.000000** at
+every level: shipping moves goods within an echelon, never across one. So a
+before/after plot in stock coordinates is three 45° lines, and the readback's
+axis must be echelon **position**.
+
+**observed**, DP critical numbers **37 / 59 / 79** at mid-horizon:
+
+| | ech 1 | ech 2 | ech 3 |
+|---|---|---|---|
+| `raw` arm stops ordering at | **never** (floor 5 units to u=148) | **52** | **78** |
+| `echelon` arm stops ordering at | **never** (floor 2 to u=148) | **never** (floor 1 to u=125) | **83** |
+| implied order-up-to on own trajectories, `raw` | 37.0 | 58.0 | 79.0 |
+| its IQR where the clip is slack | 2.0 | 3.0 | 1.0 |
+| within 2 units of the DP action, `raw` | 93.4% | 92.2% | 95.1% |
+| split-invariance, `raw` → `echelon` (units) | 9.15 → 5.44 | 12.11 → 1.64 | 1.43 → 1.25 |
+
+**verdict — confirmed at the two upper echelons, refuted at the retailer.**
+
+- **Echelon 3 is the paper's rule**: shutoff at 78 against 79, tracking
+  `max(u, ȳ)` on both sides of the kink. Nothing constrains this level, so it is
+  the cleanest evidence on the board.
+- **Echelon 2 is the same rule, threshold seven units low** (52 vs 59).
+- **Echelon 1 has no shutoff at all.** Its order decays to a ~5-unit floor and
+  never reaches zero, still shipping at four times its optimal level. A
+  base-stock rule has a shutoff by definition.
+
+**the floor is invisible by construction, which is why it survived.** A good
+policy rarely occupies deeply overstocked retailer states, so neither training
+nor evaluation charges much for it — and no trajectory-based readback can see
+it, because the states that expose it never arise. It took enumeration to find,
+and it costs almost nothing, which is the same statement twice.
+
+**the control cuts against the intuition.** The `echelon` arm is markedly more
+invariant to redistributing a fixed echelon position (5.44/1.64/1.25 against
+9.15/12.11/1.43) — the transform buys coordinate-faithfulness, and that is
+independent support for the primary `bypass` stance from a second instrument.
+It does **not** buy a cleaner rule: under enumeration it is *worse* at the
+thresholds (echelon 2 loses its shutoff entirely, echelon 3 moves from 78 to 83,
+away from 79), while costing 989.23 against 989.62. **Two policies with visibly
+different thresholds score within noise of each other** — the same flatness
+[#E10](#E10) found when its two tuned `dgauss` winners disagreed on nearly every
+hyper-parameter and landed 0.39 apart. On this cell the rule and the cost are
+close to decoupled.
+
+**limits.** Both artifacts are single runs against a ~6-unit seed floor
+([#E5](#E5)). One period (t = 25; `ȳ` is time-varying). The far end of every
+sweep is extrapolation, so the echelon-1 floor is reported as a *shape* — no
+shutoff exists — not as a quantity to cost. §14.2's paired fitted-rule scoring
+is not done: `--offset-sweep` raises `NotImplementedError`, reading the target
+off a `target_discrete` action, the mode the PREVIOUS board's #E11 voided (that
+log is the earlier downstream campaign's; this board's #E11 is this entry).
+§14.0
+makes paired scoring the `discover` requirement, so the deliverable is complete
+without it — but with thresholds this clean at two echelons, a fitted
+constant-threshold rule might beat the net it was read from.
+
+**a third instance of the same mechanism, found at case close.** The §12
+deployable CLI defaulted `--action-mode` to `ship_fraction`. Replaying the
+tuned `ship_discrete` winner without passing `-a` decoded a MultiDiscrete
+action as a fraction and reported **35267** against the artifact's true
+**998.59** — 35x, the magnitude of the `random` baseline, so it reads as a
+plausibly bad policy rather than as a wiring mistake, and nothing raised. Same
+shape as the two retractions above and as [#E1](#E1): **a consumer resolving a
+run's contract from its own default instead of from the run.** `ppo_eval` has
+read the modes off the args file since [#E1](#E1); this was the last consumer
+that did not, and it is the one a reader runs first. Now resolved from the run
+and refused on contradiction, with the §12 replay verified against `ppo_eval`
+at matched seeds: **998.5860 vs 998.586015**, the contract's to-the-digit
+agreement.
+
+**status** ✓ closed — the `confirm` stance has a verdict, `INTERPRET.md` is
+written, `research.deliverables` passes (conformance 27/30, zero FAIL). Owed:
+price the retailer's floor; re-implement `--offset-sweep` on `ship_discrete`;
+re-read on the replicated artifacts when [#E10](#E10)'s plan lands.

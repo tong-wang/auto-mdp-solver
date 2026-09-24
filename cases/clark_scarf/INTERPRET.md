@@ -1,165 +1,202 @@
-# What did the crown learn? — interpretation round (A2, #E4/#E7)
+# INTERPRET.md — policy readback for `clark_scarf`
 
-*(Artifacts regenerate: `clark_scarf_policy_probe.py` writes
-`readback.json` beside the artifact, `clark_scarf_plot_policy.py` writes the
-committed SVG to `figures/` and an interactive HTML under
-`results/{scenario}/figures/`. `results/` is gitignored; this findings
-document and `figures/` are not.)*
+The spec §14 deliverable: what the trained networks actually *do*. The IR
+declares three `research_questions.tier2` stances; §14.0 makes this document
+owed by the `confirm` one, and the two `bypass` stances are answered by outcome
+comparison in `README.md`, recorded here only where the readback bears on them.
 
-Subject: the **`L2(hp)` raw winner** — `hp_target_raw` trial 211,
-`target_discrete` + `raw` + no masking, **989.0658 @8192** (±1.19), which is
-**100.69% of the verified-optimal Clark–Scarf DP** (982.36). Chosen because
-it is the crowned artifact on the branch the campaign's question is about:
-trained on **raw installation stock**, with no echelon machinery supplied.
+**Headline: the two lower echelons implement Clark & Scarf's rule; the retailer
+does not.** Swept as a function, the top echelon stops ordering at 78 against
+the paper's critical number of 79 and the middle one at 52 against 59 — but the
+retailer never stops at all, shipping a floor of ~5 units even when it already
+holds four times its optimal level.
 
-Readback on 400 policy-own episodes (20,000 decisions); the figure plots one
-period at 200 episodes. Everything below is on-trajectory — an off-policy grid
-would probe states no policy visits.
+## What was read back, and from what
 
----
+Two artifacts, both the tuned winners of their observation arm, both
+`ship_discrete` on `n3_l2_p09`:
 
-## The one-paragraph answer
-
-It learned **Clark & Scarf's rule, with Clark & Scarf's numbers**. Wherever
-the availability clip is slack, the implied order-up-to level `y_i = u_i + q_i`
-takes **exactly one value per echelon — 37, 59, 79 — identical to the DP's
-critical numbers `ȳ_i`, with interquartile spread 0.0** across ~36,000
-unclipped decisions. Not a tight distribution around the optimum: a single
-integer. It is also a function of the **echelon aggregate** rather than the raw
-components — hold the echelon position fixed and redistribute the same total
-across installations and pipelines, and the decision is unchanged at echelon 3
-(spread 0.00) and nearly so at echelon 2 (0.43), with a small residual at
-echelon 1 (0.75) that is arguably *correct* rather than a defect. It agrees
-with the optimal action 84–95% of the time, degrading up the chain with a
-positive (over-order) bias, and that residual disagreement is where the
-remaining **6.71** cost gap to the bar lives.
-
----
-
-## Rung 1 — is it a base-stock rule at all?
-
-The structural-form statistic is the spread of the implied target where the
-clip does not bind: small spread = base-stock, large = something else.
-
-| echelon | fitted ȳ | IQR | n (unclipped) | DP ȳ (mid-horizon) |
-|---|---|---|---|---|
-| 1 | **37.0** | **0.0** | 9,516 | 37 |
-| 2 | **59.0** | **0.0** | 8,943 | 59 |
-| 3 | **79.0** | **0.0** | 17,600 | 79 |
-
-Zero spread is the strongest form this test can return, and the fitted
-constants are not merely constant — they are the paper's, to the unit.
-
-## Rung 2 — agreement with the optimal policy
-
-| echelon | exact | within 2 | signed bias |
+| artifact | observation | cost @8192 | role here |
 |---|---|---|---|
-| 1 | 95.4% | 96.0% | +0.41 |
-| 2 | 90.4% | 90.7% | +0.85 |
-| 3 | 84.0% | 86.0% | +1.38 |
+| tuned raw | `raw` — installation stock only | 989.62 | **the subject**: the stance is about a raw-trained policy |
+| tuned echelon | `echelon` — the transform supplied | 989.23 | **the control**: does being handed the coordinates change the rule? |
 
-Two things worth reading carefully. **Within-2 barely exceeds exact** (96.0 vs
-95.4; 86.0 vs 84.0), so this is not a policy fuzzy around the optimum — it is
-exactly right most of the time and occasionally notably off. And the **bias is
-positive and grows up the chain**: it over-orders upstream, by more at echelon
-3 than at echelon 1. Over-ordering upstream is the cheap direction of error in
-this cost structure (holding at an upper echelon is cheaper than a retailer
-stockout), which is consistent with a policy that has the structure right and
-the trade-off slightly conservative.
+Both are single training runs and neither is adopted — `README.md` explains
+why. Every statement below inherits that caveat: this is what *these two
+networks* do, not what the method does.
 
-## Rung 3 — the discriminating test: did it find the *echelon* coordinates?
+## The instrument: enumerate the input, read the output
 
-Hold the echelon position `u_i` fixed and vary how the same total is split
-across installations and pipelines. A policy that has found the echelon
-aggregation ships the same amount; one keying on raw components does not.
+The rule is read by **enumeration, not by sampling**. For each echelon and each
+echelon position `u` on a grid, one synthetic state is built, the policy is
+queried **deterministically**, and the ordered-up-to level `y = u + q` is
+recorded. One input, one output. This has nothing to do with training or
+evaluation draws.
 
-| echelon | mean spread | p90 |
-|---|---|---|
-| 1 | 0.75 units | 2.00 |
-| 2 | 0.43 | 0.00 |
-| 3 | **0.00** | **0.00** |
+Three properties a trajectory-based read cannot have, each of which changed a
+conclusion here:
 
-Echelons 3 and 2 are invariant — the split is irrelevant to the decision. That
-is what "rediscovered the aggregation" means operationally, and it is the test
-that separates it from "learned something that happens to score well".
+1. **The source cannot bind.** Link *k* draws from installation *k+1*, and on
+   this cell that cap binds on about **two thirds** of the lower echelons'
+   executed decisions. A scatter of executed shipments is therefore mostly a
+   picture of the upstream constraint. In the sweep the source is raised past
+   the largest shippable quantity, so every point is the quantity the policy
+   *chose*.
+2. **The sweep goes past the kink.** Each echelon is swept over its own window,
+   1.5× the distance from its floor to its critical number, so the shutoff sits
+   at the right third of the axis and the plot shows *where ordering stops* — a
+   region no trajectory reaches, because a good policy does not visit deeply
+   overstocked states.
+3. **It is a function, not a cloud.** One state per input means the curve is the
+   rule itself, and a kink is a threshold rather than a density.
 
-**Echelon 1's residual is defensible, not noise.** Level 1 faces demand *this*
-period, and its on-hand-versus-in-transit split genuinely matters to the
-immediate shortage in a way the echelon position alone does not capture. A
-policy perfectly invariant at level 1 would be ignoring information it should
-use. The claim here is bounded accordingly: invariance is established at
-echelons 2–3 and approximate at echelon 1.
+**The state convention, stated because it is a choice.** Echelon position `u_k`
+sums inventory position over levels 0…k, so one `u_k` is reachable by many
+splits and this policy is measurably sensitive to which. Each curve holds **the
+rest of the chain at the DP's own optimum** — every other level carries the
+increment the optimal policy would hold — and varies only the echelon of
+interest. So a curve reads: *with the rest of the chain stocked optimally, how
+does this echelon respond to its own position?*
 
-## Rung 4 — are the recovered constants at an optimum?
+**A structural fact that decides the axes.** Echelon *stock* cannot be changed
+by a shipping decision at all — shipping moves goods within an echelon, never
+across one. Measured over 1500 decisions the effect is exactly **0.000000** at
+every level. So "echelon stock before vs after ordering" is three 45° lines by
+construction; the quantity a decision moves, and the one the rule is stated on,
+is echelon **position**. This is why `clark_scarf_mdp.py` keeps
+`echelon_stock()` and `echelon_position()` separate.
 
-Add a constant offset to each echelon's fitted target and re-score under the
-Stage-4 protocol (paired, 8192 CRN seeds):
+## `confirm` — is the raw-trained policy an echelon base-stock rule?
 
-| offset | echelon 1 | echelon 2 | echelon 3 |
+*Claim as declared: the raw-trained policy IS an echelon base-stock rule — it
+recovers the aggregation and applies Clark & Scarf's own critical numbers.*
+
+**Verdict: confirmed at the two upper echelons, refuted at the retailer.**
+
+![the learned rule as a function, raw arm](figures/policy_sweep_n3_l2_p09_raw_t25.svg)
+
+*Tuned raw arm. Blue is the learned rule, orange Clark & Scarf's
+`y = max(u, ȳ)`, dotted the order-nothing diagonal. Each echelon is swept over
+its own window with ȳ at the right third.*
+
+| | echelon 1 | echelon 2 | echelon 3 |
 |---|---|---|---|
-| +2 | +2.23 (z 12.8) | +2.08 (z 15.7) | +3.93 (z 17.6) |
-| +5 | +5.61 (z 24.3) | +8.12 (z 34.9) | +19.89 (z 48.4) |
-| +8 | +5.61 (z 24.3) | +13.00 (z 50.3) | +41.14 (z 84.4) |
+| DP critical number | 37 | 59 | 79 |
+| **policy stops ordering at** | **never** | **52** | **78** |
+| swept window | u 0–148 | u 37–125 | u 59–139 |
+| residual order at the top of the window | **5 units** | 0 | 0 |
 
-Every perturbation costs, monotonically and far outside noise, and steeply at
-echelon 3 where an error propagates down the whole chain. **Limit:** only
-positive offsets were swept, so this shows the targets are not too low, not
-that they are not too high. Since they equal the DP's numbers exactly, and the
-DP is verified optimal, that gap is academic here — but the sweep alone would
-not have established it.
+**Echelon 3 is the paper's rule.** It shuts off at 78 against a critical number
+of 79, and the curve tracks `max(u, ȳ)` on both sides of the kink. Nothing
+constrains this level — it draws on the outside supplier — so this is the
+cleanest evidence in the document.
 
-## The figure
+**Echelon 2 is the same rule with a displaced threshold**, shutting off at 52
+against 59. It holds a genuine order-up-to level; the level is seven units low.
 
-![learned rule vs Clark & Scarf](figures/policy_n3_l2_p09_raw_t25.svg)
+**Echelon 1 is not a base-stock rule.** Its order decays from 26 toward a floor
+of about 5 units and never reaches zero: swept to u = 148, four times its
+optimal level of 37, it is still shipping. A base-stock rule has a shutoff by
+definition, so this level does not have one.
 
-Echelon position **after** ordering against **before**, one panel per echelon,
-period 25. The orange staircase is `y = max(u, ȳ)`; blue points are the
-policy's own decisions where the clip is slack; grey × are decisions where the
-availability clip binds.
+That deviation is invisible to every trajectory-based read, and the reason is
+the same as the reason it survived training: a good policy rarely occupies
+deeply overstocked retailer states, so nothing in training or evaluation ever
+charges much for the floor. It is a real defect in the rule and a cheap one in
+cost.
 
-The grey points are drawn separately because the paper's optimum is a
-**median**, `y_i = median(u_i, ȳ_i, x_{i+1})` — a point below the plateau may
-be the level above running short, not a policy error. At this period the clip
-binds on 48.5% of echelon-1 and 55.0% of echelon-2 decisions (shortfall mean
-4.0 and 2.8 units) and never at echelon 3, which draws on the unlimited outside
-supplier. Conflating those with disagreement would read a supply constraint as
-a learning failure.
+**On its own trajectories the same policy fits** an implied order-up-to of
+**37.0 / 58.0 / 79.0** with an IQR of **2 / 3 / 1**, landing within 2 units of
+the optimal action on 93.4% / 92.2% / 95.1% of decisions. Those numbers are
+consistent with the sweep and say nothing about the floor, because the states
+that expose it never arise.
 
----
+**The echelon aggregation is approximate.** Holding an echelon position fixed
+and redistributing the same total across installations and pipelines moves the
+shipment by **9.15 / 12.11 / 1.43** units. A policy computing with the
+aggregate exactly would not move at all. So the raw-trained policy implements
+the right rule in the right coordinate while still keying partly on how that
+coordinate is split.
 
-## What this settles
+### The control: does being handed the coordinates change the rule?
 
-**The tier-2 `confirm` question answers yes.** The campaign carried two
-stances on one structure, and they now agree rather than merely coexisting:
+![the learned rule as a function, echelon arm](figures/policy_sweep_n3_l2_p09_echelon_t25.svg)
 
-- **bypass** (primary) — the echelon transform is not *required*: price of
-  generality **−0.55 ± 0.14** at L1, inside the 1.57 floor (#E4), with the
-  point estimate falling to **−0.0014** once each branch is tuned separately
-  (#E7). The tuned interval is eval-paired on one training seed per arm, so
-  L1 carries the seed-backed leg; both agree on zero;
-- **confirm** (secondary) — the policy is echelon-structured anyway, to the
-  unit, from raw coordinates.
+| | echelon 1 | echelon 2 | echelon 3 |
+|---|---|---|---|
+| stops ordering at, `raw` → `echelon` | never → **never** | 52 → **never** | 78 → **83** |
+| residual order at the top of the window | 5 → 2 | 0 → 1 | 0 → 0 |
+| implied order-up-to on own trajectories | 37/58/79 → 37/58/78 | | |
+| within 2 units of the DP action | 93.4/92.2/95.1% → 97.1/97.8/90.2% | | |
+| **split-invariance** (units) | **9.15 → 5.44** | **12.11 → 1.64** | 1.43 → 1.25 |
 
-Those could have come apart. A bypass success with a structurally
-unrecognisable policy would have been the more awkward result: "the transform
-is unnecessary, and we cannot say what replaced it." Instead the two halves
-compose into one statement — **the transform is not needed as an input because
-the network reconstructs it, and having reconstructed it, it applies the
-paper's own critical numbers.**
+**The transform buys coordinate-faithfulness, not a better rule.** The arm given
+the echelon observation is markedly more invariant to redistributing a fixed
+echelon total — 5.44 / 1.64 / 1.25 against 9.15 / 12.11 / 1.43, which is the
+expected direction and confirms the instrument reads what it claims to.
 
-## Limits, stated
+What it does not buy is a cleaner rule. It agrees more closely with the optimal
+action on its own trajectories, but under enumeration it is *worse* at the
+thresholds: echelon 2 loses its shutoff entirely (a 1-unit floor persists to
+u = 125) and echelon 3's moves from 78 to 83, away from the DP's 79. And the two
+cost 989.23 and 989.62 — a difference of 0.39 against a seed floor of about 6.
 
-- **One artifact, one training seed.** Trial 211, seed 42. The structural
-  claims are not known to be seed-stable. Establishing that would take two
-  fresh seeds on the crowned config — cheap (no re-tuning), and the one place
-  a seed sweep would buy something here. It was **not** run: A5, which would
-  have, was closed unrun because as scoped it defended the tuning procedure's
-  expected value, a tier-3 quantity this campaign never claims.
-- **One cell.** `n3_l2_p09` only. Nothing here transfers to other
-  `(n, l, p)` cells by construction — they are separate leaderboards.
-- **One period in the figure.** The IQR-0 result is across all periods; the
-  panel is a slice at t=25, and `ȳ` is time-varying on a finite horizon.
-- **The 6.71 gap is described, not explained.** Disagreement concentrates
-  upstream with a positive bias, but whether it concentrates in clip-bound
-  states, near horizon ends, or in some other region has not been measured.
-  That is the obvious next probe if the gap is ever worth closing.
+**The rule and the cost are close to decoupled here.** Two policies with
+visibly different thresholds, one with an extra level that never shuts off,
+score within noise of each other. That is the same flatness `ESCALATION.md`
+#E10 found when the two tuned `dgauss` winners disagreed on nearly every
+hyper-parameter and landed 0.39 apart.
+
+## `bypass` — the echelon coordinate transform (primary)
+
+§14.0 owes this stance **no readback**: its evidence is the outcome comparison
+alone, in `README.md`'s structural section and `ESCALATION.md` #E10. The
+readback bears on it from a second direction and is reported for that reason:
+the raw policy reaches the paper's thresholds at the upper echelons without
+being given the coordinates, with a looser grip on the aggregation, and that
+looseness costs nothing measurable.
+
+## `bypass` — the transform on the continuous rendering
+
+Out of scope on this board, which renders the integer-lattice frame only. No
+readback, and none owed.
+
+## Reproducing
+
+```bash
+# the rule as a function — the figures above
+python clark_scarf_plot_policy.py --model-path {run}/n3_l2_p09_ppo_final.zip \
+    -o raw -a ship_discrete --sweep            # --span widens the window
+
+# the on-trajectory statistics: implied target, DP agreement, split-invariance
+python clark_scarf_policy_probe.py --model-path {run}/n3_l2_p09_ppo_final.zip \
+    -o raw -a ship_discrete --episodes 400
+```
+
+Each plot writes a committed `.svg` under `figures/` and an interactive `.html`
+under `results/{scenario}/figures/`, which is gitignored — GitHub and VS Code
+markdown do not execute JS, so an embedded figure has to be an image.
+
+## Limits, and what is owed
+
+- **Single artifacts.** Both policies are one training run each, against a
+  run-to-run spread of about 6 cost units.
+- **One period.** The figures are cut at mid-horizon (t = 25) because `ȳ` is
+  time-varying on a finite horizon and mixing periods blurs the threshold.
+- **The far end of each sweep is extrapolation.** Deeply overstocked states are
+  far outside anything training visited, so the network is extrapolating there
+  and the curve describes the network rather than a policy anyone would run.
+  This is why the floor at echelon 1 is reported as a *shape* — no shutoff
+  exists — rather than as a quantity anyone should cost.
+- **A narrow window can hide a shutoff that exists further out.** At the default
+  span the echelon arm's echelon 2 reads "never stops" inside its window; the
+  wide sweep confirms it still has not stopped by u = 125. The console line
+  prints the window bounds beside every verdict so a truncated read cannot be
+  mistaken for an absent one.
+- **§14.2's paired fitted-rule scoring is NOT done.** `--offset-sweep` raises
+  `NotImplementedError`: it reads the target off a `target_discrete` action, the
+  mode the previous board's #E11 voided. §14.0 makes paired scoring the
+  `discover` requirement rather than the `confirm` one, so this document is
+  complete without it — but with thresholds this clean at two echelons, a fitted
+  constant-threshold rule might well *beat* the net it was read from, which
+  would make it a shippable artifact and would price the retailer's floor.
