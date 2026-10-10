@@ -85,6 +85,24 @@ read as a Δ(L2−L1) it did not measure. Values the space refuses *on purpose* 
 γ > β, an `n_steps` under the rollout floor, a channel stack — are not rounded;
 they are signals, and they still skip.
 
+**Parallel workers.** Several workers on one study (same `--study-name` and
+`--storage`, different `--seed`) share the table, and TPE models its COMPLETE
+rows only: every worker that draws against the same completed rows fits the
+same model and proposes its mode. A wave of twelve workers started minutes
+apart then trains one configuration twelve times, the sampler seeds moving
+only which candidates are scored. Pass **`--constant-liar` on every worker of
+a parallel launch**: a RUNNING trial then counts as an observation at the worst
+value seen until its real score lands, each draw is written to the storage
+before the next worker draws, and each worker sees the earlier proposals
+marked bad and goes elsewhere. It is off by default because the sampler is not
+persisted with the study — the default fixes whether a study's draws can be
+reproduced from its seed, and studies drawn before the flag existed were drawn
+without it. The lie is only ever about RUNNING rows, so one worker samples the
+same either way. Two things the flag does not change: workers must still start
+far enough apart for a draw to reach the storage (seconds; stagger them), and
+a draw is guided by however many completed trials exist — the liar spreads a
+wave, it does not sharpen it.
+
 Crashed trials (e.g. NaN policy divergence at aggressive learning rates) are
 **penalized to the study's worst completed value** rather than marked failed:
 a failed trial carries no signal, so TPE would happily resample the divergent
