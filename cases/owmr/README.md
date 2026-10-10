@@ -328,9 +328,11 @@ python owmr_ppo_train.py -s hicv @configs/h5_terminal.args \
 
 # hicv — the swap decomposition on the winner (#E33 addendum 1)
 for arm in rl_rl h_h h_order h_alloc h_split; do
-    python owmr_swap_probe.py -s hicv --rl-action-mode order_catkeep --arm $arm --n-seeds 8192 \
+    python owmr_swap_probe.py -s hicv --rl-action-mode order_catkeep \
+        --arm $arm --n-seeds 8192 \
         --model-path results/hicv/<winner>/checkpoints/ppo_owmr_10000000_steps.zip \
-        --vecnorm-path results/hicv/<winner>/checkpoints/ppo_owmr_vecnormalize_10000000_steps.pkl \
+        --vecnorm-path \
+            results/hicv/<winner>/checkpoints/ppo_owmr_vecnormalize_10000000_steps.pkl \
         --outfile results/hicv/<winner>/swap/swap_$arm.tsv
 done
 
