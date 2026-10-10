@@ -264,7 +264,7 @@ train lines behind every row follow, collapsed; the gate commands that check
 the folder itself are in `CLAUDE.md`.
 
 <details>
-<summary>The train line behind every row (then steps 4–6; base screens at 2048 seeds)</summary>
+<summary>The train line behind every row (then steps 4–6; base screens at 2048)</summary>
 
 ```bash
 # base — the references
@@ -276,7 +276,7 @@ python owmr_benchmark_random_eval.py -s base --n-seeds 8192
 python owmr_ppo_train.py -s base @configs/L0.args --tag L0
 python owmr_ppo_train.py -s base --tag L1
 
-# base — categorical head, no vine (the #E24 study's trial 34 = h5 at training seed 31)
+# base — categorical head, no vine (the #E24 study's trial 34: h5 at seed 31)
 python owmr_ppo_train.py -s base @configs/h5.args --tag E24t34 --seed 31
 
 # base — categorical head + the vine on the main optimizer (h6), 5M,
