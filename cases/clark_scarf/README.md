@@ -101,6 +101,7 @@ Code — where things are implemented:
 | `clark_scarf_policy_probe.py` | the spec §14 readback probe |
 | `clark_scarf_plot_policy.py` | the policy figure |
 | `clark_scarf_benchmark_dp.py` / `_dp_eval.py` | the exact Clark–Scarf decomposition |
+| `requirements.txt` | what `[domain]` lacks (spec §1.2): scipy, for the DP benchmark's gamma binning |
 | `clark_scarf_benchmark_echelon.py` / `_echelon_eval.py` | the echelon base-stock reference |
 | `clark_scarf_benchmark_local.py` / `_local_eval.py` | the structure-blind local baseline |
 | `clark_scarf_benchmark_random.py` / `_random_eval.py` | the random baseline |

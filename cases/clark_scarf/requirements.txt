@@ -1,0 +1,1 @@
+scipy>=1.11,<2  # clark_scarf_benchmark_dp: gamma CDF/quantile to bin the continuous demand for the lattice DP
