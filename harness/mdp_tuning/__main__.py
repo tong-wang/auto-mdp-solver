@@ -638,7 +638,7 @@ def main() -> None:
           + (f", timeout {args.timeout}s" if args.timeout else ""))
     print(f"scored on: {args.score_checkpoint} checkpoint, metric={args.metric}")
     print(f"sampler  : TPE seed {args.seed}, constant liar "
-          f"{'ON' if args.constant_liar else 'off (parallel workers will draw the same point; see --constant-liar)'}")
+          f"{'on' if args.constant_liar else 'off'}")
     show_space(scripts, args.algo, tier=args.knobs,
                pinned=set(fixed_train), locked=set(args.fix))
 

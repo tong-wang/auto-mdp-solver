@@ -58,11 +58,23 @@ def _distinct(draws) -> int:
     return len({(round(math.log(lr) / math.log(1.5)), k) for lr, k in draws})
 
 
+def _draw_after_one_running(sampler):
+    """One RUNNING row at the table's mode, then one ask: the only situation
+    in which the liar changes a draw, so it is how the flag is observed
+    without touching the sampler's private state."""
+    study = _frozen_table(sampler)
+    study.ask(SPACE)  # left RUNNING
+    study.sampler = sampler
+    return study.ask(SPACE).params
+
+
 def test_the_liar_is_off_unless_asked():
     """The sampler is not persisted with the study, so the default decides
-    whether a study's draws can be reproduced from its seed."""
-    assert make_sampler(1)._constant_liar is False
-    assert make_sampler(1, constant_liar=True)._constant_liar is True
+    whether a study's draws can be reproduced from its seed: the default
+    draws exactly as optuna's own default sampler, the flag does not."""
+    plain = _draw_after_one_running(optuna.samplers.TPESampler(seed=1))
+    assert _draw_after_one_running(make_sampler(1)) == plain
+    assert _draw_after_one_running(make_sampler(1, constant_liar=True)) != plain
 
 
 def test_the_switch_is_on_the_cli_and_off_by_default():
