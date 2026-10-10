@@ -181,70 +181,52 @@ of the bound and the same instrument recovers it as the family's optimum —
 no such structure exists there, and the RL residual is not a missed rule
 (#E36). Details, curves and the swap decomposition: `INTERPRET.md`.
 
-## Technical appendix
+## Technical appendix — a first run
 
-Run from `owmr/`. Pin threads for training (`OMP_NUM_THREADS=1
-MKL_NUM_THREADS=1`). Beyond the harness and SB3, two packages: `pip install
-scipy plotly` — SciPy solves the bound's newsvendor targets (the bar, the
-deployable and the probes import it), plotly renders the interactive figure
-(the committed SVG does not need it). `results/` is gitignored; every row
-above is reproduced by the commands below, cell by cell. The recipes behind
-the rows are the files under `configs/` — one per CONFIG-REGISTRY id, read by
-the train script as `@configs/<id>.args` — so a train line is a cell, a recipe
-and a tag. `<run>` is the directory the train command prints (`outdir=…`);
-each screen prints the confirm commands for its top-3 checkpoints.
+**What you need.** Python 3.12 with the `auto-mdp-solver` harness and
+Stable-Baselines3 (the repo's `requirements.txt`), plus `pip install scipy
+plotly`: SciPy solves the heuristic's newsvendor targets, plotly draws the
+interactive figure (the committed SVG does not need it). Run everything from
+`owmr/`, with `OMP_NUM_THREADS=1 MKL_NUM_THREADS=1` set for training.
+
+**Where things land.** Everything a command writes goes under `results/`
+(gitignored): each cell has a `benchmark/` folder for the references and one
+directory per training run, named by the run's tag, holding its checkpoints
+and, after the funnel, its confirm records. Training recipes are the files
+under `configs/`, one per registry id, passed to the train script as
+`@configs/<id>.args`.
+
+**One cell, start to finish.** The `hicv` cell, which produced the result:
 
 ```bash
-python owmr_scenarios.py; python owmr_mdp.py; python owmr_gym.py       # layer smoke tests
-export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+python owmr_scenarios.py; python owmr_mdp.py; python owmr_gym.py          # 1. the layers run (smoke tests)
 
-# ---- base --------------------------------------------------------------------------
-for b in lb lb_heuristic random; do python owmr_benchmark_${b}_eval.py -s base --n-seeds 8192; done   # bound, bar, floor
-python owmr_ppo_train.py -s base @configs/L0.args --tag L0                                 # L0, 2M
-python owmr_ppo_train.py -s base --tag L1                                                  # L1, 5M
-python owmr_ppo_train.py -s base @configs/h5.args --tag E24t34 --seed 31                   # categorical head, no vine (= #E24 trial 34)
-python owmr_ppo_train.py -s base @configs/h5.args @configs/vine_shared.args --tag E30vine --seed 2        # + vine (h6), 5M
-python owmr_ppo_train.py -s base @configs/h5_terminal.args @configs/vine_shared.args \
-    --init-from <the E30vine run> --total-timesteps 5000000 --tag E31xvine --seed 2       # its +5M extension: the record arm
-python owmr_ppo_train.py -s base @configs/h8.args --total-timesteps 10000000 --tag E32dirichletctl --seed 1      # Dirichlet, no vine
-python owmr_ppo_train.py -s base @configs/h8.args @configs/vine.args --total-timesteps 10000000 --tag E32dirichletvine --seed 1
-# the #E24 study behind the h5 recipe (2 workers, seeds 31-32; it reproduces trial 34 only if the sampler replays)
-python -m mdp_tuning owmr -s base --knobs all --beta 1.0 --episode-len 100 --min-rollout-episodes 10 --total-timesteps 5000000 \
-    --eval-seeds 512 --eval-arg first_seed=3000000 --minimize --metric cost_total_mean --n-trials 40 \
-    --study-name owmr_base_ppo_catkeep_fixnr --fix norm_reward --seed 31 \
-    --train-arg action_mode=order_catkeep --train-arg policy=catkeep --train-arg tag=E24
-# the readback instrument's negative control (#E36)
-for y in 26.36 27.36 28.363030605487545 29.36 30.36 31.36; do for a in 0.7 0.8 0.9 0.95 1.0; do
-    python owmr_keep_rule_probe.py -s base --alpha $a --y0 $y --n-seeds 8192; done; done; python owmr_keep_rule_probe.py -s base --summary
+for b in lb lb_heuristic random; do                                      # 2. the references on the protocol block
+    python owmr_benchmark_${b}_eval.py -s hicv --n-seeds 8192; done     #    (bound, heuristic = the bar, floor)
 
-# ---- hicv --------------------------------------------------------------------------
-for b in lb lb_heuristic random; do python owmr_benchmark_${b}_eval.py -s hicv --n-seeds 8192; done
-python owmr_ppo_train.py -s hicv @configs/L0.args --tag E33l0 --seed 1
-python owmr_ppo_train.py -s hicv --tag E33l1 --seed 2
-python owmr_ppo_train.py -s hicv @configs/h5.args                    --total-timesteps 10000000 --tag E33catkeepctl    --seed 2
-python owmr_ppo_train.py -s hicv @configs/h5.args @configs/vine.args --total-timesteps 10000000 --tag E33catkeepvine   --seed 2   # the shipped network
-python owmr_ppo_train.py -s hicv @configs/h8.args                    --total-timesteps 10000000 --tag E33dirichletctl  --seed 2
-python owmr_ppo_train.py -s hicv @configs/h8.args @configs/vine.args --total-timesteps 10000000 --tag E33dirichletvine --seed 2
-python owmr_ppo_train.py -s hicv @configs/h5_terminal.args --init-from <the E33catkeepctl run> --total-timesteps 10000000 --tag E33xctl --seed 2   # the control's +10M
+python owmr_ppo_train.py -s hicv @configs/h5.args @configs/vine.args \   # 3. train the shipped arm: categorical head + vine,
+    --total-timesteps 10000000 --tag E33catkeepvine --seed 2             #    10M steps; prints its run directory (outdir=…)
 
-# ---- the funnel, every arm (screen 2048 on base, 8192 on hicv) -----------------------------
-python owmr_select.py results/<cell>/<run> -a <action_mode> --n-seeds <2048|8192> --top-k 3     # prints the confirm commands
-python owmr_ppo_eval.py --model-path results/<cell>/<run>/checkpoints/<ckpt>.zip --vecnorm-path results/<cell>/<run>/checkpoints/<ckpt vecnormalize>.pkl \
-    -s <cell> -a <action_mode> --first-seed 0 --n-seeds 8192 --outfile results/<cell>/<run>/confirm_<ckpt>.tsv \
-    --paired-with results/<cell>/benchmark/benchmark_lb_heuristic_eval_<cell>.seeds.tsv
-python -m mdp_gates --candidate results/<cell>/<run>/confirm_<ckpt>.tsv --baseline results/<cell>/benchmark/benchmark_random_eval_<cell>.tsv \
-    --baseline results/<cell>/benchmark/benchmark_lb_heuristic_eval_<cell>.tsv --reference results/<cell>/benchmark/benchmark_lb_eval_<cell>.tsv \
-    --n-seeds 8192 --sense minimize --metric cost_total_mean --ir owmr_schema.json          # from the parent, paths prefixed owmr/
+python owmr_select.py results/hicv/<run> -a order_catkeep --n-seeds 8192 --top-k 3   # 4. screen the checkpoints on the
+                                                                         #    selection block; prints the confirm commands
+python owmr_ppo_eval.py --model-path results/hicv/<run>/checkpoints/<ckpt>.zip \
+    --vecnorm-path results/hicv/<run>/checkpoints/<ckpt vecnormalize>.pkl -s hicv -a order_catkeep \
+    --first-seed 0 --n-seeds 8192 --outfile results/hicv/<run>/confirm_<ckpt>.tsv \
+    --paired-with results/hicv/benchmark/benchmark_lb_heuristic_eval_hicv.seeds.tsv   # 5. confirm a top-3 checkpoint, paired
+python -m mdp_gates --candidate results/hicv/<run>/confirm_<ckpt>.tsv \                  # 6. the gate (run from the parent,
+    --baseline results/hicv/benchmark/benchmark_random_eval_hicv.tsv \                   #    paths prefixed owmr/)
+    --baseline results/hicv/benchmark/benchmark_lb_heuristic_eval_hicv.tsv \
+    --reference results/hicv/benchmark/benchmark_lb_eval_hicv.tsv --n-seeds 8192 --sense minimize --metric cost_total_mean --ir owmr_schema.json
 
-# ---- readback (Stage 5), figure, deployable (Stage 6) ---------------------------------------
-python owmr_policy_probe.py --model-path results/hicv/<run>/checkpoints/ppo_owmr_10000000_steps.zip \
-    --vecnorm-path results/hicv/<run>/checkpoints/ppo_owmr_vecnormalize_10000000_steps.pkl -s hicv -a order_catkeep   # winner and control
-for arm in rl_rl h_h h_order h_alloc h_split; do python owmr_swap_probe.py --model-path results/hicv/<winner>/checkpoints/ppo_owmr_10000000_steps.zip \
-    --vecnorm-path results/hicv/<winner>/checkpoints/ppo_owmr_vecnormalize_10000000_steps.pkl -s hicv --rl-action-mode order_catkeep \
-    --arm $arm --n-seeds 8192 --outfile results/hicv/<winner>/swap/swap_$arm.tsv; done
-python owmr_keep_rule_probe.py -s hicv --alpha 0.75 --y0 37 --n-seeds 8192; python owmr_keep_rule_probe.py -s hicv --summary   # the fitted rule (sweep: alpha .5-.95, y0 30-46)
-python owmr_plot_policy.py            # the SVG (and the HTML when plotly is installed) from the two probe JSONs
-python owmr_policy.py --n-episodes 8  # replays the shipped network and the fitted rule on the raw MDP loop against the eval records
+python owmr_policy_probe.py --model-path results/hicv/<run>/checkpoints/<ckpt>.zip \
+    --vecnorm-path results/hicv/<run>/checkpoints/<ckpt vecnormalize>.pkl -s hicv -a order_catkeep   # 7. read the policy back
+python owmr_keep_rule_probe.py -s hicv --alpha 0.75 --y0 37 --n-seeds 8192                           # 8. the fitted rule, scored
+python owmr_plot_policy.py                                                                          # 9. the figure (needs step 7 on the winner and its control)
+python owmr_policy.py --n-episodes 8                                                                # 10. the deployable, replayed against the records
 ```
 
-The gate commands are in `CLAUDE.md`.
+Every other row — the `base` cell, the controls, the Dirichlet head, the
+tuning studies, the extensions, the sweeps — is produced the same way: a
+cell, a recipe file and a tag for the train line, then steps 4–6. The exact
+command behind each row is in its `ESCALATION.md` entry, in a code block.
+The gate commands that check the folder itself are in `CLAUDE.md`.
