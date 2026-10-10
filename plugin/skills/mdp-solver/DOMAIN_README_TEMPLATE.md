@@ -177,6 +177,10 @@ Run from `{domain}/`. {Thread pinning / environment notes.} Together these
 reproduce `results/` from an empty folder; `results/` is gitignored.
 
 ```bash
+# environment: the harness's [domain] extra, plus this folder's requirements.txt if it has one
+pip install "auto-mdp-solver[domain]"
+pip install -r requirements.txt
+
 # train
 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python {domain}_ppo_train.py -s {scenario} {…}
 

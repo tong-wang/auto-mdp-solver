@@ -30,6 +30,10 @@ Static (source/AST, no execution):
 - `static.layering` — acyclic `uncertainty ← scenarios ← mdp ← gym` (§1.1);
   `_grids` imported by drivers only (never by the model layers).
 - `static.no_param` — the `param`/`params`/`param_*` ban (§2).
+- `static.imports` — every import is the standard library, the harness,
+  `[domain]`, a module in the folder, or declared in the folder's
+  `requirements.txt` (§1.2); optional imports (an ImportError guard, directly
+  or one call away; `pytest.importorskip`) need no declaration. WARN.
 - `static.mdp_no_reward` — reward is not computed in the MDP layer (§6.4).
 - `static.state_slots` — `{Domain}State` is `@dataclass(slots=True)`.
 

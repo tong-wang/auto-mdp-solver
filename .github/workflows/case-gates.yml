@@ -6,6 +6,7 @@ name: case-gates
 #   3. IR execution semantics    (python -m mdp_ir.laws <dir>)
 #   4. differential IR-vs-domain (python -m mdp_ir.differential <schema>)
 #   5. the domain's own tests    (pytest <dir>)
+# after installing the folder's own requirements.txt, if it has one (spec §1.2).
 # This is what makes case-contribution review mechanical (AGENT_PLAN §4,
 # mdp-contribute tier 1): a green run means the case honors the portable-domain
 # contract and its simulator matches its frozen IR bit-exactly.
@@ -64,6 +65,11 @@ jobs:
               exit 1
             fi
             echo "=== $d ==="
+            # what the domain needs beyond the harness (spec §1.2): only what
+            # `[domain]` lacks, so this stays light on the torch-free runner
+            if [ -f "$d/requirements.txt" ]; then
+              python -m pip install -r "$d/requirements.txt"
+            fi
             python -m mdp_conformance "$d"
             python -m mdp_ir.laws "$d"
             for s in "${schemas[@]}"; do

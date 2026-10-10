@@ -4,8 +4,8 @@ Each check takes a ``DomainHandle`` and returns a ``CheckResult`` (or a list of
 them). Checks fall into two groups:
 
 - **Static** — parse the source (AST) without running it: file layout, acyclic
-  layering (§1.1), the ``param`` ban (§2), no reward in the MDP layer (§6.4),
-  and ``@dataclass(slots=True)`` on the state.
+  layering (§1.1), the ``param`` ban (§2), declared imports (§1.2), no reward
+  in the MDP layer (§6.4), and ``@dataclass(slots=True)`` on the state.
 - **Behavioral** — construct the gym and run the simulator: scenarios build,
   ``init_state`` invariants, the Gymnasium reset/step contract, whole-episode
   determinism, episode-seed provenance across resets (§7), ``advance`` purity,
@@ -28,6 +28,7 @@ import dataclasses
 import inspect
 import math
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -230,6 +231,150 @@ def check_no_param(h: DomainHandle) -> CheckResult:
     if hits:
         return CheckResult("static.no_param", "FAIL", "; ".join(hits[:8]))
     return CheckResult("static.no_param", "PASS", "no param/params/param_* identifiers")
+
+
+# What a domain may import without declaring it (spec §1.2): the harness, its
+# core dependencies, `[domain]`'s direct requirements, and what
+# stable-baselines3 and its `[extra]` bring. Import names, not distribution
+# names; `test_conformance_imports.py` keeps this in step with pyproject.
+HARNESS_IMPORTS = frozenset({"mdp_ir", "mdp_conformance", "mdp_gates", "mdp_tuning", "mdp_stage"})
+DOMAIN_IMPORTS = frozenset({
+    "numpy", "pydantic", "gymnasium", "optuna",                          # core
+    "stable_baselines3", "sb3_contrib", "pandas", "plotly", "pytest",    # [domain]
+    "torch", "cloudpickle",                                              # stable-baselines3
+    "matplotlib", "tensorboard", "tqdm", "rich", "psutil", "PIL", "cv2",
+    "pygame", "ale_py",                                                  # stable-baselines3[extra]
+})
+# distributions whose import name is not their normalized name
+_DIST_IMPORT_ALIASES = {
+    "scikit-learn": "sklearn", "pyyaml": "yaml", "pillow": "PIL",
+    "opencv-python": "cv2", "opencv-python-headless": "cv2", "pygame-ce": "pygame",
+    "beautifulsoup4": "bs4", "python-dateutil": "dateutil", "msgpack-python": "msgpack",
+}
+_IMPORT_GUARDS = {"ImportError", "ModuleNotFoundError", "Exception", "BaseException"}
+
+
+def dist_import_name(requirement: str) -> str | None:
+    """`scipy>=1.11,<2  # why` -> "scipy"; `scikit-learn` -> "sklearn"; None for a non-package line."""
+    m = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", requirement)
+    if not m:
+        return None
+    dist = re.sub(r"[-_.]+", "-", m.group(1)).lower()
+    return _DIST_IMPORT_ALIASES.get(dist, dist.replace("-", "_"))
+
+
+def read_requirements(directory: Path) -> tuple[dict[str, int], list[int]]:
+    """The folder's `requirements.txt` -> ({import name: line}, [lines that are not a package])."""
+    path = directory / "requirements.txt"
+    declared: dict[str, int] = {}
+    bad: list[int] = []
+    if not path.exists():
+        return declared, bad
+    for i, raw in enumerate(path.read_text().splitlines(), 1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        name = None if line.startswith("-") else dist_import_name(line)
+        if name is None:
+            bad.append(i)
+        else:
+            declared[name] = i
+    return declared, bad
+
+
+def _guarded(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
+    """Inside a `try` that catches ImportError (an optional import), or under `if TYPE_CHECKING`."""
+    child, node = node, parents.get(node)
+    while node is not None:
+        if isinstance(node, ast.Try) and child in node.body:
+            for handler in node.handlers:
+                kinds = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+                if handler.type is None or any(
+                        getattr(k, "id", getattr(k, "attr", None)) in _IMPORT_GUARDS for k in kinds):
+                    return True
+        if isinstance(node, ast.If) and getattr(node.test, "id", getattr(node.test, "attr", None)) == "TYPE_CHECKING":
+            return True
+        child, node = node, parents.get(node)
+    return False
+
+
+def _optional_import(node: ast.AST, parents: dict[ast.AST, ast.AST], tree: ast.Module) -> bool:
+    """Guarded directly, or one call away: the import sits in a function whose every call site in
+    the module is guarded (`def _ppf(): try: return _scipy_ppf() except ImportError: <fallback>`)."""
+    if _guarded(node, parents):
+        return True
+    func = parents.get(node)
+    while func is not None and not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        func = parents.get(func)
+    if func is None:
+        return False
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+             and getattr(n.func, "id", getattr(n.func, "attr", None)) == func.name]
+    return bool(calls) and all(_guarded(c, parents) for c in calls)
+
+
+def check_imports(h: DomainHandle) -> CheckResult:
+    """Every import resolves to something the documented install provides (spec §1.2).
+
+    That is: the standard library, the harness, `[domain]`, a module in the
+    folder, or a package the folder's own `requirements.txt` declares. A
+    domain folder travels — promoted into the shipped examples, cloned into a
+    research repo, gated by a CI runner that installs `[dev]` plus that file —
+    so a dependency that is only present in its author's venv makes a module
+    that cannot be imported anywhere else. An optional import (inside a `try`
+    that catches ImportError, or a test's `pytest.importorskip`) needs no
+    declaration; a lazy import inside a function still does, since the
+    function fails without it — unless every call to that function is itself
+    guarded, which is the fallback pattern one call away.
+    """
+    siblings = {p.stem for p in h.directory.glob("*.py")}
+    siblings |= {p.parent.name for p in h.directory.glob("*/__init__.py")}
+    declared, bad = read_requirements(h.directory)
+    known = set(sys.stdlib_module_names) | HARNESS_IMPORTS | DOMAIN_IMPORTS | siblings
+    undeclared, optional = [], 0
+    for path in sorted(h.directory.glob("*.py")):
+        try:
+            tree = ast.parse(path.read_text())
+        except SyntaxError as exc:
+            undeclared.append(f"{path.name}: unparseable ({exc.msg})")
+            continue
+        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [a.name.split(".")[0] for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                names = [node.module.split(".")[0]]
+            elif (isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "importorskip"
+                  and node.args and isinstance(node.args[0], ast.Constant)):
+                optional += 1
+                continue
+            else:
+                continue
+            if _optional_import(node, parents, tree):
+                optional += 1
+                continue
+            for name in names:
+                if name not in declared and name not in known:
+                    undeclared.append(f"{path.name}:{node.lineno} {name}")
+    restated = sorted(n for n in declared if n in DOMAIN_IMPORTS or n in HARNESS_IMPORTS)
+    findings = []
+    if undeclared:
+        findings.append(f"import(s) the documented install does not provide: {'; '.join(undeclared[:8])}"
+                        f"{' …' if len(undeclared) > 8 else ''} — declare each in the folder's "
+                        f"requirements.txt, or make it optional with a numpy fallback (spec §1.2)")
+    if restated:
+        findings.append(f"requirements.txt restates what [domain] installs: {', '.join(restated)} — list "
+                        f"only what it lacks (CI installs this file into its torch-free runner)")
+    if bad:
+        findings.append(f"requirements.txt line(s) {', '.join(map(str, bad))} are not a package requirement")
+    if findings:
+        return CheckResult("static.imports", "WARN", "; ".join(findings))
+    detail = "imports within the standard library, the harness, [domain] and the folder"
+    if declared:
+        detail += f"; requirements.txt adds {', '.join(sorted(declared))}"
+    if optional:
+        detail += f"; {optional} optional import(s)"
+    return CheckResult("static.imports", "PASS", detail)
 
 
 def check_mdp_no_reward(h: DomainHandle) -> CheckResult:
@@ -2318,6 +2463,7 @@ REGISTRY = [
     check_file_layout,
     check_layering,
     check_no_param,
+    check_imports,
     check_mdp_no_reward,
     check_state_slots,
     check_seed_scheme,

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "auto-mdp-solver"
-version = "0.11.7"
+version = "0.11.8"
 description = "MDP solver pipeline: IR schema + interpreter, conformance harness, eval gates, and Optuna tuning driver for building trained RL policies from formalized decision problems."
 readme = "README.md"
 license = "MIT"
@@ -24,12 +24,17 @@ dependencies = [
 # training, eval, benchmarks, and the deployable policy wrapper. Install with
 #   pip install "auto-mdp-solver[domain]"
 # `stable-baselines3[extra]` supplies torch + tensorboard; `sb3_contrib`
-# supplies MaskablePPO, required by spec §7.1 for action-masked domains.
+# supplies MaskablePPO, required by spec §7.1 for action-masked domains;
+# `plotly` draws the interactive render spec §14.3 requires of every readback.
+# This is the SHARED base; a domain needing more (e.g. SciPy) declares it in
+# its own folder's requirements.txt (spec §1.2) — never here. Changing this
+# list changes `mdp_conformance.checks.DOMAIN_IMPORTS`; a test keeps them in step.
 [project.optional-dependencies]
 domain = [
     "stable-baselines3[extra]>=2.6,<3",
     "sb3_contrib>=2.6,<3",
     "pandas>=2.2,<3",
+    "plotly>=5.20,<8",
     # a generated domain ships its own `{domain}_test.py` (spec §1.2), so the
     # extra that makes a domain runnable must also make its gates runnable —
     # `[domain]` alone is enough to build a case AND check it. Self-reference

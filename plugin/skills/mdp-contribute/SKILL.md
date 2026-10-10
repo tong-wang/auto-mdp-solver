@@ -76,6 +76,9 @@ sends the file as-is.
   `_gym`, `{name}_ir_adapter.py` (portable-domain contract)
 - benchmarks + their `_eval` scripts, `_ppo_train` / `_ppo_eval`
   (+ `_ppo_tune` if used), `{name}_policy.py`
+- `requirements.txt` if any module imports beyond `[domain]` (spec §1.2): only
+  what `[domain]` lacks, never a copy of the research repo's root file. CI
+  installs it before gating, and `static.imports` WARNs on an undeclared import
 - `README.md` — the lead, the TL;DR block and the four sections spec §1.3 fixes:
   the problem, the layout tables, results by research-question tier (**every
   leaderboard** under `1-comparative`, the declared stances under

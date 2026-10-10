@@ -92,16 +92,19 @@ frozen IR (`<name>_schema.json`), the restatement, the spec-conformant domain
 modules (`_uncertainty`/`_scenarios`/`_mdp`/`_gym` + `<name>_ir_adapter.py`),
 benchmarks with their eval scripts, `_ppo_train`/`_ppo_eval`, `<name>_policy.py`,
 the domain's `CLAUDE.md` operating brief (spec §1, from the skill's template),
-and a README whose commands reproduce every leaderboard number (no `results/`).
+a `requirements.txt` if any module needs a package `[domain]` does not install
+(spec §1.2 — only what it lacks), and a README whose commands reproduce every
+leaderboard number (no `results/`).
 Include your campaign record — `ESCALATION.md` and its case-close
 `PLAYBOOK.md` (ESCALATION_LOG_GUIDE §10: digest entries — necessary context /
 symptom / diagnosis / prescription / failed attempts, real names and numbers,
 ledger cited not copied) — it is half the value. State the
 provenance of the problem in the PR (paper cases: cite it; business cases:
 confirm you may publish it — the confirmation covers the campaign record
-too, since a promoted case ships whole). CI (`case-gates`) runs IR
-validation, spec conformance, and the differential on every case dir the PR
-touches; all three must be green. Negative cases — where no pipeline
+too, since a promoted case ships whole). CI (`case-gates`) installs the
+folder's `requirements.txt`, if any, then runs IR validation, spec
+conformance, the differential and the domain's own tests on every case dir
+the PR touches; all must be green. Negative cases — where no pipeline
 deliverable beats the baselines — are accepted when stated plainly; they
 stress the pipeline too (they just don't get promoted to the examples set).
 

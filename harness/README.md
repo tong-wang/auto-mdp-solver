@@ -18,7 +18,7 @@ workspace venv on first run.
 ## Install
 
 ```bash
-pip install "auto-mdp-solver[domain]"   # everything a generated domain needs (SB3 + torch + pandas + pytest)
+pip install "auto-mdp-solver[domain]"   # everything a generated domain needs (SB3 + torch + pandas + plotly + pytest)
 pip install auto-mdp-solver             # harness only, torch-free: IR, conformance, gates, tuning
 pip install "auto-mdp-solver[dev]"      # harness + pytest
 # the same, straight from the repo at a release tag (no PyPI needed):

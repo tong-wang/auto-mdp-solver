@@ -109,6 +109,30 @@ torch-free path: `pytest` over `harness/tests` and over a domain's own
 `{domain}_test.py` both work under it, since neither imports the training
 stack.
 
+**A domain imports what `[domain]` installs, plus what its own
+`requirements.txt` declares.** `[domain]` is the shared base: numpy, pandas,
+torch and SB3 (with matplotlib and tensorboard), plotly for §14.3's
+interactive render, pytest, and the harness. A package beyond it is
+declared in an optional **`requirements.txt` inside the domain folder**,
+listing only what `[domain]` lacks, one per line, with a version range and a
+comment naming the module that needs it:
+
+```
+scipy>=1.11,<2   # {domain}_benchmark_lb: gamma CDF and quantile for the relaxed bound
+```
+
+The file travels with the folder (promotion, a research repo, CI), and is
+installed after the extra: `pip install -r {domain}/requirements.txt`;
+`case-gates` does the same before gating. Prefer not to need it: a special
+function, a quantile or a one-dimensional root that a few lines of numpy
+compute and the domain's test can check against known values belongs in the
+folder as a helper. An optional import with a fallback needs no declaration
+(`examples/mab/mab_grid_probe.py`); a lazy import inside a function does,
+because the function fails without it. `mdp_conformance static.imports`
+WARNs on any import the standard library, the harness, `[domain]`, the
+folder's own modules and its `requirements.txt` do not cover. Dependencies are
+implementation, not problem: they never enter the IR.
+
 ### 1.3 The two campaign documents
 
 `README.md` and `CLAUDE.md` are both read before the code, by different

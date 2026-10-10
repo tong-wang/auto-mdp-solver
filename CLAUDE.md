@@ -88,8 +88,10 @@ restate:
   `.venv/bin/python` here, else any venv with this repo installed. Use
   `pip install -e "./harness[domain]"` — the bare install is deliberately
   torch-free (harness only), so the `[domain]` extra is what the
-  example/generated domain scripts need (SB3 + torch + tensorboard + pandas,
-  plus pytest so a domain's own `{domain}_test.py` runs out of the box).
+  example/generated domain scripts need (SB3 + torch + tensorboard + pandas +
+  plotly, plus pytest so a domain's own `{domain}_test.py` runs out of the
+  box). A domain needing more declares it in its own folder's
+  `requirements.txt`, installed after the extra (spec §1.2).
   `[dev]` is pytest alone — the torch-free path for harness work, enough to
   run the whole suite. This repo ships no `.venv`; create one if absent.
 - **Host neutrality lives at the root, not in the folders.** `AGENTS.md` is a

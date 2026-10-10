@@ -108,6 +108,12 @@ Write in dependency order: `{domain}_exceptions.py` (optional) →
   contract): a contributed or promoted folder cannot assume the destination
   repo's root `.gitignore` covers them.
 
+- Import only what `[domain]` installs. If a module truly needs more (a
+  special function numpy cannot reasonably supply), emit
+  `{domain}/requirements.txt` with just that package, a version range and a
+  comment naming the module (spec §1.2). Install it into the venv right
+  away, and name it in the README appendix's install line.
+
 **GATE:** all three must exit 0 —
 `python -m mdp_conformance {domain}` (generated-code shape),
 `python -m mdp_ir.laws {domain}` (IR execution semantics), and

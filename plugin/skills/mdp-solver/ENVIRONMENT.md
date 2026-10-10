@@ -32,6 +32,8 @@ V=$(python3 -c "import json;print(json.load(open('${CLAUDE_SKILL_DIR}/../../.cla
   || .venv/bin/python -m pip install "auto-mdp-solver[domain] @ git+https://github.com/tong-wang/auto-mdp-solver@v$V#subdirectory=harness"
 # uv: `uv pip install --python .venv/bin/python <the same spec>`
 # from a repo checkout: ... install -e "<repo-root>/harness[domain]"
+# a domain folder that declares more (spec §1.2) — once per such folder:
+.venv/bin/python -m pip install -r {domain}/requirements.txt
 ```
 
 PyPI first, pinned; when PyPI has no release at that version the second
