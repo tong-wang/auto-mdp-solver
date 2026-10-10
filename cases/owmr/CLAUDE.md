@@ -44,7 +44,7 @@ distinction — see `cases/README.md`, "After a case is merged"):
   **0.11.3** (`c52e4e0`), 2026-09-22 — the checkout every number in this
   folder was produced under. This line never moves. Moving it would claim the
   results were re-measured.
-- **Conformance maintained through: 0.11.3** — how far declarations, drawing
+- **Conformance maintained through: 0.11.8** — how far declarations, drawing
   conventions and gate compatibility have been carried forward. Updated when
   the case is brought to a newer spec *without* re-running anything; log each
   such move in `ESCALATION.md` §FRAME-CHANGELOG.

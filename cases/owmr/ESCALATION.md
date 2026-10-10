@@ -142,6 +142,8 @@ graph TD
 
 2026-10-10  NARROWED the scope at close (human, 2026-10-08: "leave hipen_hicv for now"): `hipen` (sc2) and `hipen_hicv` (sc3) stay unopened — coverage debt declared on the root, not a prune; tripwire: the human reopens either cell (the #E33 recipes, the hicv funnel and the fitted-rule probe transfer as written); no return date
 
+2026-10-10  CONFORMANCE CARRIED to 0.11.8 without re-running anything (the contribution review): the per-domain `requirements.txt` of spec §1.2 (v0.11.8) added, the design tree redrawn to the guide's §3 shape, the ledger tables de-indented to render, the figure script brought to §14.3; re-gated upstream at v0.11.8 after the merge (f69ae0f): conformance 26/31 with zero FAILs and static.imports PASS, laws 8/9, differential MATCH ×4, domain pytest 48 passed. "Built and gated at" stays at 0.11.0 / plugin 0.11.3 — nothing was re-measured; `CLAUDE.md`'s "maintained through" line moves 0.11.3 → 0.11.8 (it had been left behind; the maintainer caught it)
+
 ## IR-CHANGELOG
 (the IR's mdp block has not moved since sign-off: mdp ad3be8d58d0d, structural 4b1b412fb64a)
 
