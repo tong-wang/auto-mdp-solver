@@ -1037,6 +1037,41 @@ _CLASS_TO_ALGO = {
 }
 
 
+def _folder_class_bases(directory: Path) -> dict[str, list[str]]:
+    """Every class the domain folder defines -> its base names (`sb3.PPO` -> "PPO"), statically."""
+    bases: dict[str, list[str]] = {}
+    for path in sorted(directory.glob("*.py")):
+        try:
+            tree = ast.parse(path.read_text())
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                bases.setdefault(node.name, [getattr(b, "id", getattr(b, "attr", None))
+                                             for b in node.bases])
+    return bases
+
+
+def _resolve_algo_class(cls: str, folder_bases: dict[str, list[str]]) -> tuple[str | None, str]:
+    """`algo_class` -> (IR algo value, the SB3 class it resolved through).
+
+    A known SB3 class maps directly. A class the domain folder defines (a
+    training-algorithm lever such as `class VinePPO(PPO)`) resolves through its
+    bases to the SB3 class it extends — read from source, so the check stays
+    torch-free and needs no import of the domain's training stack.
+    """
+    seen, frontier = set(), [cls]
+    while frontier:
+        name = frontier.pop(0)
+        if name in _CLASS_TO_ALGO:
+            return _CLASS_TO_ALGO[name], name
+        if name in seen:
+            continue
+        seen.add(name)
+        frontier.extend(b for b in folder_bases.get(name, []) if b)
+    return None, ""
+
+
 def _args_logs(h: DomainHandle) -> list[Path]:
     results = h.directory / "results"
     return sorted(results.rglob("*_args.txt")) if results.is_dir() else []
@@ -1247,7 +1282,10 @@ def check_run_provenance(h: DomainHandle) -> CheckResult:
     trained artifact's class could only be *derived*, and only with domain
     knowledge (`mask: True` names the class to someone who knows the domain).
     Recording `algo_class` is what makes the artifact-vs-declaration check
-    possible at all.
+    possible at all. The class recorded is the one constructed, so a domain's
+    own subclass of a declared algorithm (`VinePPO(PPO)`) is recorded as itself
+    and resolved here through the folder's class definitions — the record is
+    never rewritten to its base to satisfy the check.
     """
     logs = _args_logs(h)
     if not logs:
@@ -1261,7 +1299,8 @@ def check_run_provenance(h: DomainHandle) -> CheckResult:
             declared = {a.value for a in ir.rl.declared_algos()}
         except Exception:
             declared = set()
-    legacy, partial, wrong_class = [], [], []
+    legacy, partial, wrong_class, subclasses = [], [], [], set()
+    folder_bases = _folder_class_bases(h.directory)
     for log in logs:
         rec = _parse_args_log(log)
         # `algo_class` is the adoption marker — the one key only the §8.4
@@ -1276,11 +1315,14 @@ def check_run_provenance(h: DomainHandle) -> CheckResult:
             partial.append(f"{log.parent.name}/{log.name}: missing {missing}")
         cls = rec.get("algo_class")
         if cls and declared:
-            algo = _CLASS_TO_ALGO.get(cls)
+            algo, via = _resolve_algo_class(cls, folder_bases)
             if algo is None or algo not in declared:
                 wrong_class.append(
                     f"{log.parent.name}: algo_class={cls!r} not in declared "
-                    f"{sorted(declared)}")
+                    f"{sorted(declared)}"
+                    + (f" (a subclass of {via})" if algo is not None and via != cls else ""))
+            elif via != cls:
+                subclasses.add(f"{cls}({via})")
     if partial or wrong_class:
         return CheckResult("run.provenance", "FAIL",
                            "; ".join((partial + wrong_class)[:4]))
@@ -1293,6 +1335,8 @@ def check_run_provenance(h: DomainHandle) -> CheckResult:
         detail += f"; {len(legacy)} pre-convention"
     if declared:
         detail += f"; algo_class within declared {sorted(declared)}"
+    if subclasses:
+        detail += f"; resolved through the folder: {', '.join(sorted(subclasses))}"
     return CheckResult("run.provenance", "PASS", detail)
 
 

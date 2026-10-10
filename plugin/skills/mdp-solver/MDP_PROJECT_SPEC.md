@@ -1870,11 +1870,11 @@ names any knob where the two differ, a null default included (§8.6).
 
 | key | value | why |
 |---|---|---|
-| `algo_class` | the **resolved class actually constructed** — `PPO`, `MaskablePPO`, `RecurrentPPO` — not the flag that selected it | a flag like `mask: True` says the class only to someone who knows that domain; the class itself is what a generic check can compare against `rl.algos` |
+| `algo_class` | the **resolved class actually constructed** — `PPO`, `MaskablePPO`, `RecurrentPPO`, or the domain's own subclass of one (`VinePPO`) — not the flag that selected it | a flag like `mask: True` says the class only to someone who knows that domain; the class itself is what a generic check can compare against `rl.algos` |
 | `sb3_version` | `stable_baselines3.__version__` | already asked for by §8.6; stated here so the whole set lives in one place |
 | `ir_mdp_fingerprint` | the IR's `mdp_fingerprint()` at training time | ties the run to the frozen model it was trained against, so a run cannot be silently re-attributed to a different IR |
 
-Domains stay free to add their own keys. `mdp_conformance run.provenance` reads the set: **`algo_class` is the adoption marker** — a log without it is pre-convention and WARNs, a log with it but missing another key FAILs, and no run directory SKIPs. Keying adoption on any-key-present would fail the domains that honoured §8.6's older `sb3_version` line while excusing those that ignored it. It also fails a run whose `algo_class` is not among the IR's declared classes (`rl.algo`/`rl.algos`) — the artifact-vs-declaration check, which is only possible because the class is recorded rather than inferred.
+Domains stay free to add their own keys. `mdp_conformance run.provenance` reads the set: **`algo_class` is the adoption marker** — a log without it is pre-convention and WARNs, a log with it but missing another key FAILs, and no run directory SKIPs. Keying adoption on any-key-present would fail the domains that honoured §8.6's older `sb3_version` line while excusing those that ignored it. It also fails a run whose `algo_class` is not among the IR's declared classes (`rl.algo`/`rl.algos`) — the artifact-vs-declaration check, which is only possible because the class is recorded rather than inferred. A class the domain folder defines resolves through its bases, read from source so the check stays torch-free (`class VinePPO(PPO)` → `ppo`): a training-algorithm lever is recorded as the subclass actually trained, and the log is never rewritten to name its base instead — the args log is written once, at launch.
 
 ### 8.5 Policy selection (MLP vs CNN)
 

@@ -84,3 +84,48 @@ def test_a_run_carrying_only_the_old_sb3_line_is_legacy_not_partial(tmp_path, ir
     h = _domain(tmp_path, ir_doc, {"PPO_1": {"seed": 1, "sb3_version": "2.8.0"}})
     result = check_run_provenance(h)
     assert result.status == "WARN" and "predate" in result.detail
+
+
+# --- a domain's own subclass of a declared algorithm (#95) ----------------------
+# §8.4 records the class actually constructed. A training-algorithm lever that
+# subclasses PPO (owmr's coordinate vine, `class VinePPO(PPO)`) was FAILed as
+# undeclared, and the campaign rewrote 24 args files to `PPO` after training to
+# pass — a record changed to satisfy its checker. The check now resolves the
+# class through the folder's own definitions, from source, staying torch-free.
+
+def _with_module(tmp_path, source: str, name: str = "d_vine_ppo.py") -> None:
+    (tmp_path / name).write_text(source)
+
+
+def test_a_folder_subclass_of_a_declared_algo_passes_as_itself(tmp_path, ir_doc):
+    _with_module(tmp_path, "from stable_baselines3 import PPO\n\n\nclass VinePPO(PPO):\n    pass\n")
+    h = _domain(tmp_path, ir_doc, {"PPO_1": dict(FULL, algo_class="VinePPO")})
+    result = check_run_provenance(h)
+    assert result.status == "PASS", result.detail
+    assert "VinePPO(PPO)" in result.detail
+
+
+def test_the_chain_resolves_through_several_folder_classes_and_dotted_bases(tmp_path, ir_doc):
+    _with_module(tmp_path, "import stable_baselines3 as sb3\n\n\nclass Base(sb3.PPO):\n    pass\n\n\n"
+                           "class Tuned(Base):\n    pass\n")
+    h = _domain(tmp_path, ir_doc, {"PPO_1": dict(FULL, algo_class="Tuned")})
+    assert check_run_provenance(h).status == "PASS"
+
+
+def test_a_subclass_of_an_undeclared_algo_still_fails_and_says_why(tmp_path, ir_doc):
+    _with_module(tmp_path, "from sb3_contrib import MaskablePPO\n\n\nclass Masked(MaskablePPO):\n    pass\n")
+    h = _domain(tmp_path, ir_doc, {"PPO_1": dict(FULL, algo_class="Masked")})   # IR declares ppo only
+    result = check_run_provenance(h)
+    assert result.status == "FAIL" and "a subclass of MaskablePPO" in result.detail
+
+
+def test_a_class_the_folder_does_not_define_is_unknown(tmp_path, ir_doc):
+    _with_module(tmp_path, "class Helper:\n    pass\n")
+    h = _domain(tmp_path, ir_doc, {"PPO_1": dict(FULL, algo_class="VinePPO")})
+    assert check_run_provenance(h).status == "FAIL"
+
+
+def test_a_cyclic_definition_terminates_and_fails(tmp_path, ir_doc):
+    _with_module(tmp_path, "class A(B):\n    pass\n\n\nclass B(A):\n    pass\n")
+    h = _domain(tmp_path, ir_doc, {"PPO_1": dict(FULL, algo_class="A")})
+    assert check_run_provenance(h).status == "FAIL"
