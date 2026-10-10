@@ -264,7 +264,7 @@ train lines behind every row follow, collapsed; the gate commands that check
 the folder itself are in `CLAUDE.md`.
 
 <details>
-<summary>The train line behind every row (steps 4–6 follow each; base screens at 2048 seeds)</summary>
+<summary>The train line behind every row (then steps 4–6; base screens at 2048 seeds)</summary>
 
 ```bash
 # base — the references
@@ -279,8 +279,8 @@ python owmr_ppo_train.py -s base --tag L1
 # base — categorical head, no vine (the #E24 study's trial 34 = h5 at training seed 31)
 python owmr_ppo_train.py -s base @configs/h5.args --tag E24t34 --seed 31
 
-# base — categorical head + the vine on the main optimizer (h6), 5M, then its +5M extension
-# at the terminal learning rate: the record arm (607.63)
+# base — categorical head + the vine on the main optimizer (h6), 5M,
+# then its +5M extension at the terminal learning rate: the record arm (607.63)
 python owmr_ppo_train.py -s base @configs/h5.args @configs/vine_shared.args \
     --tag E30vine --seed 2
 python owmr_ppo_train.py -s base @configs/h5_terminal.args @configs/vine_shared.args \
@@ -336,7 +336,8 @@ for arm in rl_rl h_h h_order h_alloc h_split; do
         --outfile results/hicv/<winner>/swap/swap_$arm.tsv
 done
 
-# hicv — the fitted rule's sweeps (#E33 addenda 2–4): the step form, then the scaled targets
+# hicv — the fitted rule's sweeps (#E33 addenda 2–4):
+# the step form, then the scaled targets
 for t in 0 5 10 15 20; do
     for k in 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.5; do
         python owmr_keep_rule_probe.py -s hicv --k $k --theta $t --n-seeds 8192
