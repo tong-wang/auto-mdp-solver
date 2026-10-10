@@ -76,6 +76,7 @@ Code — where things are implemented:
 | `owmr_split_policy.py` / `owmr_seq_policy.py` / `owmr_ask_features.py` | the architecture arms that lost: split order / allocation trunks, the two-phase phase-masked policy, the ask-feature extractor (#E7–#E10) |
 | `owmr_swap_probe.py` / `owmr_branch_probe.py` / `owmr_snr_probe.py` / `owmr_fit_probe.py` / `owmr_lb_transient_probe.py` | diagnostics, never arms: the order / allocation swap decomposition, the same-world branch probe that sized the vine, the gradient-SNR probe, the representation-fit probe, the heuristic's transient profile |
 | `owmr_keep_rule_probe.py` | the fitted rule of the discover stance: the LB heuristic with scaled targets and a moved order-up-to level, swept and scored paired (#E33 addenda 2–4, #E36) |
+| `requirements.txt` | what this folder needs beyond the harness's `[domain]` extra (spec §1.2 from v0.11.8): SciPy, for the bound and the vine gate |
 | `configs/` | the recipes behind the rows as argument files, one per CONFIG-REGISTRY id (`h5`, `h5_terminal`, `h8`, `vine`, `vine_shared`, `L0`), read by the train script as `@configs/<id>.args` |
 | `owmr_plot_policy.py` | the figure contract (spec §14.3): one spec, two renders — the committed SVG under `figures/` that `INTERPRET.md` inlines and an interactive HTML under the cell's `results/…/figures/` (gitignored), from the two probe JSONs |
 
@@ -185,11 +186,13 @@ no such structure exists there, and the RL residual is not a missed rule
 
 **What you need.** Python 3.12 with the `auto-mdp-solver` harness and its
 domain extra — `pip install "auto-mdp-solver[domain]"`, or
-`pip install -e "./harness[domain]"` from the solver repo's root — which brings
-Stable-Baselines3; plus `pip install scipy plotly`: SciPy solves the
-heuristic's newsvendor targets, plotly draws the interactive figure (the
-committed SVG does not need it). Run everything from `owmr/`, with
-`OMP_NUM_THREADS=1 MKL_NUM_THREADS=1` set for training.
+`pip install -e "./harness[domain]"` from the solver repo's root — then this
+folder's own `pip install -r requirements.txt` (SciPy, which solves the
+heuristic's newsvendor targets and the vine gate's digamma; spec §1.2 from
+v0.11.8). The interactive figure needs plotly, which `[domain]` brings from
+v0.11.8 and an older harness does not (`pip install plotly`); the committed
+SVG needs neither. Run everything from `owmr/`, with `OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1` set for training.
 
 **Where things land.** Everything a command writes goes under `results/`
 (gitignored): each cell has a `benchmark/` folder for the references and one
