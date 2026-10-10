@@ -1,0 +1,7 @@
+results/
+scratch/
+__pycache__/
+# source papers are copyrighted reprints: kept locally, cited in README.md,
+# never in git history (this folder is portable and its history travels)
+*.pdf
+*.PDF
