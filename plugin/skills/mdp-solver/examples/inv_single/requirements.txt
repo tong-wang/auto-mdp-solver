@@ -1,0 +1,1 @@
+scipy>=1.11,<2  # inv_single_benchmark_dp_lostsales: Poisson pmf/cdf for the lost-sales DP demand lattice

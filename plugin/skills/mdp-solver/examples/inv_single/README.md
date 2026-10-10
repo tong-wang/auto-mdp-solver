@@ -117,6 +117,7 @@ Code — where things are implemented:
 | `inv_single_ir_adapter.py` | differential adapter (portable-domain contract) |
 | `inv_single_test.py` | the domain's own tests (spec §1.2) — **60** at the last gate run (v0.10.4, 2026-09-12) |
 | `inv_single_policy.py` | the deployable wrapper (spec §12): observation vector in, order quantity out. Imports `decode_action` from the gym rather than re-deriving it, and `inv_single_ordinal_head` for the custom policy class. `__main__` replays through the raw `inv_single_mdp` loop and reproduces the eval per-seed costs exactly |
+| `requirements.txt` | what this folder needs beyond the harness's `[domain]` extra (spec §1.2 from v0.11.8): SciPy, for the lost-sales DP's Poisson demand lattice |
 
 ## Results
 
