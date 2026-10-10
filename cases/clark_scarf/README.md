@@ -107,6 +107,7 @@ Code — where things are implemented:
 | `clark_scarf_dp_exactness.py` | the brute-force joint DP that verifies the decomposition on a tiny instance |
 | `clark_scarf_ir_adapter.py` | the differential adapter (portable-domain contract) |
 | `clark_scarf_test.py` | the domain's own tests |
+| `requirements.txt` | what this folder needs beyond the harness's `[domain]` extra (spec §1.2 from v0.11.8): SciPy, for binning the gamma demand the DP convolves with |
 
 ## Results
 
