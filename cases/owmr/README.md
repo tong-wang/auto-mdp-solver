@@ -196,33 +196,56 @@ and, after the funnel, its confirm records. Training recipes are the files
 under `configs/`, one per registry id, passed to the train script as
 `@configs/<id>.args`.
 
-**One cell, start to finish.** The `hicv` cell, which produced the result:
+**One cell, start to finish.** The `hicv` cell, which produced the result.
+`<run>` is the directory step 3 prints as `outdir=…`; `<ckpt>` is a
+checkpoint name step 4 prints.
 
 ```bash
-python owmr_scenarios.py; python owmr_mdp.py; python owmr_gym.py          # 1. the layers run (smoke tests)
+# 1. the layers run (smoke tests)
+python owmr_scenarios.py
+python owmr_mdp.py
+python owmr_gym.py
 
-for b in lb lb_heuristic random; do                                      # 2. the references on the protocol block
-    python owmr_benchmark_${b}_eval.py -s hicv --n-seeds 8192; done     #    (bound, heuristic = the bar, floor)
+# 2. the references on the protocol block: the bound, the heuristic (the bar), the floor
+python owmr_benchmark_lb_eval.py -s hicv --n-seeds 8192
+python owmr_benchmark_lb_heuristic_eval.py -s hicv --n-seeds 8192
+python owmr_benchmark_random_eval.py -s hicv --n-seeds 8192
 
-python owmr_ppo_train.py -s hicv @configs/h5.args @configs/vine.args \   # 3. train the shipped arm: categorical head + vine,
-    --total-timesteps 10000000 --tag E33catkeepvine --seed 2             #    10M steps; prints its run directory (outdir=…)
+# 3. train the shipped arm: the categorical head's recipe plus the vine, 10M steps
+python owmr_ppo_train.py -s hicv @configs/h5.args @configs/vine.args \
+    --total-timesteps 10000000 --tag E33catkeepvine --seed 2
 
-python owmr_select.py results/hicv/<run> -a order_catkeep --n-seeds 8192 --top-k 3   # 4. screen the checkpoints on the
-                                                                         #    selection block; prints the confirm commands
-python owmr_ppo_eval.py --model-path results/hicv/<run>/checkpoints/<ckpt>.zip \
-    --vecnorm-path results/hicv/<run>/checkpoints/<ckpt vecnormalize>.pkl -s hicv -a order_catkeep \
-    --first-seed 0 --n-seeds 8192 --outfile results/hicv/<run>/confirm_<ckpt>.tsv \
-    --paired-with results/hicv/benchmark/benchmark_lb_heuristic_eval_hicv.seeds.tsv   # 5. confirm a top-3 checkpoint, paired
-python -m mdp_gates --candidate results/hicv/<run>/confirm_<ckpt>.tsv \                  # 6. the gate (run from the parent,
-    --baseline results/hicv/benchmark/benchmark_random_eval_hicv.tsv \                   #    paths prefixed owmr/)
+# 4. screen the run's checkpoints on the selection block; prints the confirm commands
+python owmr_select.py results/hicv/<run> -a order_catkeep --n-seeds 8192 --top-k 3
+
+# 5. confirm a top-3 checkpoint on the protocol block, paired with the bar
+python owmr_ppo_eval.py -s hicv -a order_catkeep --first-seed 0 --n-seeds 8192 \
+    --model-path results/hicv/<run>/checkpoints/<ckpt>.zip \
+    --vecnorm-path results/hicv/<run>/checkpoints/<ckpt vecnormalize>.pkl \
+    --outfile results/hicv/<run>/confirm_<ckpt>.tsv \
+    --paired-with results/hicv/benchmark/benchmark_lb_heuristic_eval_hicv.seeds.tsv
+
+# 6. the gate (run from the parent directory, with every path prefixed owmr/)
+python -m mdp_gates --n-seeds 8192 --sense minimize --metric cost_total_mean \
+    --candidate results/hicv/<run>/confirm_<ckpt>.tsv \
+    --baseline results/hicv/benchmark/benchmark_random_eval_hicv.tsv \
     --baseline results/hicv/benchmark/benchmark_lb_heuristic_eval_hicv.tsv \
-    --reference results/hicv/benchmark/benchmark_lb_eval_hicv.tsv --n-seeds 8192 --sense minimize --metric cost_total_mean --ir owmr_schema.json
+    --reference results/hicv/benchmark/benchmark_lb_eval_hicv.tsv \
+    --ir owmr_schema.json
 
-python owmr_policy_probe.py --model-path results/hicv/<run>/checkpoints/<ckpt>.zip \
-    --vecnorm-path results/hicv/<run>/checkpoints/<ckpt vecnormalize>.pkl -s hicv -a order_catkeep   # 7. read the policy back
-python owmr_keep_rule_probe.py -s hicv --alpha 0.75 --y0 37 --n-seeds 8192                           # 8. the fitted rule, scored
-python owmr_plot_policy.py                                                                          # 9. the figure (needs step 7 on the winner and its control)
-python owmr_policy.py --n-episodes 8                                                                # 10. the deployable, replayed against the records
+# 7. read the policy back (run on the winner and on its control)
+python owmr_policy_probe.py -s hicv -a order_catkeep \
+    --model-path results/hicv/<run>/checkpoints/<ckpt>.zip \
+    --vecnorm-path results/hicv/<run>/checkpoints/<ckpt vecnormalize>.pkl
+
+# 8. the fitted rule, scored on the protocol block
+python owmr_keep_rule_probe.py -s hicv --alpha 0.75 --y0 37 --n-seeds 8192
+
+# 9. the figure, from step 7's two outputs
+python owmr_plot_policy.py
+
+# 10. the deployable, replayed against the records
+python owmr_policy.py --n-episodes 8
 ```
 
 Every other row — the `base` cell, the controls, the Dirichlet head, the
