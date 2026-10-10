@@ -64,7 +64,6 @@ def _draw_after_one_running(sampler):
     without touching the sampler's private state."""
     study = _frozen_table(sampler)
     study.ask(SPACE)  # left RUNNING
-    study.sampler = sampler
     return study.ask(SPACE).params
 
 
