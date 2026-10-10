@@ -84,6 +84,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="eval episodes used to score each trial")
     p.add_argument("--seed", default=42, type=int,
                    help="fixed training seed + TPE sampler seed")
+    p.add_argument("--constant-liar", dest="constant_liar", action="store_true",
+                   help="for PARALLEL workers on one study: a RUNNING trial "
+                        "counts as an observation at the worst value seen "
+                        "until its score lands, so each worker's draw is "
+                        "repelled from the ones already in flight. Off, every "
+                        "worker that draws against the same completed table "
+                        "proposes its mode. Off by default so a study's draws "
+                        "stay reproducible; pass it on every worker of a "
+                        "parallel launch")
     p.add_argument("--score-checkpoint", default="canonical", type=str,
                    choices=("canonical", "final"),
                    help="which artifact each trial is scored on: 'canonical' = "
@@ -524,8 +533,8 @@ def make_objective(scripts: DomainScripts, args: argparse.Namespace,
     return objective
 
 
-def make_sampler(seed: int) -> optuna.samplers.TPESampler:
-    """The study's sampler: TPE with the constant liar on.
+def make_sampler(seed: int, constant_liar: bool = False) -> optuna.samplers.TPESampler:
+    """The study's sampler: TPE, with optuna's constant liar on request.
 
     Workers of one study run in parallel and share the storage, and a worker
     proposes its next trial from the rows it can see. Without the liar, TPE
@@ -537,9 +546,16 @@ def make_sampler(seed: int) -> optuna.samplers.TPESampler:
     reproduced to the digit by twelve fresh samplers on the frozen table).
     With the liar, a RUNNING trial enters the model at the worst value seen,
     so each draw repels the next: a worker that starts after another has
-    drawn sees that point marked bad and proposes elsewhere. One worker, or
-    a study with no RUNNING rows, samples exactly as before.
+    drawn sees that point marked bad and proposes elsewhere.
+
+    Off by default (`--constant-liar` turns it on): the sampler is not
+    persisted in the storage, so the default decides whether a study's draws
+    can be reproduced from its seed, and studies launched before the flag
+    existed were drawn without it. One worker, or a study with no RUNNING
+    rows, samples the same either way.
     """
+    if not constant_liar:
+        return optuna.samplers.TPESampler(seed=seed)
     # optuna 4.x marks the flag experimental and warns at construction; the
     # warning is the same on every launch and tells the operator nothing the
     # docstring above does not, so it stays out of the launch banner
@@ -606,7 +622,7 @@ def main() -> None:
         study_name=study_name,
         storage=storage,
         direction="minimize" if args.minimize else "maximize",
-        sampler=make_sampler(args.seed),
+        sampler=make_sampler(args.seed, args.constant_liar),
         load_if_exists=True,
     )
 
@@ -621,6 +637,8 @@ def main() -> None:
           f"{args.eval_seeds} eval seeds"
           + (f", timeout {args.timeout}s" if args.timeout else ""))
     print(f"scored on: {args.score_checkpoint} checkpoint, metric={args.metric}")
+    print(f"sampler  : TPE seed {args.seed}, constant liar "
+          f"{'ON' if args.constant_liar else 'off (parallel workers will draw the same point; see --constant-liar)'}")
     show_space(scripts, args.algo, tier=args.knobs,
                pinned=set(fixed_train), locked=set(args.fix))
 

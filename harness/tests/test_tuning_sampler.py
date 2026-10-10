@@ -58,25 +58,33 @@ def _distinct(draws) -> int:
     return len({(round(math.log(lr) / math.log(1.5)), k) for lr, k in draws})
 
 
-def test_the_sampler_lies_about_running_trials():
-    assert make_sampler(1)._constant_liar is True
+def test_the_liar_is_off_unless_asked():
+    """The sampler is not persisted with the study, so the default decides
+    whether a study's draws can be reproduced from its seed."""
+    assert make_sampler(1)._constant_liar is False
+    assert make_sampler(1, constant_liar=True)._constant_liar is True
+
+
+def test_the_switch_is_on_the_cli_and_off_by_default():
+    from mdp_tuning.__main__ import _build_arg_parser
+    assert _build_arg_parser().parse_args(["d"]).constant_liar is False
+    assert _build_arg_parser().parse_args(["d", "--constant-liar"]).constant_liar is True
 
 
 def test_a_wave_without_the_liar_collapses_onto_the_mode():
-    """The control: the defect, reproduced on a synthetic table."""
-    plain = lambda seed: optuna.samplers.TPESampler(seed=seed)
-    draws = _wave(_frozen_table(plain(100)), plain)
+    """The default, and the defect, reproduced on a synthetic table."""
+    draws = _wave(_frozen_table(make_sampler(100)), make_sampler)
     assert _distinct(draws) <= 2, draws
 
 
 def test_a_wave_with_the_liar_spreads():
-    draws = _wave(_frozen_table(make_sampler(100)), make_sampler)
+    liar = lambda seed: make_sampler(seed, constant_liar=True)
+    draws = _wave(_frozen_table(liar(100)), liar)
     assert _distinct(draws) >= 5, draws
 
 
 def test_alone_the_liar_changes_nothing():
     """No RUNNING rows -> identical draws with and without the flag."""
-    plain = optuna.samplers.TPESampler(seed=7)
-    a = _frozen_table(plain).ask(SPACE).params
-    b = _frozen_table(make_sampler(7)).ask(SPACE).params
+    a = _frozen_table(make_sampler(7)).ask(SPACE).params
+    b = _frozen_table(make_sampler(7, constant_liar=True)).ask(SPACE).params
     assert a == b
