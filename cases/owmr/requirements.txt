@@ -1,0 +1,1 @@
+scipy>=1.11,<2  # owmr_benchmark_lb: gamma CDF/quantile for the bound; owmr_vine_gate: digamma (G9)

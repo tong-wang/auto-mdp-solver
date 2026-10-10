@@ -1,0 +1,33 @@
+{
+ "target": "hicv",
+ "target_kind": "scenario",
+ "strategy": "specialist",
+ "escalation_budget": "one mdp_tuning study on order_frac (#E3, spent 2026-09-23); EXTENDED by the human 2026-09-23: a second study on order_softmax, 80 trials (4 workers x 20), knobs all with norm_reward held at its derived value (on) per #E3's evidence, 5M/trial (#E5, relaunched 2026-09-23 as owmr_base_ppo_softmax_fixnr); EXTENDED by the human 2026-09-24: the ask/allocate architecture on order_softmax, 2 training seeds x 5M at h0 (#E7); then stop; EXTENDED by the human 2026-09-25: the #E7\u2013#E14 architecture/interface rounds, the #E11/#E12/#E15 diagnoses, and a study on order_relu, 80 trials, knobs all with norm_reward held, 5M/trial (#E16); EXTENDED by the human 2026-09-27: the #E17\u2013#E23 head rounds and two studies of 80 trials (2 workers \u00d7 40 each) on order_catkeep (#E24) and order_dirichlet (#E25), knobs all with norm_reward held, 5M/trial; EXTENDED by the human 2026-10-02: #E24/#E25 closed unconverged at 5M (56 / 53 sampled trials scored, not harvested); two studies of 80 trials (2 workers \u00d7 40 each) on order_catkeep (#E27) and order_dirichlet (#E28), knobs all with norm_reward held, 10M/trial; CAPPED by the human 2026-10-06: #E27/#E28 stopped at 60 trials each; EXTENDED by the human 2026-10-05..07 (base): the same-world branch probe (#E29), the coordinate vine and its dose, schedule and grid rounds (#E30-#E32, #E34), each a 2-seed pair with matched controls at 5M/10M; RE-ENTERED for hicv 2026-10-07: the backbone (L0, L1 x2) and base's bundle carried over (catkeep h5 and dirichlet h8, each ctl + vine x2 seeds, 10M), then the readback (#E33 addenda 1-5), one mdp_tuning study on catkeep + vine, knobs all, 10M/trial, 16 workers, 20 h of draws (#E35), and the instrument's negative control on base (#E36); then stop (2026-10-09)",
+ "confirmed": "2026-10-07",
+ "protocol": {
+  "n_seeds": 8192,
+  "first_seed": 0,
+  "selection_n_seeds": 8192,
+  "selection_first_seed": 1000000,
+  "top_k": 3,
+  "record_eval": "deterministic",
+  "trial_block_n_seeds": 2048,
+  "trial_block_first_seed": 3000000
+ },
+ "budgets": {
+  "L0_total_timesteps": 2000000,
+  "L1_total_timesteps": 5000000
+ },
+ "re_entry": {
+  "from_target": "base",
+  "base_confirmed": "2026-09-22",
+  "base_protocol": {
+   "selection_n_seeds": 2048,
+   "selection_first_seed": 1000000,
+   "trial_block_n_seeds": 512,
+   "trial_block_first_seed": 3000000
+  },
+  "base_closed": "2026-10-09",
+  "reason": "the human opened the loose cell before the parking tripwire fired (FRAME-CHANGELOG 2026-10-07)"
+ }
+}

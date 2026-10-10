@@ -1,0 +1,7 @@
+# h5 at its terminal learning rate and clip — the +5M / +10M extensions continued from a run's terminal (#E31 addendum 2, #E33 addendum 5); pair with --init-from <run>
+--learning_rate 1.5991e-06 --lr-final 1.5991e-06
+--clip-init 0.1 --clip-final 0.1
+--n-steps 1024 --batch-size 128 --n-epochs 20
+--gae-lambda 0.948668 --ent-coef 3.548025133066827e-05 --vf-coef 0.8545928881181462 --max-grad-norm 0.3
+--no-normalize-advantage --net_arch 256 256 256 --no-norm-obs
+-a order_catkeep --policy catkeep --level L3(gym+arch+hp)

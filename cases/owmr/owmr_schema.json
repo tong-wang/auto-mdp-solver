@@ -1,0 +1,961 @@
+{
+  "ir_version": "0.4",
+  "seed_scheme": "v2",
+  "domain": {
+    "name": "owmr",
+    "class_prefix": "Owmr",
+    "one_line": "One-warehouse, N-retailer periodic-review distribution system under central control: free warehouse ordering, stock allocation to the retailers, complete backordering (Dogru, de Kok & van Houtum 2010).",
+    "problem_class": "inventory_control"
+  },
+  "mdp": {
+    "model": {
+      "quantities": {
+        "n_retailers": {
+          "domain": "integer >= 1",
+          "source": "paper Table 1: N in Z+",
+          "stochastic": false
+        },
+        "l0": {
+          "domain": "integer >= 1",
+          "source": "paper Table 1: l0 in Z+, the supplier-to-warehouse lead time, fixed",
+          "stochastic": false
+        },
+        "l_rt": {
+          "domain": "integer >= 0, one per retailer",
+          "source": "paper Table 1: l_i in Z0+, fixed; l_i = 0 and unequal l_i are out of scope in THIS rendering, see out_of_scope",
+          "stochastic": false
+        },
+        "h0": {
+          "domain": "real >= 0",
+          "source": "paper Table 1: additional holding cost at the warehouse, charged on warehouse on-hand and on stock in transit to a retailer (the latter policy-independent, §3.1)",
+          "stochastic": false
+        },
+        "h_rt": {
+          "domain": "real >= 0, one per retailer",
+          "source": "paper Table 1: additional holding cost at retailer i, so retailer on-hand pays h0 + h_i",
+          "stochastic": false
+        },
+        "p_rt": {
+          "domain": "real > 0, one per retailer",
+          "source": "paper Table 1: penalty per unit of backlog per period at retailer i",
+          "stochastic": false
+        },
+        "mu_rt": {
+          "domain": "real > 0, one per retailer",
+          "source": "paper Table 1: mean one-period demand at retailer i",
+          "stochastic": false
+        },
+        "demand": {
+          "domain": "continuous on (0, inf) with no probability mass at zero, i.i.d. across periods and across retailers, stationary",
+          "source": "paper §3: 'the retailers face the stochastic i.i.d. demand of the customers that are stationary and continuous on (0, inf) with no probability mass at zero'; the family is NOT model structure -- the paper fits Erlang mixtures to (mu, cv) as a computational device",
+          "stochastic": true
+        },
+        "horizon_T": {
+          "domain": "integer >= 1",
+          "source": "the paper's objective is long-run average cost; the finite horizon is this rendering's design choice (Phase A, 2026-09-22)",
+          "stochastic": false
+        }
+      },
+      "out_of_scope": [
+        "fixed ordering costs and batch-size constraints on warehouse orders (Axsater, Marklund & Silver 2002 study batches; the paper and this rendering do not)",
+        "variable ordering and transportation costs: constant under any policy in the average-cost model (paper §3.1), so omitted",
+        "lost sales and partial backordering: all unfilled demand is backlogged",
+        "lateral transshipment between retailers and returns to the warehouse (the balance assumption's fictions, paper §1)",
+        "stochastic lead times",
+        "l_i = 0 (same-period retailer delivery): void under the RR-before-S event order this rendering uses (a shipment would have to land before its own dispatch); every test-bed cell has l_i >= 1",
+        "unequal retailer lead times: l_rt is rendered as one scalar shared by all retailers (the identical-retailer test bed); lifting it is a per-retailer pipeline width, not a value change"
+      ],
+      "dynamics": [
+        "RW: wh_stock += wh_pipe[1];  wh_pipe <- shift(wh_pipe) (drop the head, append 0)",
+        "O: wh_pipe[l0] += order  (order >= 0 unconstrained above: the supplier has ample stock)",
+        "RR: forall i: rt_stock_i += rt_pipe_{i,1};  rt_pipe_{i,.} <- shift(rt_pipe_{i,.})",
+        "S: forall i: shipped_i = ship_i * min(1, wh_stock / sum(ship)) (proportional scale-down when the request exceeds on-hand; no negative shipments);  wh_stock -= sum(shipped);  forall i: rt_pipe_{i,l_rt} += shipped_i",
+        "D: forall i: rt_stock_i -= D_{i,t},  D_{i,t} ~ demand_i, independent across i and t",
+        "objective: minimize E[ sum_{t=0..horizon_T-1} ( h0 * wh_stock_t + sum_i (h0 + h_i) * max(rt_stock_{i,t}, 0) + sum_i p_i * max(-rt_stock_{i,t}, 0) ) ] on end-of-period levels (paper §3, cost assessed at period end); stock in transit is not charged"
+      ],
+      "notation": {
+        "wh_stock, rt_stock_i": "the paper's on-hand at stock point 0 and net stock at retailer i (backlog = negative rt_stock); the paper works in echelon stock I_i and echelon inventory position IP_i, which are derived here, not carried",
+        "wh_pipe, rt_pipe": "orders in transit to the warehouse / shipments in transit to retailer i, one slot per period of lead time; the paper carries them inside IP_0 and IP_i",
+        "l0, l_rt": "the paper's l_0 and l_i",
+        "h0, h_rt, p_rt, mu_rt, cv_rt": "the paper's h_0, h_i, p_i, mu_i, cv_i (Table 1)",
+        "order, ship_i": "the paper's ordering decision (IP_0 raised to y_0) and allocation decision (w_i), stated here as quantities rather than as target levels",
+        "t": "period index, 0-based, as the paper's t"
+      }
+    },
+    "design": {
+      "scenario": {
+        "constants": [
+          {
+            "name": "n_retailers",
+            "value": 5,
+            "axis": "structure",
+            "desc": "number of retailers N. Fixed at 5 for the campaign (human, 2026-09-22): the paper's ANOVA found N statistically irrelevant to the balance-assumption gap, so a large N shows the allocation's dimensionality at no cost to the question. Tier-1 width: it sizes the ship decision and every per-retailer vector, so cells at different N are separate leaderboards."
+          },
+          {
+            "name": "horizon_T",
+            "value": 100,
+            "axis": "horizon",
+            "desc": "episode length in periods. The paper's objective is long-run average cost per period; this rendering scores total cost over horizon_T periods and reports total / horizon_T beside the paper's per-period bound. 100 keeps the start-up transient (l0 + l_rt = 4 periods) at ~4% of the episode."
+          },
+          {
+            "name": "l0",
+            "value": 3,
+            "axis": "structure",
+            "desc": "supplier-to-warehouse lead time in periods; the width of wh_pipe. The paper sweeps {1, 3, 5}; 3 chosen (human, 2026-09-22) as the setting where the tight and loose cells separate clearly (paper Tables 3-4)."
+          },
+          {
+            "name": "l_rt",
+            "value": 1,
+            "axis": "structure",
+            "desc": "warehouse-to-retailer lead time in periods, identical across retailers; the width of every retailer's pipeline. The paper sweeps {1, 3, 5}; 1 is the short-retailer-lead-time setting in which the paper's gaps are largest. NARROWING: the model admits per-retailer l_i; this rendering shares one value (the identical-retailer test bed)."
+          },
+          {
+            "name": "h0",
+            "value": 0.5,
+            "axis": "cost",
+            "desc": "added holding value at the warehouse per unit-period. The paper's identical-retailer bed keeps h0 + h_i = 1; 0.5/0.5 is its equal-added-value split, the neutral holding case."
+          },
+          {
+            "name": "h_rt",
+            "value": [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ],
+            "axis": "cost",
+            "desc": "added holding value at each retailer per unit-period (retailer on-hand pays h0 + h_rt[i]). Length n_retailers."
+          },
+          {
+            "name": "p_rt",
+            "value": [
+              4.0,
+              4.0,
+              4.0,
+              4.0,
+              4.0
+            ],
+            "axis": "cost",
+            "desc": "backorder penalty per unit-period at each retailer. The paper's values {4, 9, 19, 99} correspond to 80/90/95/99% no-stockout probability under the lower-bound policy; the campaign crosses 4 (low) and 19 (high). Length n_retailers."
+          },
+          {
+            "name": "mu_rt",
+            "value": [
+              1.0,
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "axis": "demand",
+            "desc": "mean one-period demand at each retailer; the paper's normalization mu_i = 1. Length n_retailers."
+          },
+          {
+            "name": "cv_rt",
+            "value": [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ],
+            "axis": "demand",
+            "desc": "coefficient of variation of one-period demand at each retailer. The paper sweeps {0.25, 0.5, 1, 2, 3}; the campaign crosses 0.5 (low, bound known tight) and 2 (high, bound known loose). Length n_retailers."
+          },
+          {
+            "name": "order_scale_mult",
+            "value": 10,
+            "axis": "",
+            "desc": "multiplier in the ACTION-SCALE cap order_scale_mult * (l0 + 1) * sum(mu_rt) on the warehouse order and on each shipment. Rationale from the model, not from any run: an order restores the warehouse echelon position after one period of demand, and its size is governed by the system demand over the warehouse lead time plus one period, (l0 + 1) * sum(mu_rt), plus safety stock; at l0 = 1 the cap is 20x mean system demand, inv_single's convention. Not a physical limit: the supplier has ample stock."
+          }
+        ],
+        "instances": {
+          "hicv": {
+            "cv_rt": [
+              2.0,
+              2.0,
+              2.0,
+              2.0,
+              2.0
+            ]
+          },
+          "hipen": {
+            "p_rt": [
+              19.0,
+              19.0,
+              19.0,
+              19.0,
+              19.0
+            ]
+          },
+          "hipen_hicv": {
+            "p_rt": [
+              19.0,
+              19.0,
+              19.0,
+              19.0,
+              19.0
+            ],
+            "cv_rt": [
+              2.0,
+              2.0,
+              2.0,
+              2.0,
+              2.0
+            ]
+          }
+        }
+      }
+    },
+    "rendering": {
+      "horizon": {
+        "T": "horizon_T",
+        "period_indexing": "0-based"
+      },
+      "entity_structure": {
+        "kind": "single",
+        "entity_id_in_seed": false
+      },
+      "state_variables": [
+        {
+          "name": "period",
+          "role": "time_index",
+          "type": "int",
+          "bounds": [
+            0,
+            "horizon_T"
+          ],
+          "observability": "observable",
+          "desc": "current period t; the episode ends when period == horizon_T"
+        },
+        {
+          "name": "wh_stock",
+          "role": "core",
+          "type": "float",
+          "bounds": [
+            0,
+            "sum(mu_rt) + horizon_T * order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          "observability": "observable",
+          "desc": "warehouse on-hand after all period events. Never negative: shipments are scaled to what is on hand. Envelope = initial cover plus everything the action cap could bring in over the horizon (a validity envelope, not a scale)."
+        },
+        {
+          "name": "wh_pipe",
+          "role": "core",
+          "type": "float_vector",
+          "length": "l0",
+          "element_bounds": [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          "observability": "observable",
+          "desc": "wh_pipe[k] = units ordered from the supplier that land at the warehouse receipt event k+1 periods from now. Exactly l0 slots: the width NAMES the lead time, so an instance renders the slots it has. An order enters at the last slot; the RW event drops the head."
+        },
+        {
+          "name": "rt_stock",
+          "role": "core",
+          "type": "float_vector",
+          "length": "n_retailers",
+          "element_bounds": [
+            "-horizon_T * demand.max",
+            "sum(mu_rt) + horizon_T * order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          "observability": "observable",
+          "desc": "rt_stock[i] = net stock at retailer i after all period events; negative = backlog (complete backordering). Lower envelope = every period's demand at its 4-sd bound backlogged for the whole horizon; upper = the warehouse envelope."
+        },
+        {
+          "name": "rt_pipe",
+          "role": "core",
+          "type": "float_matrix",
+          "length": [
+            "n_retailers",
+            "l_rt"
+          ],
+          "element_bounds": [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          "observability": "observable",
+          "desc": "rt_pipe[i][k] = units shipped to retailer i that land at its receipt event k+1 periods from now. Both widths NAME constants (n_retailers rows, l_rt slots), quantified over i in the dynamics."
+        }
+      ],
+      "info_fields": [
+        {
+          "name": "wh_arrival",
+          "type": "float",
+          "desc": "units received at the warehouse this period (RW event)"
+        },
+        {
+          "name": "rt_arrival",
+          "type": "float_vector",
+          "desc": "rt_arrival[i] = units received at retailer i this period (RR event)"
+        },
+        {
+          "name": "shipped",
+          "type": "float_vector",
+          "desc": "shipped[i] = units actually dispatched to retailer i after the on-hand scale-down (S event)"
+        },
+        {
+          "name": "ship_scale",
+          "type": "float",
+          "desc": "the factor applied to the requested shipments at S: 1 when the request fits on-hand, wh_stock / sum(ship) when it does not"
+        },
+        {
+          "name": "demand",
+          "type": "float_vector",
+          "desc": "demand[i] = realized demand at retailer i this period (D event)",
+          "placement": {
+            "value": "info",
+            "suggested": "info",
+            "source": "human_confirmed",
+            "rationale": "no later transition reads it; demand is i.i.d. so it carries no predictive content; exposed only through the raw_d observation mode"
+          }
+        },
+        {
+          "name": "action_period",
+          "type": "int",
+          "desc": "the period the emitting decisions acted on (boundary invariant)"
+        },
+        {
+          "name": "cost",
+          "type": "decomposition",
+          "components": [
+            "wh_holding",
+            "rt_holding",
+            "rt_shortage",
+            "total"
+          ]
+        }
+      ],
+      "decisions": [
+        {
+          "name": "order",
+          "type": {
+            "value": "continuous",
+            "suggested": "continuous",
+            "source": "human_confirmed",
+            "rationale": "demand is continuous, so quantities are; the paper's order is a real number (IP_0 raised to y_0)"
+          },
+          "dim": 1,
+          "bounds": {
+            "value": [
+              0,
+              "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+            ],
+            "suggested": [
+              0,
+              "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+            ],
+            "source": "human_confirmed",
+            "rationale": "ACTION-SCALE cap, 10 x system demand over the warehouse lead time plus one period (human choice 2026-09-22 over a flat 20 x mean); the supplier itself imposes no limit"
+          },
+          "feasibility": [
+            "non_negative"
+          ],
+          "desc": "units ordered from the outside supplier at the O event; land after l0 periods"
+        },
+        {
+          "name": "ship",
+          "type": {
+            "value": "continuous",
+            "suggested": "continuous",
+            "source": "human_confirmed",
+            "rationale": "demand is continuous, so allocated quantities are; the paper's w_i are real"
+          },
+          "dim": "n_retailers",
+          "bounds": {
+            "value": [
+              0,
+              "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+            ],
+            "suggested": [
+              0,
+              "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+            ],
+            "source": "human_confirmed",
+            "rationale": "the same cap as the order: nothing more than that ever sits at the warehouse to be shipped"
+          },
+          "feasibility": [
+            "non_negative"
+          ],
+          "desc": "ship[i] = units requested for retailer i at the S event. The joint constraint sum(ship) <= wh_stock is enforced by proportional scale-down inside the transition (spec 7.2 option 2), so every encoding shares one projection; the default gym encoding never triggers it."
+        }
+      ],
+      "uncertainty_slots": [
+        {
+          "name": "demand",
+          "interface": "DemandGenerator",
+          "stream_id": 0,
+          "latent": false,
+          "stages": [
+            {
+              "name": "sample",
+              "realization": "period"
+            }
+          ],
+          "default": "gamma",
+          "candidates": {
+            "gamma": {
+              "generator": "GammaDemand",
+              "family": "independent",
+              "settings": {
+                "of": "gamma",
+                "size": "n_retailers",
+                "shape": "[1.0 / (c * c) for c in cv_rt]",
+                "scale": "[mu_rt[i] * cv_rt[i] * cv_rt[i] for i in range(n_retailers)]"
+              },
+              "is_discrete": false,
+              "desc": "one gamma draw per retailer per period, independent, matching the paper's (mu_i, cv_i) exactly in mean and coefficient of variation: shape = 1/cv^2, scale = mu*cv^2. Continuous on (0, inf) with no mass at zero, as the model requires, and closed under convolution, so the lead-time demand in the lower bound is another gamma. The paper's own two-component Erlang mixture is a computational device with the same two moments; a candidate replicating it is appendable later."
+            }
+          },
+          "desc": "retailer demand, the only stochastic primitive; per period, no world latent"
+        }
+      ],
+      "dynamics": {
+        "event_sequence": [
+          "RW",
+          "O",
+          "RR",
+          "S",
+          "D"
+        ],
+        "observation_point": "pre-order",
+        "transitions": [
+          {
+            "event": "RW",
+            "updates": [
+              "wh_arrival = wh_pipe[0]",
+              "wh_stock += wh_arrival",
+              "wh_pipe = wh_pipe[1:] + [0]"
+            ]
+          },
+          {
+            "event": "O",
+            "updates": [
+              "wh_pipe[l0 - 1] += order"
+            ]
+          },
+          {
+            "event": "RR",
+            "updates": [
+              "rt_arrival = [rt_pipe[i][0] for i in range(n_retailers)]",
+              "rt_stock = [rt_stock[i] + rt_arrival[i] for i in range(n_retailers)]",
+              "rt_pipe = [rt_pipe[i][1:] + [0] for i in range(n_retailers)]"
+            ]
+          },
+          {
+            "event": "S",
+            "updates": [
+              "ship_scale = min(1.0, wh_stock / sum(ship)) if sum(ship) > 0 else 1.0",
+              "shipped = [ship[i] * ship_scale for i in range(n_retailers)]",
+              "wh_stock -= sum(shipped)",
+              "rt_pipe = [rt_pipe[i][:l_rt - 1] + [rt_pipe[i][l_rt - 1] + shipped[i]] for i in range(n_retailers)]"
+            ]
+          },
+          {
+            "event": "D",
+            "updates": [
+              "demand ~ demand.sample",
+              "rt_stock = [rt_stock[i] - demand[i] for i in range(n_retailers)]"
+            ]
+          },
+          {
+            "event": "END_OF_PERIOD",
+            "updates": [
+              "action_period = period",
+              "period += 1"
+            ]
+          }
+        ]
+      },
+      "objective": {
+        "sense": "minimize",
+        "discount_factor": 1.0,
+        "per_step_components": [
+          {
+            "name": "wh_holding",
+            "expr": "h0 * wh_stock",
+            "desc": "h0 on warehouse on-hand at period end (never negative)"
+          },
+          {
+            "name": "rt_holding",
+            "expr": "sum([(h0 + h_rt[i]) * max(0, rt_stock[i]) for i in range(n_retailers)])",
+            "desc": "h0 + h_i on retailer on-hand at period end; stock in transit is not charged (policy-independent constant, paper 3.1)"
+          },
+          {
+            "name": "rt_shortage",
+            "expr": "sum([p_rt[i] * max(0, -rt_stock[i]) for i in range(n_retailers)])",
+            "desc": "p_i per unit of backlog at period end"
+          }
+        ]
+      },
+      "invariants": [
+        {
+          "name": "warehouse_balance",
+          "expr": "close(wh_stock, prev.wh_stock + wh_arrival - sum(shipped))",
+          "desc": "warehouse on-hand changes only by what arrives from the supplier and what is shipped out"
+        },
+        {
+          "name": "retailer_balance",
+          "expr": "close(sum(rt_stock), sum(prev.rt_stock) + sum(rt_arrival) - sum(demand))",
+          "desc": "retailer net stock changes only by what lands and what customers take; backlog is negative stock, nothing is lost"
+        },
+        {
+          "name": "conservation",
+          "expr": "close(wh_stock + sum(wh_pipe) + sum(rt_stock) + sum([sum(rt_pipe[i]) for i in range(n_retailers)]), prev.wh_stock + sum(prev.wh_pipe) + sum(prev.rt_stock) + sum([sum(prev.rt_pipe[i]) for i in range(n_retailers)]) + order - sum(demand))",
+          "desc": "nothing enters the system but the supplier order and nothing leaves but demand"
+        },
+        {
+          "name": "warehouse_never_negative",
+          "expr": "wh_stock >= -1e-9",
+          "desc": "the warehouse never ships more than it holds: no negative allocations (the balance assumption's fiction is NOT in the model)"
+        },
+        {
+          "name": "shipments_within_onhand",
+          "expr": "sum(shipped) <= prev.wh_stock + wh_arrival + 1e-9",
+          "desc": "what is dispatched this period fits in what the warehouse held after this period's receipt"
+        }
+      ],
+      "initial_state": {
+        "wh_stock": "sum(mu_rt)",
+        "wh_pipe": "[sum(mu_rt) for k in range(l0)]",
+        "rt_stock": "[mu_rt[i] for i in range(n_retailers)]",
+        "rt_pipe": "[[mu_rt[i] for k in range(l_rt)] for i in range(n_retailers)]"
+      }
+    }
+  },
+  "gym": {
+    "observation_modes": [
+      {
+        "name": "raw",
+        "default": true,
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_T - period"
+          },
+          {
+            "ref": "wh_stock"
+          },
+          {
+            "ref": "wh_pipe"
+          },
+          {
+            "ref": "rt_stock"
+          },
+          {
+            "ref": "rt_pipe"
+          }
+        ],
+        "desc": "the full physical state plus the countdown: warehouse on-hand, its pipeline, each retailer's net stock and pipeline"
+      },
+      {
+        "name": "raw_d",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_T - period"
+          },
+          {
+            "ref": "wh_stock"
+          },
+          {
+            "ref": "wh_pipe"
+          },
+          {
+            "ref": "rt_stock"
+          },
+          {
+            "ref": "rt_pipe"
+          },
+          {
+            "ref": "info.demand"
+          }
+        ],
+        "desc": "raw plus last period's realized demand per retailer (the old simulator's vec_d); carries no information under i.i.d. demand, kept as a control"
+      },
+      {
+        "name": "position",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_T - period"
+          },
+          {
+            "ref": "wh_stock"
+          },
+          {
+            "derived": "wh_echelon_position",
+            "expr": "wh_stock + sum(wh_pipe) + sum(rt_stock) + sum([sum(rt_pipe[i]) for i in range(n_retailers)])"
+          },
+          {
+            "derived": "rt_position",
+            "expr": "[rt_stock[i] + sum(rt_pipe[i]) for i in range(n_retailers)]"
+          }
+        ],
+        "desc": "the paper's coordinates: warehouse on-hand, warehouse echelon inventory position IP_0, and each retailer's inventory position; a lossy aggregation of raw (pipeline timing is dropped), so a lever, not the discover arm"
+      },
+      {
+        "name": "raw_seq",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_T - period"
+          },
+          {
+            "ref": "wh_stock"
+          },
+          {
+            "ref": "wh_pipe"
+          },
+          {
+            "ref": "rt_stock"
+          },
+          {
+            "ref": "rt_pipe"
+          },
+          {
+            "derived": "phase",
+            "expr": "0"
+          }
+        ],
+        "desc": "raw plus the within-period PHASE (0 = order step, 1 = allocation step), for the two-phase action mode `seq_order_softmax` only (ESCALATION #E10). At the allocation step the vector renders the INTERSTATE after the O event: the order just placed sits in wh_pipe's last slot, which is the state variable's true value there. The phase expr is a placeholder '0': the IR has no sub-period concept, so which-decision-am-I-taking is inexpressible (adi_flex's F7 precedent; the same upstream gap)."
+      }
+    ],
+    "action_modes": [
+      {
+        "name": "order_frac",
+        "default": true,
+        "encodes": [
+          "order",
+          "ship"
+        ],
+        "type": "continuous",
+        "bounds": [
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "DEFAULT. Component 0 is the order quantity; components 1..N are fractions f_i of warehouse on-hand: the gym decodes ship[i] = f_i * wh_stock_after_receipt, so a shipment request never exceeds on-hand unless sum(f) > 1, in which case the MDP's proportional scale-down applies. Retention at the warehouse is implicit, 1 - sum(f). This is the human's 'order quantity + allocation weights' choice (2026-09-22) rendered under the IR v1 rule that a multi-decision mode is identity per component (no separate retain weight is declarable); the decode is by mode name in the gym, as adi_flex's target modes are."
+      },
+      {
+        "name": "order_ship",
+        "encodes": [
+          "order",
+          "ship"
+        ],
+        "type": "continuous",
+        "bounds": [
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "clip",
+        "desc": "identity: the agent emits the order and the N shipment quantities directly; the MDP scales the shipments down proportionally when they exceed on-hand. The literal encoding, with a dead region where the scale-down fires."
+      },
+      {
+        "name": "target_frac",
+        "encodes": [
+          "order",
+          "ship"
+        ],
+        "type": "continuous",
+        "bounds": [
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "LEVER, never the discover arm: component 0 is an echelon order-up-to level y0 and the gym orders max(0, y0 - IP_0); components 1..N are fractions as in order_frac. Hands the agent the lower-bound policy's ordering structure, so it can only price that structure, not discover it."
+      },
+      {
+        "name": "order_softmax",
+        "encodes": [
+          "order",
+          "ship"
+        ],
+        "type": "continuous",
+        "bounds": [
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          [
+            -10,
+            10
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "Component 0 is the order quantity; components 1..N are LOGITS in [-10, 10] decoded by an ANCHORED softmax with the warehouse logit fixed at 0: ship[i] = wh_stock * e^{x_i} / (1 + sum_j e^{x_j}). The retailer shares sum strictly below 1, so the MDP's proportional scale-down never fires and retention = 1 / (1 + sum e^{x_j}) is smooth and always reachable (order_frac's independent clipping left sum > 1 in every period of the L1 winner, a zero-gradient region with retention 0, ESCALATION #E2). Raw action 0 = order nothing, 1/(N+1) of on-hand to each retailer and 1/(N+1) retained. Structure-free: reads only on-hand. The honest declaration is feasibility_strategy 'reparametrize', which IR v1 refuses on a multi-decision mode (it requires a transform and forbids one on multi-decision modes); the decode lives in owmr_gym.anchored_softmax_shares."
+      },
+      {
+        "name": "seq_order_softmax",
+        "encodes": [
+          "order",
+          "ship"
+        ],
+        "type": "continuous",
+        "bounds": [
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          [
+            -10,
+            10
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "TWO-PHASE encoding of order_softmax (ESCALATION #E10), one policy: each period the env takes an ORDER step (component 0 live, components 1..N ignored; reward 0), then an ALLOCATION step (components 1..N live as order_softmax's anchored-softmax logits, component 0 ignored; reward = minus the period's cost). The gym holds the order and calls the simulator's one-period advance2(order, ship) at the allocation step: both decisions share ONE information set, so the micro-step is an action-encoding device giving each decision its own value baseline (V at the interstate), NOT an extra MDP period (adi_flex F7). Paired with observation mode raw_seq only; the training policy masks the ignored components out of the log-probability and entropy (owmr_seq_policy.py). Episode = 2 x horizon_T agent steps."
+      },
+      {
+        "name": "order_relu",
+        "encodes": [
+          "order",
+          "ship"
+        ],
+        "type": "continuous",
+        "bounds": [
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          [
+            -10,
+            10
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "EXPLICIT allocation with exact corners (ESCALATION #E14). The agent action is [order, x_0, x_1..x_N] — WIDTH N + 2: component 0 is the order quantity, x_0 the WAREHOUSE's own weight and x_1..x_N the retailers', each in [-10, 10]. With r_j = relu(x_j) and S = sum_{j=0..N} r_j: kept share = r_0 / S, ship[i] = wh_stock * r_i / S; if S = 0 (every weight clipped) the warehouse keeps everything. Every corner of the allocation is a clip, not a limit: x_i <= 0 ships exactly nothing to retailer i, x_0 <= 0 ships exactly all of on-hand, all x <= 0 keeps it all. The shares sum to at most 1 by construction, so the MDP's proportional scale-down — a feasibility fallback, never a rationing rule (human ruling 2026-09-25) — does not fire. Replaces order_softmax's exp by relu and its fixed warehouse logit by a free warehouse weight: the softmax reaches a zero share only as a logit goes to -inf (#E11/#E12). The declared encodes/bounds are order_softmax's (IR v1 has no slot for the extra warehouse component); the decode lives in owmr_gym.relu_shares."
+      },
+      {
+        "name": "order_nested",
+        "encodes": [
+          "order",
+          "ship"
+        ],
+        "type": "continuous",
+        "bounds": [
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          [
+            -10,
+            10
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "NESTED explicit allocation (ESCALATION #E17; the human's design): action [order, x_0, x_1..x_N], width N + 2. Top level — RETENTION: kept fraction k = relu(x_0) / (1 + relu(x_0)) of on-hand; exactly 0 (ship everything) for x_0 <= 0, slope 1 at the boundary and undiluted by the retailer weights, approaching 1 as x_0 grows (cap 10/11 at the box; the heuristic's kept fraction on base never exceeds 0.81). Lower level — SPLIT of the shipped (1 - k) * on-hand: share_i = relu(x_i) / sum_j relu(x_j), exactly 0 for x_i <= 0; if every retailer weight is <= 0 the split is EQUAL (a symmetric default for the degenerate case — the amount was decided above). Same allocations as order_relu, different coordinates: exploration on x_0 scales all shipments together, exploration on x_i redistributes with the shipped total fixed. #E15's addendum: under order_relu the kept share is diluted by sum relu(x_i) (~12), so a sample crossing into retention kept ~4% of W and the policy drifted ~1.9 std below zero. The shares sum to exactly 1 with the kept fraction, so the MDP's scale-down (a feasibility fallback, never a rationing rule) does not fire. Declared encodes/bounds are order_softmax's (IR v1 has no slot for the warehouse component); the decode lives in owmr_gym.nested_shares."
+      },
+      {
+        "name": "order_softmax_free",
+        "encodes": [
+          "order",
+          "ship"
+        ],
+        "type": "continuous",
+        "bounds": [
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          [
+            -1000000000,
+            1000000000
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "UNBOUNDED, UN-ANCHORED softmax (ESCALATION #E18; the human's test): action [order, x_0, x_1..x_N], width N + 2, one softmax over all N + 1 logits — kept share = e^{x_0} / sum_{j=0..N} e^{x_j}, ship[i] = wh_stock * e^{x_i} / sum e^{x_j}. The retention logit is FREE (order_softmax fixes it at 0, so retention there moves only through all N retailer logits together) and the gym applies NO clip and its Box is +-1e9 on every logit (SB3 refuses an infinite Box; this one is never reachable) (stable softmax: max-subtraction). Question: does the softmax reach zero shares (retailer or retention) once nothing bounds the logits, or does the geometry — shares approaching 0 only as a logit -> -inf, with sensitivity decaying as e^x — still stall it (#E4 kept 9-12% inside a box it never touched)? The declared envelope +-1e9 is the gym's Box. Shares sum to 1 exactly, so the MDP's scale-down (a feasibility fallback, never a rationing rule) does not fire. Declared encodes are order_softmax's (IR v1 has no slot for the extra logit); the decode lives in owmr_gym.free_softmax_shares."
+      },
+      {
+        "name": "order_catkeep",
+        "encodes": [
+          "order",
+          "ship"
+        ],
+        "type": "continuous",
+        "bounds": [
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          [
+            -10,
+            10
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "CATEGORICAL RETENTION (ESCALATION #E21; the human's direction): action [order, k_index, x_1..x_N], width N + 2. Retention is a DISCRETE choice: k_index (a float the gym rounds) picks a kept fraction of on-hand from the menu (0, 0.1, 0.2, 0.3, 0.5, 0.8); the shipped (1 - k) * on-hand is split by relu(x_i) / sum relu(x_j) (exact zeros; equal split if all <= 0), as in order_nested. Trained with a Gaussian x categorical policy (owmr_catkeep_policy.CatKeepPolicy): the categorical's probabilities are a function of the state, so retention can be explored in surplus periods and not in short ones — the state-dependence SB3's Gaussian std lacks (#E19/#E20) — and 'keep nothing' is one option among others: no asymptote (#E18), no flat region (#E15/#E17). Component 1's declared bound is [0, menu size - 1] in the gym; the declared bounds here are order_nested's (IR v1 has no slot for a mixed component). Shares + kept = 1 exactly, so the MDP's scale-down (a feasibility fallback, never a rationing rule) does not fire."
+      },
+      {
+        "name": "order_catkeep_fine",
+        "encodes": [
+          "order",
+          "ship"
+        ],
+        "type": "continuous",
+        "bounds": [
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          [
+            -10,
+            10
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "CATEGORICAL RETENTION, FINE MENU (ESCALATION #E34; the human: \"can we make the grid a bit finer too?\"): order_catkeep with a 12-rung menu (0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6, 0.8) - 0.05 steps across the heuristic's kept-fraction mass in surplus periods (mean 0.27), then 0.5 / 0.6 / 0.8 for the tail; k_index in [0, 11]. Same decode and policy class (CatKeepPolicy, n_options = 12). Built for the vine's full-menu retention grid, where every option is compared on a common world each branch, so a finer menu costs no exploration."
+      },
+      {
+        "name": "order_dirichlet",
+        "encodes": [
+          "order",
+          "ship"
+        ],
+        "type": "continuous",
+        "bounds": [
+          [
+            0,
+            "order_scale_mult * (l0 + 1) * sum(mu_rt)"
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "transform": "",
+        "feasibility_strategy": "none",
+        "desc": "DIRICHLET allocation (ESCALATION #E23; the human's direction): action [order, s_0, s_1..s_N], width N + 2, the SHARES THEMSELVES on the simplex — kept = s_0 * on-hand, ship[i] = s_i * on-hand. The policy (owmr_dirichlet_policy.DirichletPolicy) emits concentration parameters alpha(obs) and samples a Dirichlet over the N + 1 shares: every sample is feasible without a decode; a share of exactly 0 is the MODE when alpha_i < 1 (a corner at a finite parameter value with a finite score function — no softmax asymptote, no relu flat region); the spread alpha_0(obs) is state-dependent (what SB3's Gaussian std lacks, #E19/#E20). The gym only guards (clip negatives, renormalize; all zero -> keep everything). Shares sum to 1, so the MDP's scale-down (a feasibility fallback) does not fire. Declared bounds: [0, 1] per share component (IR v1 has no simplex slot; the sum constraint lives in the policy)."
+      }
+    ],
+    "reward_modes": [
+      {
+        "name": "neg_cost",
+        "default": true,
+        "expr": "-total",
+        "desc": "negated per-period cost.total (sense = minimize)"
+      },
+      {
+        "name": "neg_cost_transit",
+        "expr": "-(total + h0 * sum([sum(rt_pipe[i]) for i in range(n_retailers)]))",
+        "desc": "TRAINING-ONLY shaping (ESCALATION #E19): the paper's own accounting, which charges h0 on stock in transit to the retailers (sec 3.1) and which this rendering's objective omits as policy-independent. Over the horizon the added term is h0 * l_rt * (units shipped), the same under any policy up to the end effect, so the optimum is unchanged; what changes is the TIMING of the learning signal: under neg_cost a unit shipped pays nothing this period and 1.0 next period only if unsold, while a unit kept pays 0.5 now with certainty — an immediate, low-variance saving for shipping that a noisy learner over-weights (#E15/#E17 drift into ship-everything). Here a shipped unit pays 0.5 in transit this period, the same as a kept one. The RECORD is still scored on neg_cost (cost.total); this mode drives training only."
+      }
+    ],
+    "termination": {
+      "horizon_end": "terminated",
+      "early_terminated_when": null
+    }
+  },
+  "rl": {
+    "requires_memory": {
+      "value": false,
+      "suggested": false,
+      "source": "human_confirmed",
+      "rationale": "fully observed: demand is i.i.d. with known parameters, lead times are fixed, there is no world latent, so on-hand and pipelines are a sufficient statistic"
+    },
+    "algo": "ppo",
+    "frame_stack": 1,
+    "obs_normalization": {
+      "enabled": true,
+      "rationale": "stock levels, pipeline slots and the countdown are stationary features of different magnitude (pipeline slots ~1-5, warehouse on-hand up to tens, time_to_go up to 100); spec 8.3 says normalize. A prior, to be checked at the breadth tier."
+    }
+  },
+  "eval_metrics": [
+    {
+      "name": "wh_share",
+      "expr": "(wh_stock / (wh_stock + sum([max(0, rt_stock[i]) for i in range(n_retailers)])) if wh_stock + sum([max(0, rt_stock[i]) for i in range(n_retailers)]) > 0 else 0.0) / horizon_T",
+      "reduce": "sum",
+      "desc": "mean over the episode of the fraction of system on-hand held at the warehouse (each period's share divided by horizon_T, summed = the episode mean). The risk-pooling mechanism both source papers argue about. Describes, never decides.",
+      "source": "report-only column chosen at Phase A, 2026-09-22"
+    },
+    {
+      "name": "stockout_periods",
+      "expr": "sum([1 if rt_stock[i] < 0 else 0 for i in range(n_retailers)])",
+      "reduce": "sum",
+      "desc": "retailer-periods ending in backlog, summed over the episode; the paper set p_i to target 80-99% no-stockout probability, so this reads the delivered service level. Describes, never decides.",
+      "source": "report-only column chosen at Phase A, 2026-09-22"
+    },
+    {
+      "name": "system_stock",
+      "expr": "(wh_stock + sum(wh_pipe) + sum([max(0, rt_stock[i]) for i in range(n_retailers)]) + sum([sum(rt_pipe[i]) for i in range(n_retailers)])) / horizon_T",
+      "reduce": "sum",
+      "desc": "mean over the episode of total on-hand plus in-transit units (per-period value divided by horizon_T, summed). Describes, never decides.",
+      "source": "report-only column chosen at Phase A, 2026-09-22"
+    }
+  ],
+  "research_questions": {
+    "tier2": [
+      {
+        "stance": "discover",
+        "structure": "the warehouse retention and allocation rule in the loose-bound cells (hicv, hipen_hicv)",
+        "claim": "where the balance assumption is known to be loose, RL finds an ordering/allocation structure the LB heuristic lacks -- retaining stock at the warehouse and allocating non-myopically -- and a fitted rule read from the policy scores between the LB heuristic and the bound",
+        "instrument": "Stage-5 readback on the crowned artifact per cell: action surfaces over (warehouse on-hand, retailer positions), fitted retention/allocation rule scored as its own arm on the protocol seed block; the base cell (bound tight) validates the probe by recovering the order-up-to structure first",
+        "priority": "primary"
+      }
+    ]
+  },
+  "assumptions_log": [
+    "Source: Dogru, de Kok & van Houtum (2009), Flex Serv Manuf J 21:114-147, model of section 3; the identical-retailer test bed of section 4.1 supplies the cells. Chosen 2026-09-22 over Axsater, Marklund & Silver (2002) because the human does not want the batch-ordering constraint, and over Gallego, Ozer & Zipkin (2007) because that model is continuous-review.",
+    "Event order rendered as RW, O, RR, S, D (warehouse receipt, order, retailer receipt, allocation, demand). The paper lists order before warehouse receipt and allocation before retailer receipt; with all lead times >= 1 the two orders produce identical trajectories, and receipt-before-dispatch lets every pipeline width NAME its lead time with no dead slot. The price is l_i = 0, recorded out of scope.",
+    "Both decisions are taken at the start of the period with the supplier delivery already known from the pipeline; under fixed lead times this is the paper's information structure exactly.",
+    "Shipments are quantities in the MDP; sum(ship) <= wh_stock is enforced by proportional scale-down inside the transition (spec 7.2 option 2) so that every gym encoding shares one projection. The default gym encoding (fractions of on-hand) never triggers it.",
+    "Demand rendered as independent gamma draws per retailer with the paper's (mu_i, cv_i); the paper's Erlang mixtures are a computational device with the same two moments (human choice 2026-09-22). One IR stream draws the N components in index order; they are i.i.d. across retailers as the model requires.",
+    "Costs assessed on end-of-period levels: h0 on warehouse on-hand, h0 + h_i on retailer on-hand, p_i on retailer backlog; in-transit stock uncharged (paper 3.1, policy-independent constant).",
+    "Finite horizon of 100 periods, 0-based, terminated at the end; objective = undiscounted total cost (beta = 1). The paper's long-run average is reported beside total / horizon_T.",
+    "Initial state = mean cover: every pipeline slot holds one period of mean demand, the warehouse holds sum(mu_rt) on hand, each retailer holds mu_i (human choice 2026-09-22 over an empty start).",
+    "Action scale: order and each shipment capped at order_scale_mult * (l0 + 1) * sum(mu_rt) = 10 x system demand over the warehouse lead time plus one period (human choice 2026-09-22). A cap on exploration, not a physical limit.",
+    "N = 5 identical retailers, (l0, l_rt) = (3, 1), h0 = h_rt = 0.5, mu = 1; four cells = base + p in {4, 19} x cv in {0.5, 2} (human, 2026-09-22). No grids: the training target is a specialist per cell. Cells are not compared to each other (different cost scales); each is scored against its own bracket.",
+    "Tier-2 stance: discover (human, 2026-09-22). Report-only columns: warehouse share of stock, stockout periods, system stock.",
+    "IR v1 limitation recorded: a multi-decision action mode is identity per component, so the default encoding carries N fractions of on-hand with retention implicit (1 - sum f) instead of an explicit retain weight; the decode is by mode name in the gym.",
+    "Seed scheme v2: the single demand slot draws intrinsically at [period, 0, 1, episode_seed, seed_salt]; there are no meta-branch draws."
+  ],
+  "benchmarks": [
+    {
+      "name": "lb",
+      "role": "relaxed",
+      "basis": "the balance-assumption lower bound (Dogru et al. 2009 sec. 3.3): allocations relaxed to any sign, warehouse echelon order-up-to y0* with newsvendor retailer targets (eq. 7). Recorded on THIS problem's criterion - the finite-horizon total over horizon_T periods from the mean-cover start state - as the exact optimum of the relaxed system, computed analytically with gamma lead-time-demand convolutions (4000-point quantile quadrature): the relaxed problem separates by cycle; the first l0 cycles' echelon stock is fixed by the start state, later cycles cost at least average_cost(max(y0*, echelon position)) under any policy and the base-stock policy attains it, the last l_rt cycles' retailer costs fall outside the horizon. Rendered in this domain's accounting (no transit charge). The paper's long-run average per period is solved alongside for the paper check only; it is a different criterion and never the record.",
+      "source": "human_confirmed, Phase A 2026-09-22; declared at Stage 3 when the file landed; basis re-declared 2026-09-29 on the finite-horizon criterion (ESCALATION #E26)"
+    },
+    {
+      "name": "lb_heuristic",
+      "role": "feasible",
+      "basis": "the paper's LB heuristic (sec. 3.4): order up to y0* every period, allocate by the myopic problem (eqs. 3-5) with non-negativity enforced via a Lagrangian search; simulated under the shared seed protocol",
+      "source": "human_confirmed, Phase A 2026-09-22; declared at Stage 3"
+    },
+    {
+      "name": "random",
+      "role": "feasible",
+      "basis": "uniform order and shipment fractions within the default order_frac action box; the floor of the ladder",
+      "source": "Stage 3, 2026-09-22"
+    }
+  ]
+}
