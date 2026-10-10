@@ -85,6 +85,21 @@ read as a Δ(L2−L1) it did not measure. Values the space refuses *on purpose* 
 γ > β, an `n_steps` under the rollout floor, a channel stack — are not rounded;
 they are signals, and they still skip.
 
+**Parallel workers.** Several workers on one study (same `--study-name` and
+`--storage`, different `--seed`) share the table, and TPE runs with Optuna's
+constant liar: a RUNNING trial counts as an observation at the worst value
+seen until its real score lands. Without it every worker that draws against
+the same completed rows fits the same model and proposes its mode — a wave of
+twelve workers started minutes apart then trains one configuration twelve
+times, the sampler seeds moving only which candidates are scored. With it,
+each draw is written to the storage before the next worker draws, so each
+worker sees the earlier proposals marked bad and goes elsewhere. The lie is
+only ever about RUNNING rows, so a single worker samples exactly as before.
+Two things it does not change: workers must still start far enough apart for
+a draw to reach the storage (seconds; stagger them), and a draw is guided by
+however many completed trials exist — the liar spreads a wave, it does not
+sharpen it.
+
 Crashed trials (e.g. NaN policy divergence at aggressive learning rates) are
 **penalized to the study's worst completed value** rather than marked failed:
 a failed trial carries no signal, so TPE would happily resample the divergent

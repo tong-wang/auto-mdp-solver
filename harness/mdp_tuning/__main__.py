@@ -20,6 +20,7 @@ the accumulated history intact.
 from __future__ import annotations
 
 import argparse
+import warnings
 from pathlib import Path
 
 import optuna
@@ -523,6 +524,30 @@ def make_objective(scripts: DomainScripts, args: argparse.Namespace,
     return objective
 
 
+def make_sampler(seed: int) -> optuna.samplers.TPESampler:
+    """The study's sampler: TPE with the constant liar on.
+
+    Workers of one study run in parallel and share the storage, and a worker
+    proposes its next trial from the rows it can see. Without the liar, TPE
+    models COMPLETE rows only, so every worker that draws against the same
+    completed table fits the same model and lands on its mode — the per-worker
+    seed changes which candidates are scored, not where the mode is. A wave of
+    12 workers then trains one configuration twelve times (observed: twelve
+    draws inside lr 2.1-2.8e-4 / ent 2-3e-3 / one n_steps, the live draws
+    reproduced to the digit by twelve fresh samplers on the frozen table).
+    With the liar, a RUNNING trial enters the model at the worst value seen,
+    so each draw repels the next: a worker that starts after another has
+    drawn sees that point marked bad and proposes elsewhere. One worker, or
+    a study with no RUNNING rows, samples exactly as before.
+    """
+    # optuna 4.x marks the flag experimental and warns at construction; the
+    # warning is the same on every launch and tells the operator nothing the
+    # docstring above does not, so it stays out of the launch banner
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", optuna.exceptions.ExperimentalWarning)
+        return optuna.samplers.TPESampler(seed=seed, constant_liar=True)
+
+
 def main() -> None:
     args = parse_args()
 
@@ -581,7 +606,7 @@ def main() -> None:
         study_name=study_name,
         storage=storage,
         direction="minimize" if args.minimize else "maximize",
-        sampler=optuna.samplers.TPESampler(seed=args.seed),
+        sampler=make_sampler(args.seed),
         load_if_exists=True,
     )
 
