@@ -1,0 +1,7 @@
+# h8 — the Dirichlet head's recipe (CONFIG-REGISTRY; #E28 study trial 38), used on base (#E32) and carried to hicv (#E33)
+--learning_rate 6.947050784702485e-05 --lr-final 6.9471e-06
+--clip-init 0.2 --clip-final 0.05
+--n-steps 1024 --batch-size 256 --n-epochs 20
+--gae-lambda 0.964528 --gamma 0.998943 --ent-coef 0.005977582268474288 --vf-coef 0.943998817885245 --max-grad-norm 0.3
+--normalize-advantage --net_arch 256 256 256 --no-norm-obs
+-a order_dirichlet --policy dirichlet --level L3(gym+arch+hp)

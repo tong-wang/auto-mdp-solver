@@ -39,8 +39,18 @@ ALGO = "ppo"
 # CLI (spec 8.2 tier-1 surface + the tier-2 knobs mdp_tuning searches)
 # ---------------------------------------------------------------------------
 
+class _ConfigFileParser(argparse.ArgumentParser):
+    """`@configs/<id>.args` expands to that file's flags (argparse's fromfile support), one or more
+    flags per line, `#` comments and blank lines ignored — so a CONFIG-REGISTRY recipe (h5, h8, the
+    vine) is one tracked text file the README's commands cite instead of a wall of flags."""
+
+    def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
+        line = arg_line.split("#", 1)[0].strip()
+        return line.split() if line else []
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Train PPO on owmr.")
+    p = _ConfigFileParser(description="Train PPO on owmr.", fromfile_prefix_chars="@")
     p.add_argument("-s", "--scenario_name", type=str, default="base", choices=list(SCENARIOS))
     p.add_argument("-o", "--observation_mode", type=str, default="raw", choices=list(OwmrEnv.OBS_MODES))
     p.add_argument("-a", "--action_mode", type=str, default="order_frac", choices=list(OwmrEnv.ACTION_MODES))
