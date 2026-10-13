@@ -1,0 +1,1 @@
+scipy>=1.11,<2  # cnv_benchmark_dp (scipy.special.betainc for the timing DP's T-grid backward induction) and cnv_info_ledger (betainc, nbinom)

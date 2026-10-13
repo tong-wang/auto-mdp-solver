@@ -1,0 +1,894 @@
+{
+  "ir_version": "0.4",
+  "seed_scheme": "v2",
+  "domain": {
+    "name": "cnv",
+    "class_prefix": "Cnv",
+    "one_line": "Censored newsvendor with Bayesian demand learning from stock-out timing (Jain, Rudi & Wang, Operations Research 2015).",
+    "problem_class": "inventory_control"
+  },
+  "mdp": {
+    "model": {
+      "quantities": {
+        "demand": {
+          "domain": "integer >= 0: the number of customer arrivals in the unit-length period, Poisson(lambda) with the rate lambda unknown to the decision-maker — fixed for the horizon, prior Gamma(alpha, beta) in shape-rate form, never observed. The paper's general model admits any arrival process with independent stationary increments; the numerical study and this IR take the Poisson case",
+          "stochastic": true,
+          "source": "paper §2 (general renewal setup) and §3/§5 (Poisson special case with the conjugate Gamma prior); the learning problem exists because lambda is never observed"
+        },
+        "epochs": {
+          "domain": "real in [0, 1], one per arrival: the arrival times within the period; given the count they are the order statistics of that many independent uniforms (the conditional-uniform representation of a Poisson process)",
+          "stochastic": true,
+          "source": "paper §2 (arrival epochs t^i of the demand process) and §3 (only the stock-out epoch matters under Poisson demand, Proposition 2)"
+        },
+        "order": {
+          "domain": "integer >= 0: the stocking level y set at the start of each period, delivered immediately",
+          "stochastic": false,
+          "source": "paper §2: the control; Proposition 1(c) gives a finite upper bound on the optimal level"
+        },
+        "sales": {
+          "domain": "integer in [0, order]: min(demand, order); unmet demand is lost and unobserved",
+          "stochastic": false,
+          "source": "paper §2: lost sales, zero salvage, inventory delivered immediately"
+        },
+        "stockout_time": {
+          "domain": "real in [0, 1]: the arrival epoch of the last unit sold when a stock-out occurs, 1 when it does not, 0 when nothing was stocked",
+          "stochastic": false,
+          "source": "paper §3, the O^ST(y) observation: with Poisson demand this single number carries all the information in the sale epochs (Proposition 2(c))"
+        },
+        "N": {
+          "domain": "integer >= 1: number of ordering periods",
+          "stochastic": false,
+          "source": "paper §2: finite horizon, V_{N+1} = 0"
+        },
+        "r": {
+          "domain": "real > c: revenue per unit sold",
+          "stochastic": false,
+          "source": "paper §2: stationary unit revenue"
+        },
+        "c": {
+          "domain": "real in (0, r): cost per unit stocked",
+          "stochastic": false,
+          "source": "paper §2: stationary unit cost; the newsvendor ratio is (r - c) / r"
+        }
+      },
+      "out_of_scope": [
+        "normal (Brownian-motion) demand: the paper's second special case; a second arrivals candidate could add it later without touching the skeleton",
+        "checkpoint observation models (paper §4): inventory observed only at predetermined times within a period",
+        "salvage value, holding cost, backlogging, lead times, fixed ordering cost: the paper's newsvendor is perishable with immediate delivery",
+        "discounting: the paper's objective is the undiscounted sum of expected profits"
+      ],
+      "dynamics": [
+        "episode start: lambda is drawn once from Gamma(alpha = beta * E[lambda], beta) and is never revealed",
+        "each period: the newsvendor stocks y units; the number of customers D arriving in the unit interval is Poisson(lambda), and given D their arrival epochs are D independent uniforms on [0, 1] (the conditional-uniform representation of a Poisson process)",
+        "sales = min(D, y); a stock-out occurs when D >= y; the stock-out time is the arrival epoch of the y-th customer when D >= y >= 1, 0 when y = 0, and 1 when no stock-out occurs",
+        "the running totals S <- S + sales and T <- T + stock-out time are the paper's sufficient statistic under timing observations (Proposition 2(b)); D_cum <- D_cum + D is the full-observation counterpart",
+        "profit[t] = r * sales - c * y; maximize the expected undiscounted sum over t in 0..N-1"
+      ],
+      "notation": {
+        "y": "stocking level (order) placed at the start of a period",
+        "D": "demand: number of arrivals in the period",
+        "s": "sales = min(D, y)",
+        "e": "stock-out event indicator 1[D >= y]",
+        "t^s": "stock-out time: arrival epoch of the last unit sold",
+        "alpha, beta": "Gamma prior shape and rate on lambda; posterior under timing is Gamma(alpha + S, beta + T)",
+        "S, T": "cumulative sales and cumulative sales duration (paper's script S and script T)",
+        "y^M": "myopic (single-period newsvendor) stocking level under the current posterior",
+        "lambda": "the unknown Poisson arrival rate, the demand quantity's hidden parameter; posterior under timing is Gamma(alpha + S, beta + T)"
+      }
+    },
+    "horizon": {
+      "T": "horizon_N",
+      "period_indexing": "0-based"
+    },
+    "entity_structure": {
+      "kind": "single",
+      "entity_id_in_seed": false
+    },
+    "state_variables": [
+      {
+        "name": "period",
+        "role": "time_index",
+        "type": "int",
+        "bounds": [
+          0,
+          "horizon_N"
+        ],
+        "observability": "observable",
+        "desc": "current period t; horizon ends when period == horizon_N"
+      },
+      {
+        "name": "cum_sales",
+        "role": "core",
+        "type": "int",
+        "bounds": [
+          0,
+          "horizon_N * arrivals_buffer"
+        ],
+        "observability": "observable",
+        "desc": "cumulative sales S over the periods played so far: the first coordinate of the timing-observation sufficient statistic (posterior shape = prior shape + S)"
+      },
+      {
+        "name": "cum_duration",
+        "role": "core",
+        "type": "float",
+        "bounds": [
+          0.0,
+          "horizon_N"
+        ],
+        "observability": "observable",
+        "desc": "cumulative sales duration T: one full period when no stock-out occurred, the stock-out time otherwise; second coordinate of the timing statistic (posterior rate = prior rate + T)"
+      },
+      {
+        "name": "cum_demand",
+        "role": "core",
+        "type": "int",
+        "bounds": [
+          0,
+          "horizon_N * arrivals_buffer"
+        ],
+        "observability": "observable",
+        "desc": "cumulative realized demand: the full-observation sufficient statistic (posterior shape = prior shape + cum_demand, rate = prior rate + periods played). Carried by the simulator so the full_belief mode can render it; it is never read by a transition"
+      }
+    ],
+    "info_fields": [
+      {
+        "name": "demand",
+        "type": "int",
+        "desc": "arrivals in the period; observed by the agent only under the full observation type",
+        "placement": {
+          "value": "info",
+          "suggested": "info",
+          "source": "human_confirmed",
+          "rationale": "no later transition reads it; the cumulative total the full_belief mode needs is a state variable of its own"
+        }
+      },
+      {
+        "name": "sales",
+        "type": "int",
+        "desc": "units sold = min(demand, order)"
+      },
+      {
+        "name": "stockout_event",
+        "type": "int",
+        "desc": "1 when demand >= order (all stock sold), else 0"
+      },
+      {
+        "name": "stockout_time",
+        "type": "float",
+        "desc": "arrival epoch of the last unit sold when a stock-out occurs; 0.0 when order == 0; 1.0 when no stock-out"
+      },
+      {
+        "name": "action_period",
+        "type": "int",
+        "desc": "period the emitting decision was taken (boundary invariant)"
+      },
+      {
+        "name": "profit",
+        "type": "decomposition",
+        "components": [
+          "revenue",
+          "stocking",
+          "total"
+        ]
+      }
+    ],
+    "decisions": [
+      {
+        "name": "order",
+        "type": {
+          "value": "discrete",
+          "suggested": "discrete",
+          "source": "human_confirmed",
+          "rationale": "the paper's stocking level y is an integer count of units sold to unit-sized Poisson arrivals"
+        },
+        "dim": 1,
+        "bounds": {
+          "value": [
+            0,
+            "arrivals_buffer"
+          ],
+          "suggested": [
+            0,
+            "arrivals_buffer"
+          ],
+          "source": "human_confirmed",
+          "rationale": "stock beyond the number of arrival epochs the simulator holds in one period (arrivals_buffer, also the demand cap) can never sell, so the buffer length is the model's own cap on any useful order; it is derived from the marginal demand law of the widest grid cell, never from a solved policy"
+        },
+        "feasibility": [
+          "non_negative",
+          "integer"
+        ],
+        "desc": "stocking level y placed at the start of the period, delivered immediately"
+      }
+    ],
+    "dynamics": {
+      "event_sequence": [
+        "A",
+        "U"
+      ],
+      "observation_point": "pre-order",
+      "transitions": [
+        {
+          "event": "A",
+          "updates": [
+            "demand ~ demand.sample",
+            "demand = min(demand, arrivals_buffer)",
+            "u ~ epochs.sample",
+            "sales = int(min(demand, order))",
+            "stockout_event = 1 if demand >= order else 0",
+            "stockout_time = 0.0 if order == 0 else (topk(u[:demand], demand - order + 1)[-1] if demand >= order else 1.0)"
+          ]
+        },
+        {
+          "event": "U",
+          "updates": [
+            "cum_sales += sales",
+            "cum_duration += stockout_time",
+            "cum_demand += demand"
+          ]
+        },
+        {
+          "event": "END_OF_PERIOD",
+          "updates": [
+            "action_period = period",
+            "period += 1"
+          ]
+        }
+      ]
+    },
+    "objective": {
+      "sense": "maximize",
+      "discount_factor": 1.0,
+      "per_step_components": [
+        {
+          "name": "revenue",
+          "expr": "price * sales",
+          "desc": "r * min(D, y)"
+        },
+        {
+          "name": "stocking",
+          "expr": "-unit_cost * order",
+          "desc": "-c * y: the stocking cost, negative so components sum to profit"
+        }
+      ]
+    },
+    "invariants": [
+      {
+        "name": "sales_are_censored_demand",
+        "expr": "sales == min(demand, order)",
+        "desc": "you sell what arrives, up to what you stocked; the rest is lost"
+      },
+      {
+        "name": "demand_within_buffer",
+        "expr": "0 <= demand and demand <= arrivals_buffer",
+        "desc": "the simulator cannot generate more arrivals than its buffer"
+      },
+      {
+        "name": "stockout_iff_all_sold",
+        "expr": "stockout_event == (1 if demand >= order else 0)",
+        "desc": "a stock-out is exactly the event that every stocked unit sold"
+      },
+      {
+        "name": "stockout_time_in_period",
+        "expr": "0.0 <= stockout_time and stockout_time <= 1.0",
+        "desc": "the stock-out time is an epoch inside the unit period"
+      },
+      {
+        "name": "no_stockout_means_full_duration",
+        "expr": "stockout_event == 1 or close(stockout_time, 1.0)",
+        "desc": "without a stock-out the newsvendor observed sales for the whole period"
+      },
+      {
+        "name": "zero_stock_means_zero_duration",
+        "expr": "order > 0 or close(stockout_time, 0.0)",
+        "desc": "stocking nothing yields no sales duration and no information"
+      },
+      {
+        "name": "cum_sales_balance",
+        "expr": "cum_sales == prev.cum_sales + sales",
+        "desc": "the sales total moves only by this period's sales"
+      },
+      {
+        "name": "cum_duration_balance",
+        "expr": "close(cum_duration, prev.cum_duration + stockout_time)",
+        "desc": "the duration total moves only by this period's sales duration"
+      },
+      {
+        "name": "cum_demand_balance",
+        "expr": "cum_demand == prev.cum_demand + demand",
+        "desc": "the demand total moves only by this period's demand"
+      },
+      {
+        "name": "profit_identity",
+        "expr": "close(total, price * sales - unit_cost * order)",
+        "desc": "profit is revenue on sales less the cost of everything stocked"
+      }
+    ],
+    "scenario": {
+      "constants": [
+        {
+          "name": "horizon_N",
+          "value": 4,
+          "axis": "horizon",
+          "desc": "ordering periods N: 4 for the paper's exact-DP study (§5.1), 100 for the myopic-policy simulation (§5.3, fig6a/fig6b)"
+        },
+        {
+          "name": "price",
+          "value": 2.0,
+          "axis": "cost",
+          "desc": "revenue r per unit sold; fixed at 2 throughout the paper's study"
+        },
+        {
+          "name": "unit_cost",
+          "value": 1.0,
+          "axis": "cost",
+          "desc": "cost c per unit stocked; the paper sweeps 0.2..1.8 in steps of 0.1 (newsvendor ratio 0.9..0.1)"
+        },
+        {
+          "name": "prior_rate",
+          "value": 1.0,
+          "axis": "prior",
+          "desc": "Gamma rate beta of the prior on lambda; the paper sweeps 1/beta in {0.5, 1, 2, 4, 8, 16} (the scale parameter, the degree of demand uncertainty)"
+        },
+        {
+          "name": "prior_mean",
+          "value": 10.0,
+          "axis": "prior",
+          "desc": "prior expected arrival rate E[lambda] = alpha / beta; the paper sweeps {10, 20, 30, 40, 50}. Prior shape alpha = prior_rate * prior_mean"
+        },
+        {
+          "name": "arrivals_buffer",
+          "value": 402,
+          "axis": "bounds",
+          "desc": "uniform epochs drawn per period, also the demand cap: 402 is the 1e-8 upper quantile of the marginal (negative-binomial) per-period demand of the widest grid cell (1/beta = 16, E[lambda] = 50); every other cell's tail is smaller. A model-derived envelope, never a measurement of a solved policy"
+        }
+      ],
+      "instances": {
+        "fig3_c10": {
+          "unit_cost": 1.0,
+          "prior_rate": 0.0625
+        },
+        "fig3_c15": {
+          "unit_cost": 1.5,
+          "prior_rate": 0.0625
+        },
+        "fig6a": {
+          "horizon_N": 100,
+          "unit_cost": 1.0,
+          "prior_rate": 0.0625
+        },
+        "fig6b": {
+          "horizon_N": 100,
+          "unit_cost": 1.5,
+          "prior_rate": 0.0625
+        }
+      }
+    },
+    "initial_state": {
+      "cum_sales": 0,
+      "cum_duration": 0.0,
+      "cum_demand": 0
+    },
+    "uncertainty_slots": [
+      {
+        "name": "demand",
+        "interface": "DemandGenerator",
+        "stream_id": 0,
+        "latent": false,
+        "stages": [
+          {
+            "name": "sample",
+            "realization": "period"
+          }
+        ],
+        "default": "poisson",
+        "candidates": {
+          "poisson": {
+            "generator": "PoissonDemand",
+            "family": "poisson",
+            "settings": {
+              "rate": {
+                "draw": {
+                  "family": "gamma",
+                  "settings": {
+                    "shape": "prior_rate * prior_mean",
+                    "scale": "1.0 / prior_rate"
+                  }
+                },
+                "example": 10.0,
+                "hidden": true
+              }
+            },
+            "is_discrete": true,
+            "desc": "Poisson(lambda) arrivals per unit period with the hidden per-episode rate lambda ~ Gamma(alpha, beta) drawn once (the conjugate prior); the count of a Poisson process on [0, 1]"
+          }
+        },
+        "desc": "the number of customer arrivals in a period"
+      },
+      {
+        "name": "epochs",
+        "interface": "EpochGenerator",
+        "stream_id": 1,
+        "latent": false,
+        "stages": [
+          {
+            "name": "sample",
+            "realization": "period"
+          }
+        ],
+        "default": "uniform",
+        "candidates": {
+          "uniform": {
+            "generator": "UniformEpochs",
+            "family": "iid",
+            "settings": {
+              "of": "uniform",
+              "size": "arrivals_buffer",
+              "low": 0.0,
+              "high": 1.0
+            },
+            "is_discrete": false,
+            "desc": "arrivals_buffer i.i.d. uniform epochs on [0, 1]; conditional on the count D, the first D of them (unordered) are the arrival epochs of a Poisson process on the unit interval, and their order statistics are the arrival times"
+          }
+        },
+        "desc": "where in the period the arrivals fall"
+      }
+    ],
+    "expr_builtins": [
+      {
+        "name": "poisson_quantile",
+        "module": "cnv_bayes",
+        "desc": "smallest integer y with P(Poisson(rate) <= y) >= q: the newsvendor quantity under a known rate"
+      }
+    ]
+  },
+  "gym": {
+    "observation_modes": [
+      {
+        "name": "timing_belief",
+        "default": true,
+        "desc": "the paper's timing model as a Markov state: the Gamma posterior (shape, rate) after conjugate updating on sales and stock-out times, plus the cost regime and the clock. Replicates the paper's solution structure; no memory needed",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_N - period"
+          },
+          {
+            "derived": "critical_ratio",
+            "expr": "(price - unit_cost) / price"
+          },
+          {
+            "derived": "post_shape",
+            "expr": "prior_rate * prior_mean + cum_sales"
+          },
+          {
+            "derived": "post_rate",
+            "expr": "prior_rate + cum_duration"
+          }
+        ]
+      },
+      {
+        "name": "full_belief",
+        "desc": "the full-observation model as a Markov state: posterior after seeing every arrival (shape + cum_demand, rate + periods played)",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_N - period"
+          },
+          {
+            "derived": "critical_ratio",
+            "expr": "(price - unit_cost) / price"
+          },
+          {
+            "derived": "post_shape",
+            "expr": "prior_rate * prior_mean + cum_demand"
+          },
+          {
+            "derived": "post_rate",
+            "expr": "prior_rate + period"
+          }
+        ]
+      },
+      {
+        "name": "event_raw",
+        "desc": "the paper's event observation O^E = (sales, stock-out flag) for the last period, plus the prior and cost regime; the policy must carry its own memory (frame stack over the horizon). No fixed-size sufficient statistic exists for this type, so raw is its only encoding",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_N - period"
+          },
+          {
+            "derived": "critical_ratio",
+            "expr": "(price - unit_cost) / price"
+          },
+          {
+            "derived": "prior_rate_obs",
+            "expr": "prior_rate"
+          },
+          {
+            "derived": "prior_mean_obs",
+            "expr": "prior_mean"
+          },
+          {
+            "ref": "info.sales"
+          },
+          {
+            "ref": "info.stockout_event"
+          }
+        ]
+      },
+      {
+        "name": "timing_raw",
+        "desc": "the paper's stock-out timing observation O^ST = (sales, stock-out time) for the last period, plus the prior and cost regime; memory via frame stack. The bypass arm against timing_belief",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_N - period"
+          },
+          {
+            "derived": "critical_ratio",
+            "expr": "(price - unit_cost) / price"
+          },
+          {
+            "derived": "prior_rate_obs",
+            "expr": "prior_rate"
+          },
+          {
+            "derived": "prior_mean_obs",
+            "expr": "prior_mean"
+          },
+          {
+            "ref": "info.sales"
+          },
+          {
+            "ref": "info.stockout_time"
+          }
+        ]
+      },
+      {
+        "name": "full_raw",
+        "desc": "the full observation O^F: last period's demand including lost sales, plus the prior and cost regime; memory via frame stack. The bypass arm against full_belief",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_N - period"
+          },
+          {
+            "derived": "critical_ratio",
+            "expr": "(price - unit_cost) / price"
+          },
+          {
+            "derived": "prior_rate_obs",
+            "expr": "prior_rate"
+          },
+          {
+            "derived": "prior_mean_obs",
+            "expr": "prior_mean"
+          },
+          {
+            "ref": "info.demand"
+          }
+        ]
+      },
+      {
+        "name": "timing_belief_ctx",
+        "desc": "timing_belief plus the prior's own parameters (rate, mean): the belief already folds the prior in, but a GENERALIST over the paper510 grid conditions on the cell explicitly — the grid's axes are unit_cost (via the critical ratio, price fixed), prior_rate and prior_mean, so every axis is in the vector",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_N - period"
+          },
+          {
+            "derived": "critical_ratio",
+            "expr": "(price - unit_cost) / price"
+          },
+          {
+            "derived": "prior_rate_obs",
+            "expr": "prior_rate"
+          },
+          {
+            "derived": "prior_mean_obs",
+            "expr": "prior_mean"
+          },
+          {
+            "derived": "post_shape",
+            "expr": "prior_rate * prior_mean + cum_sales"
+          },
+          {
+            "derived": "post_rate",
+            "expr": "prior_rate + cum_duration"
+          }
+        ]
+      },
+      {
+        "name": "full_belief_ctx",
+        "desc": "full_belief plus the prior's parameters (rate, mean), for the generalist — see timing_belief_ctx",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_N - period"
+          },
+          {
+            "derived": "critical_ratio",
+            "expr": "(price - unit_cost) / price"
+          },
+          {
+            "derived": "prior_rate_obs",
+            "expr": "prior_rate"
+          },
+          {
+            "derived": "prior_mean_obs",
+            "expr": "prior_mean"
+          },
+          {
+            "derived": "post_shape",
+            "expr": "prior_rate * prior_mean + cum_demand"
+          },
+          {
+            "derived": "post_rate",
+            "expr": "prior_rate + period"
+          }
+        ]
+      },
+      {
+        "name": "full_belief_log",
+        "desc": "full_belief's sufficient statistic recoded as (log posterior mean, posterior CV) — a bijection of (post_shape, post_rate) in a scale the network can resolve: under standardised (shape, rate) the period-0/1 states that need orders 0, 10 and 28 sit 0.03 apart (#E56); here 1.7-4.5 apart",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_N - period"
+          },
+          {
+            "derived": "critical_ratio",
+            "expr": "(price - unit_cost) / price"
+          },
+          {
+            "derived": "log_post_mean",
+            "expr": "log((prior_rate * prior_mean + cum_demand) / (prior_rate + period))"
+          },
+          {
+            "derived": "post_cv",
+            "expr": "1 / sqrt(prior_rate * prior_mean + cum_demand)"
+          }
+        ]
+      },
+      {
+        "name": "full_belief_ms",
+        "desc": "full_belief's sufficient statistic recoded as (posterior mean, posterior sd), no log — the coordinate change of full_belief_log without its log (#E63): a bijection of (post_shape, post_rate)",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_N - period"
+          },
+          {
+            "derived": "critical_ratio",
+            "expr": "(price - unit_cost) / price"
+          },
+          {
+            "derived": "post_mean",
+            "expr": "(prior_rate * prior_mean + cum_demand) / (prior_rate + period)"
+          },
+          {
+            "derived": "post_sd",
+            "expr": "sqrt(prior_rate * prior_mean + cum_demand) / (prior_rate + period)"
+          }
+        ]
+      },
+      {
+        "name": "timing_belief_log",
+        "desc": "timing_belief's sufficient statistic recoded as (log posterior mean, posterior CV) — the #E59 recoding applied to the timing posterior (shape = prior + cum_sales, rate = prior + cum_duration); a bijection of (post_shape, post_rate)",
+        "features": [
+          {
+            "derived": "time_to_go",
+            "expr": "horizon_N - period"
+          },
+          {
+            "derived": "critical_ratio",
+            "expr": "(price - unit_cost) / price"
+          },
+          {
+            "derived": "log_post_mean",
+            "expr": "log((prior_rate * prior_mean + cum_sales) / (prior_rate + cum_duration))"
+          },
+          {
+            "derived": "post_cv",
+            "expr": "1 / sqrt(prior_rate * prior_mean + cum_sales)"
+          }
+        ]
+      }
+    ],
+    "action_modes": [
+      {
+        "name": "order_discrete",
+        "default": true,
+        "encodes": "order",
+        "type": "discrete",
+        "bounds": [
+          0,
+          "arrivals_buffer"
+        ],
+        "transform": "",
+        "feasibility_strategy": "clip",
+        "desc": "identity encoding over integer stocking levels 0..arrivals_buffer"
+      }
+    ],
+    "reward_modes": [
+      {
+        "name": "profit",
+        "default": true,
+        "expr": "total",
+        "desc": "per-period profit r * sales - c * order; the objective itself, undiscounted"
+      }
+    ],
+    "termination": {
+      "horizon_end": "terminated",
+      "early_terminated_when": null
+    }
+  },
+  "rl": {
+    "requires_memory": {
+      "value": true,
+      "suggested": true,
+      "source": "human_confirmed",
+      "rationale": "the hidden per-episode rate must be inferred from censored observations; the *_raw modes carry only the last period and rely on a frame stack over the horizon, while the *_belief modes carry the conjugate posterior and are Markov on their own (frame_stack 1 at launch)"
+    },
+    "algo": "ppo",
+    "frame_stack": 4,
+    "obs_normalization": {
+      "enabled": true,
+      "rationale": "posterior shape and rate, sales and the cost ratio differ by two orders of magnitude across the grid; spec §8.3 says normalize"
+    }
+  },
+  "eval_metrics": [
+    {
+      "name": "hindsight_profit",
+      "expr": "(price - unit_cost) * demand",
+      "reduce": "sum",
+      "desc": "profit of a clairvoyant who stocks exactly this period's demand; the regret denominator the legacy scripts called profit_max. Describes, never decides",
+      "source": "legacy cnv eval column (regret_mean); kept as a report-only column"
+    },
+    {
+      "name": "perfect_profit",
+      "expr": "price * min(demand, poisson_quantile(demand_rate, (price - unit_cost) / price)) - unit_cost * poisson_quantile(demand_rate, (price - unit_cost) / price)",
+      "reduce": "sum",
+      "desc": "profit of the paper's perfect-knowledge model P: knows lambda and stocks the Poisson newsvendor quantity every period. Reads the hidden rate, which a metric may. Describes, never decides",
+      "source": "paper §5.3, the benchmark with perfect knowledge of the demand distribution"
+    }
+  ],
+  "benchmarks": [
+    {
+      "name": "myopic",
+      "role": "feasible",
+      "basis": "the paper's myopic policies (§5.3): each period stock the single-period newsvendor quantity under the current posterior. timing: Gamma(alpha + S, beta + T) via the conjugate update (7); full: Gamma(alpha + cum_demand, beta + n); event: no conjugate prior, posterior by brute-force likelihood (4) over the history — feasible at N=4 only",
+      "policies": [
+        "timing",
+        "full",
+        "event"
+      ],
+      "source": "human_confirmed"
+    },
+    {
+      "name": "dp",
+      "role": "exact",
+      "basis": "backward induction of the paper's dynamic program (3) over the belief state at N=4: exact over the integer lattice (shape) for the full type; for the timing type the rate coordinate is continuous and is discretized, with the grid recorded as the numerical basis at build. The event-type optimum needs the full history and is not attempted",
+      "policies": [
+        "timing",
+        "full"
+      ],
+      "source": "human_confirmed"
+    },
+    {
+      "name": "perfect",
+      "role": "relaxed",
+      "column": "perfect_profit_mean",
+      "basis": "clairvoyant: reads the realized lambda and stocks the Poisson newsvendor quantity; the paper's model P, the ceiling every learning model is measured against",
+      "source": "human_confirmed"
+    },
+    {
+      "name": "random",
+      "role": "feasible",
+      "basis": "the spec-§8.6 floors: `uniform` draws the stocking level uniformly over the action space on a policy stream; `prior_mean` stocks round(E[lambda]) every period and never learns. Build diagnostics, never escalation triggers",
+      "policies": [
+        "uniform",
+        "prior_mean"
+      ],
+      "source": "derived"
+    }
+  ],
+  "research_questions": {
+    "tier2": [
+      {
+        "stance": "confirm",
+        "structure": "over-ordering: the optimal stocking level under censored observations exceeds the myopic newsvendor level y^M (Proposition 1(b)), by less under timing than under event observations in most of the grid (§5.1, Figure 3)",
+        "claim": "the trained belief-fed policies stock above the myopic level as a function of the posterior, and the timing policy's excess is smaller than the event policy's",
+        "instrument": "cnv_policy_probe.py: sweep the learned order over posterior (shape, rate) x critical ratio against the myopic and DP quantities; action agreement with the DP; paired scoring of the fitted rule",
+        "priority": "primary"
+      },
+      {
+        "stance": "bypass",
+        "structure": "the two-number sufficient statistic (cumulative sales, cumulative sales duration) of Proposition 2",
+        "claim": "a policy fed only raw per-period observations with a frame stack (timing_raw) matches the profit of the policy fed the statistic (timing_belief), so the conjugate machinery need not be handed over; likewise full_raw vs full_belief",
+        "instrument": "paired observation-mode contrast on shared seed blocks, per grid cell",
+        "priority": "primary"
+      }
+    ]
+  },
+  "grids": [
+    {
+      "name": "paper510",
+      "base_instance": "",
+      "axes": {
+        "unit_cost": [
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.6,
+          0.7,
+          0.8,
+          0.9,
+          1.0,
+          1.1,
+          1.2,
+          1.3,
+          1.4,
+          1.5,
+          1.6,
+          1.7,
+          1.8
+        ],
+        "prior_rate": [
+          2.0,
+          1.0,
+          0.5,
+          0.25,
+          0.125,
+          0.0625
+        ],
+        "prior_mean": [
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ]
+      },
+      "desc": "the paper's §5.1 study: 17 unit costs (newsvendor ratio 0.1..0.9) x 6 prior scales (1/beta in 0.5..16) x 5 prior means (10..50) = 510 cells at N = 4. The primary generalist target: one policy per observation type trained on cells sampled uniformly, evaluated per cell against the cell's own DP and myopic bars"
+    },
+    {
+      "name": "fig3",
+      "base_instance": "fig3_c10",
+      "axes": {
+        "unit_cost": [
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.6,
+          0.7,
+          0.8,
+          0.9,
+          1.0,
+          1.1,
+          1.2,
+          1.3,
+          1.4,
+          1.5,
+          1.6,
+          1.7,
+          1.8
+        ]
+      },
+      "desc": "the paper's Figures 3(a) and 4(a): the unit-cost sweep at alpha = 10/16, beta = 1/16 (E[lambda] = 10, 1/beta = 16), 17 cells at N = 4"
+    }
+  ],
+  "assumptions_log": [
+    "The arrival process is simulated by the conditional-uniform method (human-chosen over summed exponential gaps, which the catalog form cannot parameterise by rate, and over the equivalent Beta order-statistic shortcut): demand ~ Poisson(lambda), then arrivals_buffer = 402 i.i.d. uniform epochs of which the first `demand` are the arrival epochs. Demand is capped at the buffer, the 1e-8 marginal-demand quantile of the widest grid cell. The legacy simulator's exponential-gap buffer (26..86) capped demand materially in the diffuse-prior cells.",
+    "Stocking level is an integer in [0, arrivals_buffer]; the upper bound is the simulator's own arrival cap, not a fact about the problem (Proposition 1(c) only says the optimum is finite).",
+    "Observation types are gym observation modes, not scenario modes: event_raw / timing_raw / full_raw carry the last period only (frame stack over the horizon supplies memory); timing_belief / full_belief carry the conjugate posterior computed from the state's running totals. Dropped from the legacy folder: the 'sales' mode (informationally identical to event) and the per-step regret and terminal gap reward modes (the per-step one leaks demand to a memory policy; the terminal one can return as a gym-layer lever).",
+    "The running totals cum_sales, cum_duration, cum_demand live in the state although no transition reads them: they are carried so the belief modes can render the paper's sufficient statistic (the mab example's pulls/payouts precedent).",
+    "When order == 0 the period yields sales 0, stock-out event 1 and stock-out time 0, so the timing posterior is unchanged (beta + 0), as in the paper's equation (7).",
+    "Period indexing 0-based; horizon_N = 4 (the DP study) with 100 for the fig6 instances; horizon end is `terminated`.",
+    "Seed scheme v2: the demand slot draws on stream 0 and the epochs slot on stream 1 each period; the hidden rate lambda is the demand slot's world latent, drawn once per episode on meta substream 0 (desugared placeholder constant demand_rate)."
+  ]
+}

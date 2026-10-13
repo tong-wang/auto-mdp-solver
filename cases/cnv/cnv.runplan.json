@@ -1,0 +1,12 @@
+{
+  "target": "paper510",
+  "target_kind": "grid",
+  "strategy": "generalist",
+  "escalation_budget": "one full mdp_tuning study per observation mode (knobs all, stopped by the human), after the L0/L1 ladder; same recipe as the base pass",
+  "confirmed": "2026-09-21",
+  "previous_pass": {
+    "target": "base",
+    "closed": "2026-09-21",
+    "entry": "#E20"
+  }
+}
