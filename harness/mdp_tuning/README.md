@@ -99,9 +99,84 @@ persisted with the study — the default fixes whether a study's draws can be
 reproduced from its seed, and studies drawn before the flag existed were drawn
 without it. The lie is only ever about RUNNING rows, so one worker samples the
 same either way. Two things the flag does not change: workers must still start
-far enough apart for a draw to reach the storage (seconds; stagger them), and
-a draw is guided by however many completed trials exist — the liar spreads a
-wave, it does not sharpen it.
+far enough apart for a draw to reach the storage (seconds; stagger them —
+except under `--max-trials`, whose lock holds through the draw), and a draw is
+guided by however many completed trials exist — the liar spreads a wave, it
+does not sharpen it.
+
+**Study-wide budget.** `--n-trials k` is optuna's own count of the trials
+*this worker* runs, so W workers pre-assign k trials to each, and a worker that
+draws slow configurations still owes its k after the rest have exited —
+observed as five of twelve workers idle on day 3 of a 2048 study while the slow
+worker's last trial had not been asked for. **`--max-trials N`** makes the
+budget the study's: every worker takes the next trial whenever it is free,
+until the study holds N trials that did not FAIL — first come, first served.
+The count, the ask and the draw sit under one lock beside the storage, so the
+study never overshoots N, a worker launched after it is full runs nothing, and
+workers need no stagger (`MaxTrialsCallback` would not do: it checks at trial
+end only).
+
+```bash
+# 12 workers on one GPU, one study of 36 trials — the same line on every worker
+for w in $(seq 1 12); do
+  python -m mdp_tuning <domain> -s <scenario> --study-name s --max-trials 36 \
+    --seed $((41 + w)) --constant-liar --total-timesteps 60000000 &
+done
+```
+
+The launch that creates the study **records its settings on the study** —
+scenario, knob tier, `--fix`, `--train-arg` / `--eval-arg`,
+`--total-timesteps`, `--eval-seeds`, metric, `--constant-liar`, N, the FAIL
+cap — and its `--seed` as the study's **seed base: trial n trains on
+`base + n`**, whichever worker runs it. A later worker takes the record's
+settings and refuses a flag that contradicts it; its own `--seed` seeds only
+its sampler. Every trial records its training seed and where it ran (host, pid,
+`CUDA_VISIBLE_DEVICES` — the device is the worker's, inherited by the train
+subprocess). A study launched with `--n-trials` is not adopted: its trials
+trained on per-worker seeds that `base + n` cannot describe.
+
+Two stops keep a shared budget finite. FAIL does not count toward N, so an
+unscored crash is redrawn — and the study takes no new trial once it holds
+**`--max-fails`** (default 5) FAIL rows. And a worker stops after
+**`--max-consecutive-crashes`** (default 3) crashed trials in a row, FAILED or
+penalized: first come, first served hands the most trials to the fastest
+worker, and a worker on a broken device is fast — after the first completion
+each of its crashes is a penalized row that counts toward N. `--timeout` is
+per worker: no new trial starts after that many seconds from the worker's own
+launch.
+
+**Pools across studies.** Repeat `--study-name` and one worker serves several
+budgeted studies of one storage: when free it takes the next trial of
+whichever study has the largest share of its budget left (ties by join
+order), which keeps paired studies at the same stage, and it exits when every
+joined study holds its N. It keeps one sampler per study, seeded from its
+`--seed` and the study's name, so it does not replay the same random-startup
+draws in every study it serves. A per-study budget fixes idle workers inside one
+study; only a pool fixes them across studies — a campaign's narrow-network
+study had five workers exit with nothing left while its wide twin still had
+nine trials unasked. Each trial runs with its own study's recorded settings, so
+a pool worker carries no per-study flag and refuses a study with no record.
+`--create-only` creates and records one study, enqueues its warm start, and
+exits:
+
+```bash
+for c in 64 128; do
+  python -m mdp_tuning <domain> -s <scenario> --study-name w$c --max-trials 36 \
+    --seed 42 --constant-liar --train-arg channels=$c --create-only
+done
+for w in $(seq 1 24); do
+  python -m mdp_tuning <domain> --study-name w64 --study-name w128 --seed $((41 + w)) &
+done
+```
+
+The lock decides where a study's workers can run. `sqlite:///…` takes an
+`flock` beside the database: workers on **one host** (sqlite itself is unsafe
+across hosts on a shared filesystem). `journal:///…` takes an O_EXCL lock file
+beside the journal — the protocol optuna's journal lock uses on NFS: workers on
+**several hosts** sharing one filesystem, no database server needed. Any other
+storage is refused under `--max-trials`: without a shared lock, two workers
+that finish at once both start a trial and the study overshoots N by up to
+W−1.
 
 Crashed trials (e.g. NaN policy divergence at aggressive learning rates) are
 **penalized to the study's worst completed value** rather than marked failed:
@@ -117,7 +192,9 @@ ones. The invariant is that a crashed trial must never become the study's
 in any MINIMIZE study, where 0.0 beats every attainable cost (upstream #76).
 Nothing is taught by the omission, correctly — with no completed trial there
 is no scale on which "avoid this region" could be expressed — and the
-worst-completed rule resumes the moment one trial finishes.
+worst-completed rule resumes the moment one trial finishes. The penalty
+covers a crash in *training*; an eval or scoring crash ends its trial FAILED at
+any point in the study, which is why a study-wide budget caps FAIL rows.
 
 ## Limitations / future work
 
@@ -127,3 +204,10 @@ worst-completed rule resumes the moment one trial finishes.
   trials cheaper still.
 - One algorithm space so far (`ppo`, used for PPO/MaskablePPO). Add entries
   to `spaces.SPACES` for new algorithms.
+- **A worker killed mid-trial leaves its trial RUNNING**, and under
+  `--max-trials` a RUNNING row counts toward N, so the study ends one trial
+  short. Mark it FAIL to have it redrawn —
+  `optuna.load_study(study_name=…, storage=…).tell(<number>, state=optuna.trial.TrialState.FAIL)`.
+  optuna's storage heartbeat would do this automatically and is not wired in.
+- The study record is fixed at creation: a budget cannot be raised on a live
+  study, only continued in a new one.

@@ -1,7 +1,7 @@
 """CLI for the domain-generic tuning harness.
 
     python -m mdp_tuning <domain_dir> [-s SCENARIO] [--metric NAME] \
-        [--n-trials N] [--total-timesteps N] [--eval-seeds N] \
+        [--n-trials N | --max-trials N] [--total-timesteps N] [--eval-seeds N] \
         [--train-arg KEY=VALUE ...] [--eval-arg KEY=VALUE ...]
 
 Examples:
@@ -9,6 +9,9 @@ Examples:
         --metric cost_total_mean --n-trials 25
     python -m mdp_tuning plugin/skills/mdp-solver/examples/inv_single --show-space  # what would be tuned
     python -m mdp_tuning plugin/skills/mdp-solver/examples/inv_single -s simple --summary-only
+    # one study of 36 trials, first come first served (pool.py): run on every worker
+    python -m mdp_tuning <domain> -s <scenario> --study-name s --max-trials 36 \
+        --seed $((41 + w)) --constant-liar
 
 Optuna TPE proposes each trial from the algorithm-level space (spaces.py)
 restricted to the knobs the domain's train script exposes. Each trial shells
@@ -20,11 +23,13 @@ the accumulated history intact.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import warnings
 from pathlib import Path
 
 import optuna
 
+from mdp_tuning import pool
 from mdp_tuning.driver import (
     DomainScripts, EVAL_SEEDS_DESTS, build_cmd, load_domain, parse_overrides,
     resolve_metric, resolve_model, run_logged, tsv_column_means,
@@ -77,13 +82,45 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="do not enqueue trial 0 = the L1-derived centre "
                         "(the script's _L1_DERIVED, its defaults where it "
                         "declares none)")
-    p.add_argument("--n-trials", default=25, type=int)
+    budget = p.add_mutually_exclusive_group()
+    budget.add_argument("--n-trials", default=25, type=int,
+                        help="trials THIS worker runs (optuna's own count): W "
+                             "workers x --n-trials k pre-assign k trials to "
+                             "each, so a slow worker still owes its k after "
+                             "the rest have exited")
+    budget.add_argument("--max-trials", default=None, type=int, metavar="N",
+                        help="study-wide budget shared by every worker: each "
+                             "takes the next trial whenever it is free, until "
+                             "the study holds N trials that did not FAIL. The "
+                             "creating launch records the study's settings and "
+                             "its seed base on the study (trial n trains on "
+                             "base + n); later workers read them from there")
+    p.add_argument("--max-fails", default=5, type=int, metavar="F",
+                   help="with --max-trials: the study takes no new trial once "
+                        "it holds F FAILED (unscored) trials. FAIL does not "
+                        "count toward N, so without a cap a script that "
+                        "crashes every trial is redrawn forever")
+    p.add_argument("--max-consecutive-crashes", default=3, type=int,
+                   metavar="K",
+                   help="with --max-trials: this worker stops after K crashed "
+                        "trials in a row (FAILED or penalized). First come, "
+                        "first served hands the most trials to the fastest "
+                        "worker, and a worker on a broken device is fast")
+    p.add_argument("--create-only", action="store_true",
+                   help="with --max-trials: create and record the study, "
+                        "enqueue its warm start, and exit — so the workers "
+                        "of a pool can all be launched with one command line")
     p.add_argument("--total-timesteps", default=200_000, type=int,
                    help="training budget per trial")
     p.add_argument("--eval-seeds", default=500, type=int,
                    help="eval episodes used to score each trial")
     p.add_argument("--seed", default=42, type=int,
-                   help="fixed training seed + TPE sampler seed")
+                   help="TPE sampler seed, and the training seed of every "
+                        "trial this worker runs; under --max-trials the "
+                        "training seed is the study's recorded base + the "
+                        "trial number instead, and the creating launch's "
+                        "--seed is that base. A pool worker seeds each "
+                        "study's sampler from --seed and the study name")
     p.add_argument("--constant-liar", dest="constant_liar", action="store_true",
                    help="for PARALLEL workers on one study: a RUNNING trial "
                         "counts as an observation at the worst value seen "
@@ -110,12 +147,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         "comma-separate list values, e.g. net_arch=64,64")
     p.add_argument("--eval-arg", action="append", default=[], metavar="KEY=VALUE",
                    help="fixed override forwarded to the eval script (repeatable)")
-    p.add_argument("--study-name", default=None, type=str)
+    p.add_argument("--study-name", action="append", default=None, type=str,
+                   help="the study to run (default: {prefix}_{scenario}_{algo}). "
+                        "Repeat it to make this worker serve a POOL of "
+                        "--max-trials studies in one storage: when free it "
+                        "takes the next trial of whichever joined study has "
+                        "the largest share of its budget left")
     p.add_argument("--storage", default=None, type=str,
                    help="optuna storage URL (default: sqlite under "
                         "{domain}/results/tuning/)")
     p.add_argument("--timeout", default=None, type=float,
-                   help="wall-clock budget for the whole study, in seconds")
+                   help="wall-clock budget PER WORKER, in seconds: no new "
+                        "trial starts after this long from this worker's own "
+                        "launch (a running trial finishes)")
     p.add_argument("--show-space", action="store_true",
                    help="print which knobs would be tuned for this domain and exit")
     p.add_argument("--summary-only", action="store_true",
@@ -123,14 +167,21 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
-def parse_args() -> argparse.Namespace:
-    args = _build_arg_parser().parse_args()
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    args = _build_arg_parser().parse_args(argv)
     # "core" is the default tier, but a *request* for a tier is a different
     # thing from falling into one, and only the request can be betrayed by a
     # missing dest — so the sentinel is resolved here rather than by argparse.
     args.knobs_explicit = args.knobs is not None
     if args.knobs is None:
         args.knobs = "core"
+    # which dests the command line actually set: a worker joining a recorded
+    # study takes the record's settings, and only a value it was *given* can
+    # contradict the record — a default it fell into says nothing
+    quiet = _build_arg_parser()
+    for action in quiet._actions:
+        action.default = argparse.SUPPRESS
+    args.explicit = set(vars(quiet.parse_args(argv)))
     return args
 
 
@@ -400,7 +451,8 @@ def sample_kwargs_for(scripts: DomainScripts,
 
 def train_assignment(scripts: DomainScripts, args: argparse.Namespace,
                      scenario: str, trial_dir: Path,
-                     fixed_train: dict, cfg: dict) -> dict[str, object]:
+                     fixed_train: dict, cfg: dict,
+                     seed: int | None = None) -> dict[str, object]:
     """One trial's train-script assignment, in precedence order.
 
     *derivation → study-level → ``--train-arg`` → sampled.* The study level
@@ -409,6 +461,10 @@ def train_assignment(scripts: DomainScripts, args: argparse.Namespace,
     both, and the sampler wins last, since leaving the centre is what a
     searched knob is for. Trial 0 still sits *at* the centre: the warm start
     puts the derived values into ``cfg`` itself.
+
+    ``seed`` is the trial's training seed when the study derives one (base +
+    trial number under ``--max-trials``); otherwise every trial trains on the
+    worker's ``--seed``.
     """
     assign: dict[str, object] = dict(derived_assignment(scripts))
     assign.update({
@@ -417,7 +473,7 @@ def train_assignment(scripts: DomainScripts, args: argparse.Namespace,
         "outdir": str(trial_dir),
     })
     if "seed" in scripts.train_args:
-        assign["seed"] = args.seed
+        assign["seed"] = args.seed if seed is None else seed
     assign.update(fixed_train)
     assign.update(cfg)
     return assign
@@ -455,6 +511,29 @@ def crash_penalty(trial: optuna.Trial, err: Exception) -> float | None:
 def make_objective(scripts: DomainScripts, args: argparse.Namespace,
                    scenario: str, study_dir: Path,
                    fixed_train: dict, fixed_eval: dict):
+    draw, run = make_trial(scripts, args, scenario, study_dir,
+                           fixed_train, fixed_eval)
+
+    def objective(trial: optuna.Trial) -> float:
+        return run(trial, draw(trial))
+
+    return objective
+
+
+def make_trial(scripts: DomainScripts, args: argparse.Namespace,
+               scenario: str, study_dir: Path,
+               fixed_train: dict, fixed_eval: dict,
+               train_seed=None):
+    """One trial as two steps: ``draw(trial) -> cfg``, then ``run(trial, cfg)
+    -> value``.
+
+    They are split because a pool worker (pool.py) draws under the study's
+    lock and trains outside it. TPE samples in ``trial.suggest_*``, not in
+    ``study.ask()``, so a lock released after the ask would let the next
+    worker draw against a RUNNING row with no parameters yet — and the
+    constant liar would have nothing to repel it from. ``train_seed(trial)``
+    gives the trial's training seed when the study derives one.
+    """
     space = SPACES[args.algo]
     tunable = resolve_tunable(scripts, args, fixed_train)
     sample_kw = sample_kwargs_for(scripts, args)
@@ -468,7 +547,7 @@ def make_objective(scripts: DomainScripts, args: argparse.Namespace,
             f"FATAL: {scripts.train_script.name} derives a value its own CLI "
             f"cannot carry, so no trial can run the derivation — {err}")
 
-    def objective(trial: optuna.Trial) -> float:
+    def draw(trial: optuna.Trial) -> dict:
         cfg = space.sample(trial, tunable, **sample_kw)
         # one-DOF schedule pairs: finals derived from the tuned init, so a
         # schedule can never invert (lr_final=lr/10, clip_final=clip_init/4)
@@ -476,11 +555,20 @@ def make_objective(scripts: DomainScripts, args: argparse.Namespace,
             if src in cfg and dest in scripts.train_args and dest not in fixed_train:
                 cfg[dest] = round(cfg[src] * factor, 10)
         trial.set_user_attr("cfg", str(cfg))
+        return cfg
+
+    def run(trial: optuna.Trial, cfg: dict) -> float:
         trial_dir = study_dir / f"trial_{trial.number:04d}"
         trial_dir.mkdir(parents=True, exist_ok=True)
+        # where the trial ran: a pool's trials land on whichever worker was
+        # free, so one study's rows can come from several devices
+        trial.set_user_attr("worker", pool.worker_identity())
 
+        seed = train_seed(trial) if train_seed else None
         train_assign = train_assignment(scripts, args, scenario, trial_dir,
-                                        fixed_train, cfg)
+                                        fixed_train, cfg, seed=seed)
+        if "seed" in train_assign:
+            trial.set_user_attr("train_seed", train_assign["seed"])
         try:
             run_logged(build_cmd(scripts.train_script, scripts.train_args, train_assign),
                        trial_dir / "train.log", scripts.directory)
@@ -530,7 +618,7 @@ def make_objective(scripts: DomainScripts, args: argparse.Namespace,
               flush=True)
         return means[metric]
 
-    return objective
+    return draw, run
 
 
 def make_sampler(seed: int, constant_liar: bool = False) -> optuna.samplers.TPESampler:
@@ -564,26 +652,18 @@ def make_sampler(seed: int, constant_liar: bool = False) -> optuna.samplers.TPES
         return optuna.samplers.TPESampler(seed=seed, constant_liar=True)
 
 
-def main() -> None:
-    args = parse_args()
+def check_knob_reach(scripts: DomainScripts, args: argparse.Namespace) -> None:
+    """spec §8.2 tier 2 — before the study directory exists, because a study
+    that searches 7 knobs while its banner says 8 leaves no trace of the
+    discrepancy in any artifact downstream of this launch.
 
-    domain_dir = _resolve_domain_dir(args.domain)
-    scripts = load_domain(domain_dir, algo=args.algo)
-
-    if args.show_space:
-        show_space(scripts, args.algo, tier=args.knobs, locked=set(args.fix))
-        report_readiness(scripts, args)
-        return
-
-    # spec §8.2 tier 2 — before the study directory exists, because a study that
-    # searches 7 knobs while its banner says 8 leaves no trace of the
-    # discrepancy in any artifact downstream of this launch.
-    # --fix is the operator saying "hold this at its derived value" — a knob
-    # deliberately outside the search, which is what a missing dest produces
-    # too, so it is asked-for rather than a silent shrink.
+    --fix is the operator saying "hold this at its derived value" — a knob
+    deliberately outside the search, which is what a missing dest produces
+    too, so it is asked-for rather than a silent shrink.
+    """
     rot = [k for k in unmatched_knobs(scripts, args.algo, args.knobs)
            if k not in set(args.fix)]
-    if rot and not args.summary_only and (args.knobs_explicit or args.strict_knobs):
+    if rot and (args.knobs_explicit or args.strict_knobs):
         raise SystemExit(
             f"FATAL: --knobs {args.knobs} asks for {', '.join(rot)}, but "
             f"{scripts.train_script.name} exposes no matching dest — the study "
@@ -592,15 +672,11 @@ def main() -> None:
             f"does not include them. (--show-space lists the resolved space "
             f"without launching.)")
 
-    scenario = args.scenario_name or str(scripts.train_args["scenario_name"].default)
-    fixed_train = parse_overrides(args.train_arg, scripts.train_args, "train")
-    fixed_eval = parse_overrides(args.eval_arg, scripts.eval_args, "eval")
 
-    tuning_root = scripts.directory / "results" / "tuning"
-    tuning_root.mkdir(parents=True, exist_ok=True)
-    study_name = args.study_name or f"{scripts.prefix}_{scenario}_{args.algo}"
-    storage = args.storage or f"sqlite:///{tuning_root / 'optuna.db'}"
-    if isinstance(storage, str) and storage.startswith("journal://"):
+def open_storage(spec: str):
+    """The optuna storage behind a ``--storage`` URL, built once per launch so
+    every study a pool worker joins shares it."""
+    if spec.startswith("journal://"):
         # NFS-safe multi-node storage (cluster worker fleets): sqlite
         # corrupts under concurrent writers
         # on NFS; optuna's journal backend is append-only with advisory file
@@ -612,98 +688,85 @@ def main() -> None:
         except ImportError:  # optuna < 4 naming
             from optuna.storages import JournalFileOpenLock
             from optuna.storages import JournalFileStorage as JournalFileBackend
-        jpath = storage[len("journal://"):]
-        storage = JournalStorage(JournalFileBackend(
+        jpath = spec[len("journal://"):]
+        return JournalStorage(JournalFileBackend(
             jpath, lock_obj=JournalFileOpenLock(jpath)))
-    study_dir = tuning_root / study_name
-    study_dir.mkdir(parents=True, exist_ok=True)
+    return optuna.storages.get_storage(spec)
 
-    study = optuna.create_study(
-        study_name=study_name,
-        storage=storage,
-        direction="minimize" if args.minimize else "maximize",
-        sampler=make_sampler(args.seed, args.constant_liar),
-        load_if_exists=True,
-    )
 
-    if args.summary_only:
-        print_summary(study, eval_seeds=args.eval_seeds)
+def warm_start(study: optuna.Study, scripts: DomainScripts,
+               args: argparse.Namespace, fixed_train: dict) -> None:
+    """Enqueue trial 0 = the L1 centre on an empty study.
+
+    SOLVE_LEVELS_PLAN §3.6: trial 0 = the derived value of every tunable knob
+    (§8.4's _L1_DERIVED, the script's defaults where it declares none). The
+    study then directly measures what tuning adds over L1.
+    """
+    space = SPACES[args.algo]
+    if not (args.warm_start and space.encode is not None and not study.trials):
         return
+    tunable = resolve_tunable(scripts, args, fixed_train)
+    sample_kw = sample_kwargs_for(scripts, args)
+    # one reader for the centre, shared with --show-space: a readiness
+    # report that answers a different question from the launch it predicts
+    # is worse than no report
+    defaults = l1_defaults(scripts, tunable)
+    promoted = promoted_knobs(scripts)
+    if promoted:
+        print(f"warm start: {len(promoted)} knob(s) PROMOTED — the script "
+              f"default has moved off the derived value (§8.4); every trial "
+              f"command carries the derivation, not the default:")
+        for dest, (derived, default) in promoted.items():
+            mark = ("searched, and trial 0 sits at the derivation"
+                    if dest in tunable
+                    else "outside the searched tier, held at the derivation "
+                         "in every trial")
+            print(f"         {dest}: derived {derived!r}, "
+                  f"default {default!r} — {mark}")
+        study.set_user_attr("l1_promoted",
+                            {k: [repr(d), repr(f)] for k, (d, f) in promoted.items()})
+    enq, skipped, snapped = space.encode(defaults, **sample_kw)
+    if enq:
+        source = ("_L1_DERIVED" if scripts.l1_derived
+                  else "train-script defaults")
+        study.enqueue_trial(enq)
+        print(f"warm start: enqueued trial 0 = the L1 centre from {source} "
+              f"({', '.join(sorted(enq))})")
+    # trial 0 is supposed to BE the L1 centre, which is what makes Δ(L2−L1)
+    # readable off the study — so any distance from it is stated, and
+    # recorded on the study so the record outlives this console.
+    if snapped:
+        print(f"WARNING: warm start: {len(snapped)} L1 default(s) are not "
+              f"exactly representable and were moved to the nearest value "
+              f"the space has — trial 0 is L1 rounded to the grid, not L1:")
+        for dest, (asked, used) in sorted(snapped.items()):
+            print(f"         {dest}: {asked!r} -> {used!r}")
+        study.set_user_attr("warm_start_snapped",
+                            {k: [repr(a), repr(u)] for k, (a, u) in snapped.items()})
+    if skipped:
+        print(f"WARNING: warm start: the {args.algo} space refuses "
+              f"{sorted(skipped)} outright, so trial 0 SAMPLES it — trial 0 "
+              f"is then not the L1 centre and the study does not measure "
+              f"what tuning adds over L1. A refusal is a signal, not a "
+              f"rounding error (§8.6): γ > β, an n_steps under the rollout "
+              f"floor, or a structure with no nearest neighbour.")
+        for dest in sorted(skipped):
+            print(f"         {dest}={defaults.get(dest)!r}")
+        study.set_user_attr("warm_start_skipped", sorted(skipped))
 
-    print(f"study    : {study_name}  ({storage})")
+
+def print_banner(study_name: str, storage_spec: str, scenario: str,
+                 fixed_train: dict, fixed_eval: dict,
+                 args: argparse.Namespace, budget: str, sampler: str) -> None:
+    print(f"study    : {study_name}  ({storage_spec})")
     print(f"scenario : {scenario}")
     print(f"fixed    : train={fixed_train or '{}'}  eval={fixed_eval or '{}'}")
-    print(f"budget   : {args.n_trials} trials x {args.total_timesteps} steps, "
-          f"{args.eval_seeds} eval seeds"
-          + (f", timeout {args.timeout}s" if args.timeout else ""))
+    print(f"budget   : {budget}")
     print(f"scored on: {args.score_checkpoint} checkpoint, metric={args.metric}")
-    print(f"sampler  : TPE seed {args.seed}, constant liar "
-          f"{'on' if args.constant_liar else 'off'}")
-    show_space(scripts, args.algo, tier=args.knobs,
-               pinned=set(fixed_train), locked=set(args.fix))
+    print(f"sampler  : {sampler}")
 
-    # warm start (SOLVE_LEVELS_PLAN §3.6): trial 0 = the derived value of every
-    # tunable knob (§8.4's _L1_DERIVED, the script's defaults where it declares
-    # none). The study then directly measures what tuning adds over L1.
-    space = SPACES[args.algo]
-    if args.warm_start and space.encode is not None and not study.trials:
-        tunable = resolve_tunable(scripts, args, fixed_train)
-        sample_kw = sample_kwargs_for(scripts, args)
-        # one reader for the centre, shared with --show-space: a readiness
-        # report that answers a different question from the launch it predicts
-        # is worse than no report
-        defaults = l1_defaults(scripts, tunable)
-        promoted = promoted_knobs(scripts)
-        if promoted:
-            print(f"warm start: {len(promoted)} knob(s) PROMOTED — the script "
-                  f"default has moved off the derived value (§8.4); every trial "
-                  f"command carries the derivation, not the default:")
-            for dest, (derived, default) in promoted.items():
-                mark = ("searched, and trial 0 sits at the derivation"
-                        if dest in tunable
-                        else "outside the searched tier, held at the derivation "
-                             "in every trial")
-                print(f"         {dest}: derived {derived!r}, "
-                      f"default {default!r} — {mark}")
-            study.set_user_attr("l1_promoted",
-                                {k: [repr(d), repr(f)] for k, (d, f) in promoted.items()})
-        enq, skipped, snapped = space.encode(defaults, **sample_kw)
-        if enq:
-            source = ("_L1_DERIVED" if scripts.l1_derived
-                      else "train-script defaults")
-            study.enqueue_trial(enq)
-            print(f"warm start: enqueued trial 0 = the L1 centre from {source} "
-                  f"({', '.join(sorted(enq))})")
-        # trial 0 is supposed to BE the L1 centre, which is what makes Δ(L2−L1)
-        # readable off the study — so any distance from it is stated, and
-        # recorded on the study so the record outlives this console.
-        if snapped:
-            print(f"WARNING: warm start: {len(snapped)} L1 default(s) are not "
-                  f"exactly representable and were moved to the nearest value "
-                  f"the space has — trial 0 is L1 rounded to the grid, not L1:")
-            for dest, (asked, used) in sorted(snapped.items()):
-                print(f"         {dest}: {asked!r} -> {used!r}")
-            study.set_user_attr("warm_start_snapped",
-                                {k: [repr(a), repr(u)] for k, (a, u) in snapped.items()})
-        if skipped:
-            print(f"WARNING: warm start: the {args.algo} space refuses "
-                  f"{sorted(skipped)} outright, so trial 0 SAMPLES it — trial 0 "
-                  f"is then not the L1 centre and the study does not measure "
-                  f"what tuning adds over L1. A refusal is a signal, not a "
-                  f"rounding error (§8.6): γ > β, an n_steps under the rollout "
-                  f"floor, or a structure with no nearest neighbour.")
-            for dest in sorted(skipped):
-                print(f"         {dest}={defaults.get(dest)!r}")
-            study.set_user_attr("warm_start_skipped", sorted(skipped))
 
-    study.optimize(
-        make_objective(scripts, args, scenario, study_dir, fixed_train, fixed_eval),
-        n_trials=args.n_trials,
-        timeout=args.timeout,
-        # a diverging config (e.g. NaN policy at high lr) fails its own trial,
-        # not the study
-        catch=(RuntimeError, FileNotFoundError, ValueError),
-    )
+def report_study(study: optuna.Study, study_dir: Path, eval_seeds: int) -> None:
     crashed = [t for t in study.trials
                if t.state == optuna.trial.TrialState.FAIL
                or "failed" in t.user_attrs]
@@ -720,8 +783,243 @@ def main() -> None:
               f"penalize against and are FAILED/unscored — trials "
               f"{', '.join(str(t.number) for t in unscored)}; "
               f"see their train.log")
-    print_summary(study, eval_seeds=args.eval_seeds)
+    print_summary(study, eval_seeds=eval_seeds)
     report_importances(study, study_dir)
+
+
+def main() -> None:
+    args = parse_args()
+
+    domain_dir = _resolve_domain_dir(args.domain)
+    scripts = load_domain(domain_dir, algo=args.algo)
+
+    if args.show_space:
+        show_space(scripts, args.algo, tier=args.knobs, locked=set(args.fix))
+        report_readiness(scripts, args)
+        return
+
+    scenario = args.scenario_name or str(scripts.train_args["scenario_name"].default)
+    tuning_root = scripts.directory / "results" / "tuning"
+    tuning_root.mkdir(parents=True, exist_ok=True)
+    names = args.study_name or [f"{scripts.prefix}_{scenario}_{args.algo}"]
+    storage_spec = args.storage or f"sqlite:///{tuning_root / 'optuna.db'}"
+    # whichever process opens a fresh sqlite file first creates its schema,
+    # and two that open it at once collide ("table alembic_version already
+    # exists") — so the open goes under the pool lock wherever one exists,
+    # which is what lets budgeted workers be launched together. Best effort
+    # here: a filesystem that refuses the lock fails a budgeted launch where
+    # it takes the lock for real, and leaves a --n-trials launch as it was
+    try:
+        with pool.lock_for(storage_spec) or contextlib.nullcontext():
+            storage = open_storage(storage_spec)
+    except pool.LockUnavailable:
+        storage = open_storage(storage_spec)
+
+    if args.summary_only:
+        for name in names:
+            study = optuna.create_study(
+                study_name=name, storage=storage,
+                direction="minimize" if args.minimize else "maximize",
+                load_if_exists=True)
+            print_summary(study, eval_seeds=args.eval_seeds)
+        return
+
+    # a study recorded with a study-wide budget is run under it whichever
+    # flags this launch carries: the record, not the command line, says how
+    # the study counts
+    record = pool.read_record(storage, names[0])[0] if len(names) == 1 else None
+    if (args.max_trials is not None or len(names) > 1 or args.create_only
+            or record is not None):
+        run_budgeted(args, scripts, storage, storage_spec, names, tuning_root)
+        return
+    worker_only = sorted({"max_fails", "max_consecutive_crashes"} & args.explicit)
+    if worker_only:
+        raise SystemExit(
+            f"FATAL: --{worker_only[0].replace('_', '-')} applies only to a "
+            f"study-wide budget (--max-trials); with --n-trials every worker "
+            f"stops after its own count")
+    run_per_worker(args, scripts, storage, storage_spec, names[0], scenario,
+                   tuning_root)
+
+
+def run_per_worker(args: argparse.Namespace, scripts: DomainScripts,
+                   storage, storage_spec: str, study_name: str, scenario: str,
+                   tuning_root: Path) -> None:
+    """``--n-trials``: this worker runs its own count, optuna's ``optimize``."""
+    check_knob_reach(scripts, args)
+    fixed_train = parse_overrides(args.train_arg, scripts.train_args, "train")
+    fixed_eval = parse_overrides(args.eval_arg, scripts.eval_args, "eval")
+    study_dir = tuning_root / study_name
+    study_dir.mkdir(parents=True, exist_ok=True)
+
+    study = optuna.create_study(
+        study_name=study_name,
+        storage=storage,
+        direction="minimize" if args.minimize else "maximize",
+        sampler=make_sampler(args.seed, args.constant_liar),
+        load_if_exists=True,
+    )
+    print_banner(study_name, storage_spec, scenario, fixed_train, fixed_eval,
+                 args,
+                 budget=f"{args.n_trials} trials x {args.total_timesteps} "
+                        f"steps, {args.eval_seeds} eval seeds"
+                        + (f", timeout {args.timeout}s" if args.timeout else ""),
+                 sampler=f"TPE seed {args.seed}, constant liar "
+                         f"{'on' if args.constant_liar else 'off'}")
+    show_space(scripts, args.algo, tier=args.knobs,
+               pinned=set(fixed_train), locked=set(args.fix))
+    warm_start(study, scripts, args, fixed_train)
+
+    study.optimize(
+        make_objective(scripts, args, scenario, study_dir, fixed_train, fixed_eval),
+        n_trials=args.n_trials,
+        timeout=args.timeout,
+        # a diverging config (e.g. NaN policy at high lr) fails its own trial,
+        # not the study
+        catch=pool.CATCH,
+    )
+    report_study(study, study_dir, args.eval_seeds)
+
+
+def run_budgeted(args: argparse.Namespace, scripts: DomainScripts,
+                 storage, storage_spec: str, names: list[str],
+                 tuning_root: Path) -> None:
+    """``--max-trials`` / a pool: one budget per study, shared by every worker
+    that joins it, drawn first come first served under one lock (pool.py)."""
+    if "n_trials" in args.explicit:
+        raise SystemExit(
+            "FATAL: --n-trials counts the trials of ONE worker, and this launch "
+            "runs a study-wide budget (--max-trials, a pool, or a study "
+            "recorded with one) — drop --n-trials")
+    if args.create_only and len(names) > 1:
+        raise SystemExit(
+            "FATAL: --create-only creates one study; give each pool study its "
+            "own creating launch, then start the pool workers")
+    lock = pool.storage_lock(storage_spec)
+    pooled = len(names) > 1
+    loaded = {args.algo: scripts}
+
+    def scripts_for(algo: str) -> DomainScripts:
+        if algo not in loaded:
+            loaded[algo] = load_domain(scripts.directory, algo=algo)
+        return loaded[algo]
+
+    who = pool.worker_identity()
+    print(f"worker   : {who['host']} pid {who['pid']}, CUDA_VISIBLE_DEVICES="
+          f"{who['cuda_visible_devices']}; --seed {args.seed}"
+          + (f"; timeout {args.timeout:g}s" if args.timeout else "")
+          + f"; stops after {args.max_consecutive_crashes} crashed trials in "
+            f"a row")
+    members: list[tuple[pool.Member, Path, int]] = []
+    # joining happens under the lock too, so two launches that both find a
+    # study empty cannot both create it, record it, and enqueue its trial 0
+    with lock:
+        for name in names:
+            members.append(join_study(args, scripts, scripts_for, storage,
+                                      storage_spec, name, tuning_root, pooled))
+    if args.create_only:
+        print(f"created  : {names[0]} — start its workers with --study-name "
+              f"{names[0]} and --storage {storage_spec}")
+        return
+
+    stop = pool.run_worker([m for m, _, _ in members], lock,
+                           timeout=args.timeout,
+                           max_consecutive_crashes=args.max_consecutive_crashes)
+    print(f"\nworker stopped: {stop}")
+    for member, study_dir, eval_seeds in members:
+        report_study(member.study, study_dir, eval_seeds)
+
+
+def join_study(args: argparse.Namespace, scripts: DomainScripts, scripts_for,
+               storage, storage_spec: str, name: str, tuning_root: Path,
+               pooled: bool) -> tuple[pool.Member, Path, int]:
+    """Create a budgeted study from this launch's flags, or join one from its
+    record. Called under the pool lock."""
+    record, n_trials = pool.read_record(storage, name)
+    creating = record is None
+    if creating:
+        if n_trials:
+            raise SystemExit(
+                f"FATAL: study {name!r} holds {n_trials} trial(s) and no "
+                f"study-wide budget record: it was launched with --n-trials, "
+                f"so its trials trained on per-worker seeds that base + n "
+                f"cannot describe, and the settings this launch would record "
+                f"are a guess at the ones it ran with. Finish it with "
+                f"--n-trials, or start a new study")
+        if pooled:
+            raise SystemExit(
+                f"FATAL: pool study {name!r} has no record — a pool worker "
+                f"takes each study's settings from the study itself. Create "
+                f"it first: one launch with --study-name {name} --max-trials N "
+                f"and its own settings (--create-only to create it and exit)")
+        if args.max_trials is None:
+            raise SystemExit(
+                f"FATAL: --create-only needs --max-trials: study {name!r} does "
+                f"not exist yet and a budget is part of its record")
+        if args.max_trials < 1 or args.max_fails < 1:
+            raise SystemExit("FATAL: --max-trials and --max-fails must be >= 1")
+        sargs = args
+        sscripts = scripts
+        scenario = args.scenario_name or str(
+            scripts.train_args["scenario_name"].default)
+        record = pool.make_record(args, scripts.prefix, scenario)
+    else:
+        if record.get("domain") != scripts.prefix:
+            raise SystemExit(
+                f"FATAL: study {name!r} was recorded for domain "
+                f"{record.get('domain')!r}, and this worker runs "
+                f"{scripts.prefix!r} — a pool spans one domain")
+        diffs = pool.record_mismatches(args, record)
+        if diffs:
+            raise SystemExit(
+                f"FATAL: study {name!r} was recorded with other settings than "
+                f"this launch gives — {'; '.join(diffs)}. A study's settings "
+                f"are fixed by its creating launch: drop the flag(s) to take "
+                f"the record's, or start a new study")
+        sargs = pool.apply_record(args, record)
+        sscripts = scripts_for(sargs.algo)
+        scenario = sargs.scenario_name
+
+    check_knob_reach(sscripts, sargs)
+    fixed_train = parse_overrides(sargs.train_arg, sscripts.train_args, "train")
+    fixed_eval = parse_overrides(sargs.eval_arg, sscripts.eval_args, "eval")
+    study_dir = tuning_root / name
+    study_dir.mkdir(parents=True, exist_ok=True)
+    tpe_seed = pool.sampler_seed(args.seed, name) if pooled else args.seed
+    study = optuna.create_study(
+        study_name=name, storage=storage,
+        direction="minimize" if sargs.minimize else "maximize",
+        sampler=make_sampler(tpe_seed, sargs.constant_liar),
+        load_if_exists=True)
+    if creating:
+        study.set_user_attr(pool.RECORD_ATTR, record)
+
+    base = record["seed_base"]
+    counted, fails = pool.counts(study)
+    print_banner(name, storage_spec, scenario, fixed_train, fixed_eval, sargs,
+                 budget=f"study-wide {record['max_trials']} trials (holds "
+                        f"{counted}; FAIL cap {record['max_fails']}, holds "
+                        f"{fails}) x {sargs.total_timesteps} steps, "
+                        f"{sargs.eval_seeds} eval seeds — "
+                        + ("recorded by this launch" if creating
+                           else "settings from the study's record"),
+                 sampler=f"TPE seed {tpe_seed}"
+                         + (f" (from --seed {args.seed} and the study name)"
+                            if pooled else "")
+                         + f", constant liar "
+                           f"{'on' if sargs.constant_liar else 'off'}; trial n "
+                           f"trains on seed {base} + n")
+    show_space(sscripts, sargs.algo, tier=sargs.knobs,
+               pinned=set(fixed_train), locked=set(sargs.fix))
+    if creating:
+        warm_start(study, sscripts, sargs, fixed_train)
+
+    draw, run = make_trial(sscripts, sargs, scenario, study_dir, fixed_train,
+                           fixed_eval, train_seed=lambda t: base + t.number)
+    member = pool.Member(name=name, study=study,
+                         max_trials=record["max_trials"],
+                         max_fails=record["max_fails"], draw=draw, run=run)
+    return member, study_dir, sargs.eval_seeds
 
 
 def report_importances(study: optuna.Study, study_dir: Path) -> None:
