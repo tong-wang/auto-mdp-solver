@@ -43,10 +43,15 @@ derived* but *is this run the run it says it is*:
   its scenario, and carry a comparable budget.
 
 `assert_launch` runs whichever of the three the caller has inputs for.
+
+`fit_run_name` is the one helper here that checks nothing: it bounds the §8.4
+run name the same script builds at the same moment, since a name past one path
+component is a run whose directory cannot be made.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 import sys
 from collections.abc import Mapping
@@ -54,7 +59,7 @@ from pathlib import Path
 from typing import Any
 
 __all__ = ["check_l1", "check_config", "check_comparator", "assert_launch",
-           "assert_l1_current", "read_args_log", "registry_ids"]
+           "assert_l1_current", "fit_run_name", "read_args_log", "registry_ids"]
 
 # Derived rows whose value is a PRIOR the campaign may flip (§8.6): a run that
 # deviates is doing the thing the row asks for, so it is reported, never judged.
@@ -624,3 +629,38 @@ def assert_l1_current(args: Any, *, derived: dict[str, object],
     """
     assert_launch(args, derived=derived, basis=basis, beta=beta,
                   episode_len=episode_len, stream=stream)
+
+
+# One path component on ext4, XFS and APFS, in bytes (NAME_MAX).
+NAME_MAX = 255
+_TAIL_MARKER = len("_h") + 10
+
+
+def fit_run_name(head: str, parts: list[str], limit: int = NAME_MAX) -> str:
+    """``head_part_part…`` as one path component of at most ``limit`` bytes
+    (spec §8.4).
+
+    A name that fits is returned unchanged, so no run directory or ledger join
+    of an existing campaign moves. One that does not keeps ``head`` and the
+    parts, in order, while they fit with room for the marker, and replaces the
+    rest with ``_h`` + the first 10 hex digits of sha1 over the dropped parts
+    joined by ``_``. The args log keeps the full set; the marker says the name
+    stops short of it.
+
+    Past the limit the run directory's ``mkdir`` raises ``OSError: [Errno 36]
+    File name too long`` and the run never exists — observed on `--knobs all`
+    draws at 256–262 bytes, where every searched knob off the derivation is a
+    tag (upstream #104).
+    """
+    name = "_".join([head, *parts])
+    if len(name.encode()) <= limit:
+        return name
+    keep, tail = list(parts), []
+    while keep and len("_".join([head, *keep]).encode()) + _TAIL_MARKER > limit:
+        tail.insert(0, keep.pop())
+    kept = "_".join([head, *keep])
+    if len(kept.encode()) + _TAIL_MARKER > limit:
+        raise ValueError(f"run name head {head!r} leaves no room for a tag "
+                         f"under {limit} bytes")
+    digest = hashlib.sha1("_".join(tail).encode()).hexdigest()[:10]
+    return f"{kept}_h{digest}"

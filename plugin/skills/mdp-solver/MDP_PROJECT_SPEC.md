@@ -1780,6 +1780,8 @@ Two tiers of keys:
   (diagnostic toggles are not design axes — §11).
 
 ```python
+from mdp_conformance.launch import fit_run_name
+
 _SHORT_KEYS: dict[str, str] = {
     "total_timesteps": "steps",
     ...
@@ -1807,10 +1809,25 @@ def build_run_name(args: argparse.Namespace) -> str:
             formatted = f"{val:.3g}" if isinstance(val, float) else str(val)
             parts.append(f"{label}{formatted}")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"{ALGO}_{timestamp}_{'_'.join(parts)}"
+    return fit_run_name(f"{ALGO}_{timestamp}", parts)   # <= 255 bytes, below
 ```
 
 Result: `PPO_20260630_224416_obssales_actdiscrete_rewprofit` (all defaults) or `PPO_20260630_224416_obstiming_actdiscrete_rewprofit_steps5000000`.
+
+**A run name is one path component: at most 255 bytes** (`NAME_MAX` on ext4,
+XFS and APFS). Past it the run directory's `mkdir` fails with `File name too
+long` and the run never exists. The encoding above has no bound of its own,
+and `mdp_tuning` reaches the limit first: it sets every searched knob, so under
+`--knobs all` each drawn value off `_L1_DERIVED` is a tag. One campaign's
+knob-heavy draws reached 256–262 bytes, and a plain study came within 12
+(upstream #104). `fit_run_name` applies the overflow rule. A name that fits
+comes back byte-identical, so no existing run directory or ledger join moves.
+One that does not keeps the prefix and the tags, in order, while they fit with
+room for the marker, and replaces the rest with `_h` + the first 10 hex digits
+of sha1 over the dropped tags joined by `_`. The args log already holds the
+full set, so a trailing `_h…` reads "the tier continues in
+`{scenario_name}_{algo}_args.txt`". The name stays unique (the timestamp) and
+stays the same for the same arguments.
 
 **The hyperparameter tier diffs against the derivation, not against the
 defaults.** Two statements are load-bearing and only jointly true until a
