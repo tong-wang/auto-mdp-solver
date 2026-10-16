@@ -37,7 +37,7 @@ class ModelResolutionError(Exception):
 
     Deliberately outside the per-trial catch tuples: this fails identically on
     every trial, so it aborts the study instead of burning the whole budget on
-    trials that would each be penalized as if training had diverged.
+    trials that would each be pruned as if training had diverged.
     """
 
 

@@ -103,7 +103,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-consecutive-crashes", default=3, type=int,
                    metavar="K",
                    help="with --max-trials: this worker stops after K crashed "
-                        "trials in a row (FAILED or penalized). First come, "
+                        "trials in a row (FAILED or PRUNED). First come, "
                         "first served hands the most trials to the fastest "
                         "worker, and a worker on a broken device is fast")
     p.add_argument("--create-only", action="store_true",
@@ -378,8 +378,11 @@ def report_readiness(scripts: DomainScripts, args: argparse.Namespace) -> None:
 
 def print_summary(study: optuna.Study, top: int = 5,
                   eval_seeds: int | None = None) -> None:
+    # a COMPLETE row with "failed" set is a crash an earlier rule scored: it
+    # has a value and no model, so it is no candidate for the top
     done = [t for t in study.trials
-            if t.state == optuna.trial.TrialState.COMPLETE]
+            if t.state == optuna.trial.TrialState.COMPLETE
+            and "failed" not in t.user_attrs]
     if not done:
         print("no completed trials yet.")
         return
@@ -479,33 +482,35 @@ def train_assignment(scripts: DomainScripts, args: argparse.Namespace,
     return assign
 
 
-def crash_penalty(trial: optuna.Trial, err: Exception) -> float | None:
-    """Value for a crashed trial (e.g. NaN divergence): the worst completed
-    value so far. Returning a value — rather than failing the trial — is
-    what teaches TPE to avoid divergent regions instead of resampling them.
+def crash_state(trial: optuna.Trial, err: Exception) -> optuna.trial.TrialState:
+    """How a trial whose training crashed (e.g. NaN divergence) ends: PRUNED,
+    or FAIL while no trial has completed. Either way it carries no value, and
+    its ``user_attrs["failed"]`` says why.
 
-    ``None`` means *do not score this trial at all*, and the invariant behind
-    it is that a crashed trial must never become ``study.best_trial``. The
-    worst-completed rule holds that on its own, but only while a completed
-    trial exists to take a worst value from. With none, the old fallback
-    returned a direction-blind ``0.0`` — below every attainable cost in a
-    MINIMIZE study, so a crash on trial 0 was recorded as the study's best and
-    no later trial could displace it (upstream #76). There is also nothing to
-    teach in that state: with no completed trial there is no scale on which
-    "avoid this region" could be expressed. So the caller re-raises and
-    ``study.optimize(catch=...)`` marks the trial FAIL, which optuna excludes
-    from both ``best_trial`` and the TPE model. The rule resumes unchanged as
-    soon as one trial completes.
+    PRUNED is what teaches TPE to avoid divergent regions instead of
+    resampling them: TPE ranks a pruned trial with no intermediate value below
+    every completed one, so it lands in the "bad" split, and it counts toward
+    the random start like any other row. A FAIL row carries no signal at all.
+    Nothing ranks it by value either: ``best_trial``, a summary table or a
+    top-k funnel read COMPLETE rows, and a crash has no model to hand them.
+
+    The rule it replaces scored the crash at the worst completed value, and
+    with one completed trial that value *is* the best one. The stand-in tied
+    the study's best, sat in TPE's good split once the random start ended and
+    pulled draws toward a configuration that never trained, and a top-k
+    consumer took a row with no model (upstream #103). Studies written before
+    it may still hold such rows — COMPLETE, with ``failed`` set — and a
+    consumer ranking COMPLETE rows skips them.
+
+    FAIL is kept for a crash before any completion (upstream #76): then a broken
+    script is likelier than a bad configuration, and FAIL is redrawn and capped
+    (``--max-fails``) rather than spent from the budget.
     """
     trial.set_user_attr("failed", f"{err.__class__.__name__}: {err}"[:500])
-    done = [t.value for t in trial.study.trials
-            if t.state == optuna.trial.TrialState.COMPLETE
-            and t.value is not None]
-    if not done:
-        return None
-    if trial.study.direction == optuna.study.StudyDirection.MAXIMIZE:
-        return min(done)
-    return max(done)
+    if any(t.state == optuna.trial.TrialState.COMPLETE
+           and "failed" not in t.user_attrs for t in trial.study.trials):
+        return optuna.trial.TrialState.PRUNED
+    return optuna.trial.TrialState.FAIL
 
 
 def make_objective(scripts: DomainScripts, args: argparse.Namespace,
@@ -575,18 +580,17 @@ def make_trial(scripts: DomainScripts, args: argparse.Namespace,
             model = resolve_model(trial_dir, scenario=scenario, algo=args.algo,
                                   mode=args.score_checkpoint)
         except (RuntimeError, FileNotFoundError) as err:
-            value = crash_penalty(trial, err)
-            if value is None:
+            if crash_state(trial, err) == optuna.trial.TrialState.FAIL:
                 print(f"[trial {trial.number}] training FAILED "
-                      f"({err.__class__.__name__}) with no completed trial to "
-                      f"penalize against -> trial FAILED, left unscored so it "
-                      f"cannot become the study best; "
+                      f"({err.__class__.__name__}) before any trial completed "
+                      f"-> trial FAILED, redrawn; "
                       f"see {trial_dir / 'train.log'}", flush=True)
                 raise
             print(f"[trial {trial.number}] training FAILED "
-                  f"({err.__class__.__name__}) -> penalized value {value:.4f}; "
-                  f"see {trial_dir / 'train.log'}", flush=True)
-            return value
+                  f"({err.__class__.__name__}) -> PRUNED, ranked below every "
+                  f"completed trial; see {trial_dir / 'train.log'}", flush=True)
+            raise optuna.TrialPruned(
+                f"training crashed ({err.__class__.__name__})") from err
 
         eval_tsv = trial_dir / "eval.tsv"
         eval_assign: dict[str, object] = {
@@ -767,22 +771,28 @@ def print_banner(study_name: str, storage_spec: str, scenario: str,
 
 
 def report_study(study: optuna.Study, study_dir: Path, eval_seeds: int) -> None:
-    crashed = [t for t in study.trials
-               if t.state == optuna.trial.TrialState.FAIL
-               or "failed" in t.user_attrs]
-    # the two crash outcomes are not the same row and must not be reported as
-    # one: a penalized trial carries the worst completed value, an unscored one
-    # carries no value at all because nothing had completed to take it from
-    unscored = [t for t in crashed if t.state == optuna.trial.TrialState.FAIL]
-    penalized = [t for t in crashed if t.state != optuna.trial.TrialState.FAIL]
-    if penalized:
-        print(f"{len(penalized)} trial(s) crashed (typically NaN divergence) "
-              f"and were penalized — see their train.log")
+    State = optuna.trial.TrialState
+    # three crash outcomes, not one: a PRUNED crash is in the TPE model below
+    # every completion, a FAIL row is in nothing and is redrawn, and a COMPLETE
+    # row with "failed" set is a stand-in an earlier rule scored (upstream #103)
+    pruned = [t for t in study.trials
+              if t.state == State.PRUNED and "failed" in t.user_attrs]
+    unscored = [t for t in study.trials if t.state == State.FAIL]
+    stand_ins = [t for t in study.trials
+                 if t.state == State.COMPLETE and "failed" in t.user_attrs]
+    if pruned:
+        print(f"{len(pruned)} trial(s) crashed in training (typically NaN "
+              f"divergence) and were PRUNED — see their train.log")
     if unscored:
-        print(f"{len(unscored)} trial(s) crashed with no completed trial to "
-              f"penalize against and are FAILED/unscored — trials "
-              f"{', '.join(str(t.number) for t in unscored)}; "
-              f"see their train.log")
+        print(f"{len(unscored)} trial(s) FAILED and are unscored (a training "
+              f"crash before any trial completed, or an eval/scoring crash) — "
+              f"trials {', '.join(str(t.number) for t in unscored)}; "
+              f"see their train.log / eval.log")
+    if stand_ins:
+        print(f"{len(stand_ins)} crashed trial(s) carry a penalty value an "
+              f"earlier mdp_tuning scored and have no model — trials "
+              f"{', '.join(str(t.number) for t in stand_ins)}; left out of "
+              f"the summary below")
     print_summary(study, eval_seeds=eval_seeds)
     report_importances(study, study_dir)
 

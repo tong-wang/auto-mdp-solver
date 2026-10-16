@@ -248,9 +248,9 @@ def test_a_script_that_always_crashes_closes_on_the_fail_cap(tmp_path):
 
 
 def test_a_broken_worker_stops_instead_of_eating_the_budget(tmp_path):
-    """After the first completion a crash is a penalized COMPLETE row, which
-    counts — and the worker that crashes in seconds is the one first come,
-    first served hands the most trials."""
+    """After the first completion a crash is a PRUNED row, which counts —
+    and the worker that crashes in seconds is the one first come, first
+    served hands the most trials."""
     fleet = Fleet(tmp_path)
     flags = ("--study-name", "s", "--max-trials", "8",
              "--train-arg", "cost=0.4")
@@ -407,14 +407,15 @@ def test_the_fail_cap_closes_a_study_and_the_streak_stops_a_worker():
     assert len(streak.study.trials) == 3
 
 
-def test_a_penalized_crash_counts_toward_the_streak():
-    def penalized(trial, cfg):
+def test_a_pruned_crash_counts_toward_the_streak_and_the_budget():
+    def pruned(trial, cfg):
         trial.set_user_attr("failed", "RuntimeError: diverged")
-        return 0.0
+        raise optuna.TrialPruned("training crashed (RuntimeError)")
 
-    m = _member(n=10, run=penalized)
+    m = _member(n=10, run=pruned)
     assert "in a row" in _loop(m)
-    assert all(t.state == TrialState.COMPLETE for t in m.study.trials)
+    assert [t.state for t in m.study.trials] == [TrialState.PRUNED] * 3
+    assert pool.counts(m.study) == (3, 0)        # counted toward N, not FAIL
 
 
 def test_the_timeout_is_per_worker_and_stops_only_new_trials():

@@ -467,14 +467,14 @@ def test_summary_labels_the_best_value_as_a_trial_layer_score(capsys):
     assert "maximum over 3 trials" in out       # the selection effect, named
 
 
-# --- the crashed-trial penalty (upstream #76) -----------------------------
+# --- the crashed-trial outcome (upstream #76, #103) ------------------------
 
 def _crash_study(direction: str, crash_on: set[int], values: dict[int, float]):
     """A study whose objective crashes on the named trials. Routes through the
-    real `crash_penalty`, so what is exercised is the contract optuna sees."""
+    real `crash_state`, so what is exercised is the contract optuna sees."""
     import optuna
 
-    from mdp_tuning.__main__ import crash_penalty
+    from mdp_tuning.__main__ import crash_state
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study = optuna.create_study(direction=direction)
@@ -483,10 +483,9 @@ def _crash_study(direction: str, crash_on: set[int], values: dict[int, float]):
         trial.suggest_float("x", 0.0, 1.0)
         if trial.number in crash_on:
             err = RuntimeError("NaN divergence")
-            value = crash_penalty(trial, err)
-            if value is None:
+            if crash_state(trial, err) == optuna.trial.TrialState.FAIL:
                 raise err
-            return value
+            raise optuna.TrialPruned("training crashed") from err
         return values[trial.number]
 
     study.optimize(objective, n_trials=len(crash_on) + len(values),
@@ -525,15 +524,64 @@ def test_the_maximize_mirror_holds_for_a_negative_objective():
     assert study.best_value == -5.0
 
 
-def test_the_worst_completed_rule_is_unchanged_once_a_trial_completes():
-    """The design intent this does not touch: a later crash is still *scored*
-    at the worst completed value, which is what teaches TPE to avoid the
-    region rather than resample it."""
+def test_a_crash_after_one_completion_does_not_tie_the_best():
+    """The defect (upstream #103): the crash was scored at the worst completed
+    value, and with one completed trial that is the best one. The stand-in
+    tied the best, sat in TPE's good split and pulled draws toward a
+    configuration that never trained, and a top-k funnel took a row with no
+    model. The old rule makes trial 1 COMPLETE at 1.0 here."""
     import optuna
 
-    study = _crash_study("minimize", crash_on={2}, values={0: 452.0, 1: 470.0})
+    study = _crash_study("maximize", crash_on={1}, values={0: 1.0, 2: 0.5})
 
-    crashed = study.trials[2]
-    assert crashed.state == optuna.trial.TrialState.COMPLETE
-    assert crashed.value == 470.0          # the worst completed, not 0.0
+    crashed = study.trials[1]
+    assert crashed.state == optuna.trial.TrialState.PRUNED
+    assert crashed.value is None
+    assert "RuntimeError" in crashed.user_attrs["failed"]
     assert study.best_trial.number == 0
+    complete = [t for t in study.trials
+                if t.state == optuna.trial.TrialState.COMPLETE]
+    assert [t.number for t in complete] == [0, 2]   # what a ranking reads
+
+
+def test_tpe_ranks_a_pruned_crash_below_every_completion():
+    """What PRUNED is for: the crash enters TPE's model in the "bad" split, so
+    the region is repelled rather than resampled. This pins optuna's own
+    split — if a release moves pruned trials, the repel claim moves with it."""
+    import optuna
+    from optuna.samplers._tpe.sampler import _split_trials
+    from optuna.trial import TrialState, create_trial
+
+    dist = {"x": optuna.distributions.FloatDistribution(0.0, 1.0)}
+    study = optuna.create_study(direction="maximize")
+    for i in range(12):
+        study.add_trial(create_trial(state=TrialState.COMPLETE, value=float(i),
+                                     params={"x": i / 12}, distributions=dist))
+    study.add_trial(create_trial(state=TrialState.PRUNED, params={"x": 0.99},
+                                 distributions=dist,
+                                 user_attrs={"failed": "RuntimeError: x"}))
+    trials = study.get_trials(states=(TrialState.COMPLETE, TrialState.PRUNED))
+    below, above = _split_trials(study, trials, n_below=2,
+                                 constraints_enabled=False)
+    assert [t.value for t in below] == [10.0, 11.0]
+    assert any(t.state == TrialState.PRUNED for t in above)
+
+
+def test_the_summary_skips_a_stand_in_an_earlier_rule_scored(capsys):
+    """A study written under the old rule keeps its COMPLETE stand-ins, and the
+    summary is a ranking consumer: the stand-in has a value and no model."""
+    import optuna
+    from optuna.trial import TrialState, create_trial
+
+    from mdp_tuning.__main__ import print_summary
+
+    study = optuna.create_study(direction="maximize")
+    study.add_trial(create_trial(state=TrialState.COMPLETE, value=1.0,
+                                 user_attrs={"model_path": "trial_0000/m.zip"}))
+    study.add_trial(create_trial(state=TrialState.COMPLETE, value=1.0,
+                                 user_attrs={"failed": "RuntimeError: x"}))
+    print_summary(study)
+    out = capsys.readouterr().out
+    assert "1 completed trials" in out
+    assert "trial   1" not in out
+    assert "trial_0000/m.zip" in out

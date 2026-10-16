@@ -139,9 +139,9 @@ Two stops keep a shared budget finite. FAIL does not count toward N, so an
 unscored crash is redrawn — and the study takes no new trial once it holds
 **`--max-fails`** (default 5) FAIL rows. And a worker stops after
 **`--max-consecutive-crashes`** (default 3) crashed trials in a row, FAILED or
-penalized: first come, first served hands the most trials to the fastest
+PRUNED: first come, first served hands the most trials to the fastest
 worker, and a worker on a broken device is fast — after the first completion
-each of its crashes is a penalized row that counts toward N. `--timeout` is
+each of its crashes is a PRUNED row that counts toward N. `--timeout` is
 per worker: no new trial starts after that many seconds from the worker's own
 launch.
 
@@ -179,22 +179,29 @@ that finish at once both start a trial and the study overshoots N by up to
 W−1.
 
 Crashed trials (e.g. NaN policy divergence at aggressive learning rates) are
-**penalized to the study's worst completed value** rather than marked failed:
-a failed trial carries no signal, so TPE would happily resample the divergent
-region — observed as 8 consecutive failures next to a high-scoring trial
-before this behavior was added.
+**told PRUNED** rather than FAIL. TPE ranks a pruned trial below every
+completed one, so the region lands in its "bad" split and is repelled; a FAIL
+row carries no signal, so TPE would happily resample the divergent region —
+observed as 8 consecutive failures next to a high-scoring trial before crashes
+were kept in the model. A PRUNED row carries no value, so nothing that ranks
+by value can pick it: not `best_trial`, not the summary, not a top-k funnel
+over COMPLETE rows. Its `failed` user attribute says why it crashed.
 
-The one case that rule cannot cover is a crash **before any trial has
-completed**, where there is no worst value to take. Such a trial is left
-FAILED and unscored, and the summary names it separately from the penalized
-ones. The invariant is that a crashed trial must never become the study's
-`best_trial`: the earlier direction-blind fallback of `0.0` broke it outright
-in any MINIMIZE study, where 0.0 beats every attainable cost (upstream #76).
-Nothing is taught by the omission, correctly — with no completed trial there
-is no scale on which "avoid this region" could be expressed — and the
-worst-completed rule resumes the moment one trial finishes. The penalty
-covers a crash in *training*; an eval or scoring crash ends its trial FAILED at
-any point in the study, which is why a study-wide budget caps FAIL rows.
+Earlier versions scored the crash at the study's worst completed value
+instead, and with one completed trial that value *is* the best one: the
+stand-in tied the study's best, sat in TPE's good split once the random start
+ended and pulled three draws toward a configuration that never trained, and a
+top-3 funnel would have taken a row with no model (upstream #103). A study
+written before the change keeps those rows — COMPLETE, with `failed` set —
+and the summary leaves them out; a consumer of your own that ranks COMPLETE
+rows should too.
+
+A crash **before any trial has completed** is FAILED instead (upstream #76):
+then a broken script is likelier than a bad configuration, and FAIL is redrawn
+and capped rather than spent from the budget, so a fixed script relaunched on
+the same study still has all N trials. The rule covers a crash in *training*;
+an eval or scoring crash ends its trial FAILED at any point in the study,
+which is why a study-wide budget caps FAIL rows.
 
 ## Limitations / future work
 

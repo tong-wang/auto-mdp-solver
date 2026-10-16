@@ -22,12 +22,12 @@ all before releasing the lock. First come, first served:
 - **FAIL does not count**, so an unscored crash is redrawn — and a study takes
   no new trial once it holds ``max_fails`` FAIL rows, since a script that
   crashes every trial would otherwise be redrawn forever. FAIL is not confined
-  to the first trials: a training crash is penalized once one trial has
+  to the first trials: a training crash is PRUNED once one trial has
   completed, but an eval or scoring crash is FAIL at any point.
-- **A worker stops after K crashed trials in a row** (FAIL or penalized). First
+- **A worker stops after K crashed trials in a row** (FAIL or PRUNED). First
   come, first served gives the most trials to the fastest worker, and a worker
   on a broken device is the fastest one: after the first completion its every
-  crash is a penalized COMPLETE row that counts toward N.
+  crash is a PRUNED row that counts toward N.
 
 A **pool** is one worker joining several studies: when free, it asks the one
 with the largest share of its budget left (ties by join order), which keeps
@@ -309,20 +309,21 @@ def _fail(member: Member, trial: optuna.Trial, err: BaseException,
 
 def _run(member: Member, trial: optuna.Trial, cfg: dict) -> bool:
     """Run and tell one drawn trial; ``True`` when it scored without a crash.
-    A caught exception ends the trial as FAIL and the worker continues;
-    anything else ends the trial as FAIL and then the worker."""
+    A training crash after the first completion ends the trial as PRUNED and a
+    caught exception as FAIL, and the worker continues; anything else ends the
+    trial as FAIL and then the worker."""
     try:
         value = member.run(trial, cfg)
+    except optuna.TrialPruned:
+        member.study.tell(trial, state=TrialState.PRUNED)
+        return False
     except BaseException as err:
         _fail(member, trial, err, "running")
         if not isinstance(err, CATCH):
             raise
         return False
-    frozen = member.study.tell(trial, value)
-    # a NaN value is told FAIL by optuna itself; a penalized crash is COMPLETE
-    # and carries the "failed" attr crash_penalty set
-    return (frozen.state == TrialState.COMPLETE
-            and "failed" not in frozen.user_attrs)
+    # a NaN value is told FAIL by optuna itself
+    return member.study.tell(trial, value).state == TrialState.COMPLETE
 
 
 def run_worker(members: list[Member], lock, *, timeout: float | None = None,
