@@ -58,10 +58,10 @@ different questions):
   carried forward without re-running.
 
 Upgrading: read the release notes, move the harness to the new tag, re-run
-every gate below, then log the move. **The pin drifted three times during this
+every gate below, then log the move. **The pin drifted twice during this
 campaign** — a shared harness moves without any file in the case changing, and
-each occurrence misattributed a block of escalations to the wrong version. All
-three, and what each cost, are in `ESCALATION.md` §FRAME-CHANGELOG.
+each occurrence misattributed a block of escalations to the wrong version. Both,
+and what each cost, are in `ESCALATION.md` §FRAME-CHANGELOG.
 
 v0.10.2 itself is this campaign's own upstream fix (issue #75, `d793b88`):
 `grids.base_instance` was checked after selection-pruning, so a grid based on
