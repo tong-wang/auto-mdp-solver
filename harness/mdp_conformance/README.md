@@ -29,7 +29,10 @@ Static (source/AST, no execution):
   `_uncertainty`/`_exceptions`/`_grids`.
 - `static.layering` — acyclic `uncertainty ← scenarios ← mdp ← gym` (§1.1);
   `_grids` imported by drivers only (never by the model layers).
-- `static.no_param` — the `param`/`params`/`param_*` ban (§2).
+- `static.no_param` — the `param`/`params`/`param_*` ban (§2), over every
+  `*.py` in the folder; flags names a module binds (definitions, arguments,
+  assignment/loop/`with`/`except` targets, attribute stores, imports), not
+  reads of a library's attribute (`optimizer.param_groups`).
 - `static.imports` — every import is the standard library, the harness,
   `[domain]`, a module in the folder, or declared in the folder's
   `requirements.txt` (§1.2); optional imports (an ImportError guard, directly

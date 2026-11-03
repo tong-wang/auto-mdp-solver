@@ -328,6 +328,11 @@ Which file each class lives in:
 - **`{domain}_mdp.py`**: `{Domain}State`, transition functions.
 
 **Never use `param`, `params`, or `param_*`** anywhere in the codebase.
+`static.no_param` reads every `.py` in the folder, scripts, heads and tests
+included, and flags each name a module *binds*: a definition, an argument, an
+assignment, loop, `with` or `except` target, an attribute store, or an import.
+Reading a library's own attribute (`optimizer.param_groups`) is not a name the
+domain chose, so it is not flagged.
 
 ---
 

@@ -532,8 +532,8 @@ def test_ordinal_head_is_a_proper_distribution():
 
     n = 46
     for t in (-3.0, 0.0, 3.0):
-        params = th.tensor([[t, 0.0, 0.0]])
-        lp = expand_order_logits(params, n)
+        raw = th.tensor([[t, 0.0, 0.0]])
+        lp = expand_order_logits(raw, n)
         assert lp.shape == (1, n)
         assert float(lp.exp().sum()) == pytest.approx(1.0, abs=1e-5)
         assert float(lp[0, 0].exp()) == pytest.approx(1 / (1 + pow(2.718281828, -t)), abs=1e-4)

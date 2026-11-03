@@ -341,6 +341,8 @@ class by module path, never this function's signature — re-run pytest, ship
 at the author's next pass. Recorded so the debt has an address; not done in
 this entry.
 
+**Closed 2026-11-03 (v0.11.13, #105, #106).** `params` → `raw` in both files, matching the `adi_flex` original. The reason given above was wrong: `static.no_param` checked identifiers, function arguments included, all along, but parsed only the six layered modules, so it never opened `inv_single_ordinal_head.py`. It now walks every `.py` in the folder with a bind-only predicate (#106) and PASSes here.
+
 ### 2026-09-14 — REPARENTED/RETYPED: the root is the `K=0` variance family; `lt_variance_k20` is an open extension
 
 **A deliberate scope cut, which guide §3.5 makes a re-framing of the root and

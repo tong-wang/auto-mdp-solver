@@ -67,14 +67,14 @@ TAU_SCALE = 40.0    # softplus scale: init tau is wide, tau = 0.5 at s ~ -5
 N_ORDER_PARAMS = 3
 
 
-def expand_order_logits(params: th.Tensor, n: int) -> th.Tensor:
-    """(batch, 3) raw params -> (batch, n) exact log-probabilities."""
-    t, m, s = params[:, 0], params[:, 1], params[:, 2]
+def expand_order_logits(raw: th.Tensor, n: int) -> th.Tensor:
+    """(batch, 3) raw head outputs -> (batch, n) exact log-probabilities."""
+    t, m, s = raw[:, 0], raw[:, 1], raw[:, 2]
     log_w = F.logsigmoid(t)                     # log P(order = 0)
     log_nw = F.logsigmoid(-t)                   # log P(order > 0)
     mu = 1.0 + (n - 2) * th.sigmoid(m)
     tau = TAU_MIN + TAU_SCALE * F.softplus(s)
-    k = th.arange(1, n, dtype=params.dtype, device=params.device)
+    k = th.arange(1, n, dtype=raw.dtype, device=raw.device)
     quad = -((k[None, :] - mu[:, None]) ** 2) / (2.0 * tau[:, None] ** 2)
     log_z = th.logsumexp(quad, dim=1, keepdim=True)
     return th.cat([log_w[:, None], log_nw[:, None] + quad - log_z], dim=1)

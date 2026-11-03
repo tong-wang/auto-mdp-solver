@@ -213,24 +213,54 @@ def check_layering(h: DomainHandle) -> CheckResult:
                        "acyclic uncertainty←scenarios←mdp←gym; grids driver-only")
 
 
+def _bound_names(tree: ast.Module):
+    """(lineno, name) for every name a module binds — never a name it only reads.
+
+    Definitions, arguments, assignment / loop / `with` / comprehension / `del`
+    targets, attribute stores (`self.x = …`), `except … as`, match captures,
+    and import names or their aliases.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            yield node.lineno, node.name
+        elif isinstance(node, ast.arg):
+            yield node.lineno, node.arg
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            yield node.lineno, node.id
+        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            yield node.lineno, node.attr
+        elif isinstance(node, ast.alias):
+            yield node.lineno, node.asname or node.name.split(".")[0]
+        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name:
+            yield node.lineno, node.name
+        elif isinstance(node, ast.MatchMapping) and node.rest:
+            yield node.lineno, node.rest
+
+
 def check_no_param(h: DomainHandle) -> CheckResult:
+    """No module in the folder binds `param`, `params` or `param_*` (spec §2).
+
+    Every `*.py` in the folder, as `static.imports` reads them, and not just
+    the layered modules: a train script, a custom head or the test file is as
+    much the codebase as `_mdp`. Only names the folder *binds* count. Reading
+    a library's own attribute (`optimizer.param_groups`) is not a name the
+    domain chose, and it could not rename one if it wanted to.
+    """
+    paths = sorted(h.directory.glob("*.py"))
     hits = []
-    for role, tree in h.trees.items():
-        for node in ast.walk(tree):
-            name = None
-            if isinstance(node, ast.Name):
-                name = node.id
-            elif isinstance(node, ast.arg):
-                name = node.arg
-            elif isinstance(node, ast.Attribute):
-                name = node.attr
-            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                name = node.name
-            if name and (name in ("param", "params") or name.startswith("param_")):
-                hits.append(f"{role}:{getattr(node, 'lineno', '?')} '{name}'")
+    for path in paths:
+        try:
+            tree = ast.parse(path.read_text())
+        except SyntaxError as exc:
+            hits.append(f"{path.name}: unparseable ({exc.msg})")
+            continue
+        hits += [f"{path.name}:{line} '{name}'" for line, name in sorted(_bound_names(tree))
+                 if name in ("param", "params") or name.startswith("param_")]
     if hits:
-        return CheckResult("static.no_param", "FAIL", "; ".join(hits[:8]))
-    return CheckResult("static.no_param", "PASS", "no param/params/param_* identifiers")
+        return CheckResult("static.no_param", "FAIL",
+                           "; ".join(hits[:8]) + (" …" if len(hits) > 8 else ""))
+    return CheckResult("static.no_param", "PASS",
+                       f"no param/params/param_* bound in {len(paths)} module(s)")
 
 
 # What a domain may import without declaring it (spec §1.2): the harness, its
